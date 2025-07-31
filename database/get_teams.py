@@ -5,6 +5,7 @@ import os
 import psycopg2 # type: ignore
 from psycopg2.extras import execute_values # type: ignore
 
+load_dotenv()
 API_KEY = os.getenv("API_KEY")
 BASE_URL = "https://api.collegefootballdata.com"
 
@@ -31,7 +32,6 @@ def get_fbs_teams_by_year(year):
 
 def load_teams_to_db(year):
 
-    load_dotenv()
     teams_df = get_fbs_teams_by_year(year)
 
     conn = psycopg2.connect(
@@ -91,6 +91,8 @@ def load_teams_to_db(year):
     conn.commit()
     cursor.close()
     conn.close()
+    
+    print(f"Teams for the year {year} loaded successfully into the database.")
 
 def query_teams_from_db(year):
 

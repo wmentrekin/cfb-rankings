@@ -34,9 +34,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-## TO DO ##
-# Create Supabase database and tables for teams & games first
-# Add capability for database query when running model
-# Create tables that load for fcs_losses, ratings, and records after processing
