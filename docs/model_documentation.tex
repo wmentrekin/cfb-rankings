@@ -1,0 +1,181 @@
+\documentclass{article}
+\usepackage{amsmath}
+\begin{document}
+
+\section*{College Football Ranking System Using Quadratic Programming
+
+
+
+This project is a custom-built college football ranking system using convex optimization, specifically a quadratic program (QP). It is designed to generate weekly rankings for FBS teams during the college football season and produce preseason prior ratings based on the full previous season.
+
+
+
+#\section*{Overview
+
+
+
+The model:
+
+- Assigns a rating to each FBS team
+
+- Penalizes teams ranked below teams they lost to
+
+- Uses a dummy variable to handle losses to FCS opponents
+
+- Incorporates home/away/neutral site effects through an "alpha" weight
+
+- Supports soft-margin loss modeling using a convex slack system
+
+- Optionally uses prior season ratings that decay over time via a connectivity-based lambda
+
+
+
+The program fetches data via the [CollegeFootballData API](https://collegefootballdata.com), processes the games, and formulates a QP using `cvxpy`.
+
+
+
+---
+
+
+
+#\section*{Full Model (In-Season with Priors)
+
+
+
+##\section*{Decision Variables
+
+- \( r_i \): rating of team \( i \)
+
+- \( z_{ij}^{(k)} \ge 0 \): slack variable for the \( k \)th game between team \( i \) and team \( j \)
+
+- \( r_{\text{FCS}} \): dummy rating for FCS opponents
+
+- \( z_{i, \text{FCS}} \ge 0 \): slack for FBS team \( i \) losing to an FCS opponent
+
+
+
+##\section*{Parameters
+
+- \( s_{ij}^{(k)} \): score margin for game \( k \) between \( i \) and \( j \)
+
+- \( \alpha_{ij}^{(k)} \): location weight (home/away/neutral)
+
+- \( r_i^{(0)} \): prior rating for team \( i \)
+
+- \( \lambda \): weight on prior deviation, decays as season progresses
+
+- \( \beta \): penalty multiplier for FCS loss slack
+
+- \( \mu \): penalty multiplier for deviation from FCS minimum rating
+
+- \( M \): large constant (\( M = 200 \))
+
+
+
+##\section*{Objective Function
+
+Minimize:
+
+\[
+
+\sum_{(i,j,k): i \text{ lost to } j} \alpha_{ij}^{(k)} s_{ij}^{(k)} z_{ij}^{(k)}
+
++ \gamma \sum_{(i,j,k): i \text{ beat } j} \left( \max(0, r_j + s_{ij}^{(k)} - r_i) \right)^2
+
++ \lambda \sum_i (r_i - r_i^{(0)})^2
+
++ \beta \sum_i z_{i,\text{FCS}}
+
++ \mu (r_{\text{FCS}} - R_{\min})^2
+
+\]
+
+
+
+##\section*{Constraints
+
+- \( r_i + z_{ij}^{(k)} \le r_j + M \) for each loss by \( i \) to \( j \)
+
+- \( r_i + z_{i,\text{FCS}} \le r_{\text{FCS}} + M \) for each FCS loss
+
+- \( R_{\min} \le r_{\text{FCS}} \le R_{\max} \)
+
+- \( r_i \ge 0 \) for all FBS teams
+
+
+
+---
+
+
+
+#\section*{Prior Model (Preseason using last season's results)
+
+
+
+This is a special case of the full model:
+
+- \( \lambda = 0 \) since no prior exists
+
+- Same structure, minus the prior term
+
+- Still includes the soft-margin penalty to spread ratings
+
+- Still handles FCS losses and dummy FCS team rating
+
+
+
+---
+
+
+
+#\section*{Usage
+
+
+
+To run the model:
+
+1. Make sure your `.env` file contains a valid `API_KEY` from [collegefootballdata.com](https://collegefootballdata.com/key).
+
+2. Run `model.py` to:
+
+   - Get prior ratings from the previous season (`get_prior_ratings(year)`)
+
+   - Run the full QP for a specific week (`get_ratings(year, week)`)
+
+
+
+---
+
+
+
+#\section*{Dependencies
+
+- `cvxpy`
+
+- `networkx`
+
+- `pandas`
+
+- `requests`
+
+- `python-dotenv`
+
+
+
+---
+
+
+
+#\section*{Future Plans
+
+- Automate weekly updates using cloud scheduler + backend storage
+
+- Build and host a frontend for sharing rankings
+
+- Expand to other sports (e.g., NBA) with repeated matchups
+
+- Incorporate player-level data, roster changes, or betting spreads as soft signal
+
+
+
+\end{document}
