@@ -1,8 +1,8 @@
-import requests
 import pandas as pd # type: ignore
 from dotenv import load_dotenv # type: ignore
 from connectivity import compute_connectivity_index
 import os
+from sqlalchemy import create_engine # type: ignore
 
 def process_game_data(games_df, fbs_teams_df):
 
@@ -19,9 +19,9 @@ def process_game_data(games_df, fbs_teams_df):
         records[team] = [0, 0, 0]
 
     for _, row in games_df.iterrows():
-        team1, team2 = row['homeTeam'], row['awayTeam']
+        team1, team2 = row['home_team'], row['away_team']
         game_pairs.append((team1, team2))
-        team1_score, team2_score = row['homePoints'], row['awayPoints']
+        team1_score, team2_score = row['home_score'], row['away_score']
         if pd.isnull(team1_score) or pd.isnull(team2_score):
             continue  # Skip games without scores
 
@@ -42,8 +42,8 @@ def process_game_data(games_df, fbs_teams_df):
         else:
             winner = "tie"
 
-        location = "neutral" if row.get("neutralSite", False) else "home"
-        alpha = 1 if location == "neutral" else (0.8 if row['homeTeam'] == winner else 1.2)
+        location = "neutral" if row.get("neutral_site", False) else "home"
+        alpha = 1 if location == "neutral" else (0.8 if row['home_team'] == winner else 1.2)
 
         if team1_is_fbs and team2_is_fbs and team1 == winner:
             records[team1][0] += 1
@@ -88,8 +88,37 @@ def process_game_data(games_df, fbs_teams_df):
 
     return teams, games, fcs_losses, records, connectivity
 
+def get_games_by_year_week(year, week=None):
+    load_dotenv()
+    db_url = (
+        f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+        "?sslmode=require"
+    )
+    engine = create_engine(db_url)
+    if week:
+        query = f"SELECT * FROM games WHERE season = {year} AND week = {week};"
+    else:
+        query = f"SELECT * FROM games WHERE season = {year};"
+    df = pd.read_sql_query(query, engine)
+    engine.dispose()
+    return df
+
+def get_fbs_teams_by_year(year):
+    load_dotenv()
+    db_url = (
+        f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+        "?sslmode=require"
+    )
+    engine = create_engine(db_url)
+    query = f"SELECT * FROM teams WHERE season = {year};"
+    df = pd.read_sql_query(query, engine)
+    engine.dispose()
+    return df
+
 def get_data_by_year_up_to_week(year, week = None):
-    games_df = get_games_by_year_week(year)
+    games_df = get_games_by_year_week(year, week)
     if week:
         games_df = games_df[games_df["week"] <= week]
     fbs_teams_df = get_fbs_teams_by_year(year)

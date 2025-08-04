@@ -2,15 +2,13 @@ import requests
 import pandas as pd # type: ignore
 from dotenv import load_dotenv # type: ignore
 import os
-import psycopg2 # type: ignore
-from psycopg2.extras import execute_values # type: ignore
+from sqlalchemy import create_engine # type: ignore
 
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
 BASE_URL = "https://api.collegefootballdata.com"
 
 def get_fbs_teams_by_year(year):
-
     api_key = API_KEY
     url = f"{BASE_URL}/teams/fbs?year={year}"
     headers = {"Authorization": f"Bearer {api_key}"}
@@ -31,81 +29,57 @@ def get_fbs_teams_by_year(year):
     return teams_df
 
 def load_teams_to_db(year):
-
     teams_df = get_fbs_teams_by_year(year)
-
-    conn = psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        database=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        port=os.getenv("DB_PORT")
-    )
-    cursor = conn.cursor()
-
     teams_df = teams_df.where(pd.notnull(teams_df), None)
-    rows = [
-        (
-            row["id"],
-            row["season"],
-            row["school"],
-            row["mascot"],
-            row["abbreviation"],
-            row["alternateNames"],
-            row["conference"],
-            row["division"],
-            row["classification"],
-            row["color"],
-            row["alternateColor"],
-            row["logos"],
-            row["twitter"],
-            row["stadium_id"],
-            row["name"],
-            row["city"],
-            row["state"],
-            row["zip"],
-            row["countryCode"],
-            row["timezone"],
-            row["latitude"],
-            row["longitude"],
-            row["elevation"],
-            row["capacity"],
-            row["constructionYear"],
-            row["grass"],
-            row["dome"]
-        ) for _, row in teams_df.iterrows()
-    ]
 
-    sql = """
-    INSERT INTO teams (
-        id, season, school, mascot, abbreviation, alternateNames,
-        conference, division, classification, color, alternateColor, logos, twitter,
-        stadium_id, name, city, state, zip, countryCode, timezone,
-        latitude, longitude, elevation, capacity, constructionYear, grass, dome
+    # Use SQLAlchemy engine for DB connection
+    db_url = (
+        f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+        "?sslmode=require"
     )
-    VALUES %s
-    ON CONFLICT (id, season) DO NOTHING;
-    """
-
-    execute_values(cursor, sql, rows)
-    conn.commit()
-    cursor.close()
-    conn.close()
-    
+    engine = create_engine(db_url)
+    with engine.begin() as conn:
+        rows = [
+            (
+                row["id"],
+                row["season"],
+                row["school"],
+                row["mascot"],
+                row["abbreviation"],
+                row["alternateNames"],
+                row["conference"],
+                row["division"],
+                row["classification"],
+                row["color"],
+                row["alternateColor"],
+                row["logos"],
+                row["twitter"],
+                row["stadium_id"],
+                row["name"],
+                row["city"],
+                row["state"],
+                row["zip"],
+                row["countryCode"],
+                row["timezone"],
+                row["latitude"],
+                row["longitude"],
+                row["elevation"],
+                row["capacity"],
+                row["constructionYear"],
+                row["grass"],
+                row["dome"]
+            ) for _, row in teams_df.iterrows()
+        ]
+        insert_sql = """
+        INSERT INTO teams (
+            id, season, school, mascot, abbreviation, alternateNames,
+            conference, division, classification, color, alternateColor, logos, twitter,
+            stadium_id, name, city, state, zip, countryCode, timezone,
+            latitude, longitude, elevation, capacity, constructionYear, grass, dome
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (id, season) DO NOTHING;
+        """
+        conn.execute(insert_sql, rows)
     print(f"Teams for the year {year} loaded successfully into the database.")
-
-def query_teams_from_db(year):
-
-    conn = psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        database=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        port=os.getenv("DB_PORT")
-    )
-    
-    query = f"SELECT * FROM teams WHERE season = {year};"
-    df = pd.read_sql_query(query, conn)
-    conn.close()
-    
-    return df

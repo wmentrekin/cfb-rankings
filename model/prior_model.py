@@ -3,7 +3,7 @@ import networkx as nx # type: ignore
 import numpy as np # type: ignore
 import pandas as pd # type: ignore
 
-from model.process_data import get_data_by_year_up_to_week
+from process_data import get_data_by_year_up_to_week
 
 def get_prior_ratings(year):
 
