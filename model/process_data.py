@@ -1,6 +1,6 @@
 import pandas as pd # type: ignore
 from dotenv import load_dotenv # type: ignore
-from connectivity import compute_connectivity_index
+from model.connectivity import compute_connectivity_index
 import os
 from sqlalchemy import create_engine # type: ignore
 
@@ -34,44 +34,39 @@ def process_game_data(games_df, fbs_teams_df):
         team1_is_fbs = team1 in teams
         team2_is_fbs = team2 in teams
 
-        margin = abs(team1_score - team2_score)
-        if team1_score > team2_score:
-            winner = team1
-        elif team2_score > team1_score:
-            winner = team2
-        else:
-            winner = "tie"
-
-        location = "neutral" if row.get("neutral_site", False) else "home"
-        alpha = 1 if location == "neutral" else (0.8 if row['home_team'] == winner else 1.2)
-
-        if team1_is_fbs and team2_is_fbs and team1 == winner:
-            records[team1][0] += 1
-            records[team2][1] += 1
-        elif team1_is_fbs and team2_is_fbs and team2 == winner:
-            records[team1][1] += 1
-            records[team2][0] += 1
-        elif team1_is_fbs and team2_is_fbs and winner == "tie":
-            records[team1][2] += 1
-            records[team2][2] += 1
-        elif team1_is_fbs and  not team2_is_fbs and team1 == winner:
-            records[team1][0] += 1
-        elif team1_is_fbs and not team2_is_fbs and team2 == winner:
-            records[team1][1] += 1
-        elif team1_is_fbs and not team2_is_fbs and winner == "tie":
-            records[team1][2] += 1
-        elif not team1_is_fbs and team2_is_fbs and team1 == winner:
-            records[team2][1] += 1
-        elif not team1_is_fbs and team2_is_fbs and team2 == winner:
-            records[team2][0] += 1
-        elif not team1_is_fbs and team2_is_fbs and winner == "tie":
-            records[team2][2] += 1
+        margin = row["margin"]
+        alpha = row["alpha"]
+        winner = row["winner"]
+        if team1_is_fbs and team2_is_fbs:
+            if winner == team1:
+                records[team1][0] += 1
+                records[team2][1] += 1
+            elif winner == team2:
+                records[team2][0] += 1
+                records[team1][1] += 1
+            else:
+                records[team1][2] += 1
+                records[team2][2] += 1
+        elif team1_is_fbs and not team2_is_fbs:
+            if winner == team1:
+                records[team1][0] += 1
+            elif winner == team2:
+                records[team1][1] += 1
+            else:
+                records[team1][2] += 1
+        elif team2_is_fbs and not team1_is_fbs:
+            if winner == team2:
+                records[team2][0] += 1
+            elif winner == team1:
+                records[team2][1] += 1
+            else:
+                records[team2][2] += 1
 
         # Track FCS losses
         if team1_is_fbs and not team2_is_fbs and team1_score < team2_score:
-            fcs_losses.append((team1, margin, alpha, row.get("week"), row.get("season")))
+            fcs_losses.append((team1, row.get('margin'), row.get('alpha'), row.get("week"), row.get("season")))
         elif team2_is_fbs and not team1_is_fbs and team2_score < team1_score:
-            fcs_losses.append((team2, margin, alpha, row.get("week"), row.get("season")))
+            fcs_losses.append((team2, row.get('margin'), row.get('alpha'), row.get("week"), row.get("season")))
         elif team1_is_fbs and team2_is_fbs:
             games.append((
                 team1,

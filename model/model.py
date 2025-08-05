@@ -4,9 +4,9 @@ import networkx as nx # type: ignore
 import numpy as np # type: ignore
 import pandas as pd # type: ignore
 
-from process_data import get_data_by_year_up_to_week
-from prior_model import get_prior_ratings
-from connectivity import lambda_decay
+from model.process_data import get_data_by_year_up_to_week
+from model.prior_model import get_prior_ratings
+from model.connectivity import lambda_decay
 
 def get_ratings(year, week = None):
 
@@ -29,7 +29,10 @@ def get_ratings(year, week = None):
     lambda_max = 10
     full_trust_week = 7
     _lambda = cp.Parameter(nonneg=True) # calculate term based on lambda_max and connectivity matrix
-    _lambda.value = lambda_decay(week, connectivity, lambda_max, full_trust_week)
+    if week:
+        _lambda.value = lambda_decay(week, connectivity, lambda_max, full_trust_week)
+    else:
+        _lambda.value = 0
     M = 200 # Big M 200 > 138 = Number of FBS teams
     mu = 20 # regularization penalty for on FCS rating
     beta = 2.0 # penalty multipler for FCS loss slack
@@ -101,5 +104,5 @@ def get_ratings(year, week = None):
             else:
                 print(count, team, ratings[team], f"{records[team][0]}-{records[team][1]}")
             count += 1
-    
-get_ratings(2024, week = 6)
+
+        return ratings, slack, records

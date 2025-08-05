@@ -3,7 +3,7 @@ import networkx as nx # type: ignore
 import numpy as np # type: ignore
 import pandas as pd # type: ignore
 
-from process_data import get_data_by_year_up_to_week
+from model.process_data import get_data_by_year_up_to_week
 
 def get_prior_ratings(year):
 
@@ -74,15 +74,14 @@ def get_prior_ratings(year):
             if variable.name()[0:2] == "r_":
                 prior_ratings[variable.name()[2:]] = variable.value.astype(float)
             elif variable.name()[0:2] == "z_":
-                slack.append((variable.name()[2:], variable.value.astype(float)))
-                
+                slack.append((variable.name()[2:], variable.value.astype(float)))    
         prior_ratings = dict(sorted(prior_ratings.items(), key = lambda item: item[1], reverse = True))
-        count = 1
-        for team in prior_ratings.keys():
-            if team == "fcs":
-                print(count, team, prior_ratings[team])
-            else:
-                print(count, team, prior_ratings[team], f"{records[team][0]}-{records[team][1]}")
-            count += 1
+        # count = 1
+        # for team in prior_ratings.keys():
+        #     if team == "fcs":
+        #         print(count, team, prior_ratings[team])
+        #     else:
+        #         print(count, team, prior_ratings[team], f"{records[team][0]}-{records[team][1]}")
+        #     count += 1
 
     return prior_ratings
