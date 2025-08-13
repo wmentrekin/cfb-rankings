@@ -1,5 +1,6 @@
 import argparse
 from model.model import get_ratings
+from database.model_to_db import ratings_to_df, insert_model_results_to_db
 import pandas as pd #type: ignore
 
 def main():
@@ -13,10 +14,12 @@ def main():
     # get_ratings returns nothing, so we need to modify model.py to return ratings, records, games, fcs_losses
     results = get_ratings(args.year, args.week)
     if results is None:
-        print("Model did not return results. Please check model.py to ensure it returns ratings, records, games, fcs_losses.")
+        print("Model did not return results. Please check model.py to ensure it returns ratings, slack, records.")
         return
-    ratings, slack, records = results
+    ratings, records = results
+    ratings = ratings_to_df(ratings, records, args.year, args.week)
     print(ratings)
+    insert_model_results_to_db(ratings)
 
 if __name__ == "__main__":
     main()

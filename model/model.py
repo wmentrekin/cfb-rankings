@@ -84,25 +84,17 @@ def get_ratings(year, week = None):
 
     # Solve
     problem = cp.Problem(objective, constraints)
-    problem.solve(verbose = True)
+    problem.solve(verbose = False)
     if problem.status not in ["infeasible", "unbounded"]:
         # Otherwise, problem.value is inf or -inf, respectively.
         print("Optimal value: %s" % problem.value)
         ratings = {}
         slack = []
         for variable in problem.variables():
-            print("Variable %s: value %s" % (variable.name(), variable.value))
             if variable.name()[0:2] == "r_":
                 ratings[variable.name()[2:]] = variable.value.astype(float)
             elif variable.name()[0:2] == "z_":
                 slack.append((variable.name()[2:], variable.value.astype(float)))
         ratings = dict(sorted(ratings.items(), key = lambda item: item[1], reverse = True))
-        count = 1
-        for team in ratings.keys():
-            if team == "fcs":
-                print(count, team, ratings[team])
-            else:
-                print(count, team, ratings[team], f"{records[team][0]}-{records[team][1]}")
-            count += 1
 
-        return ratings, slack, records
+        return ratings, records

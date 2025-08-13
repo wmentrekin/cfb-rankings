@@ -64,7 +64,7 @@ def get_prior_ratings(year):
 
     # Solve
     problem = cp.Problem(objective, constraints)
-    problem.solve(verbose = True)
+    problem.solve(verbose = False)
     if problem.status not in ["infeasible", "unbounded"]:
         # Otherwise, problem.value is inf or -inf, respectively.
         print("Optimal value: %s" % problem.value)
