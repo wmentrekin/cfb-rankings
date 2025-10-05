@@ -29,9 +29,12 @@ jobs:
 
       - name: Run model for inputs
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+          API_KEY: ${{secrets.CFBD_API_KEY}}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_PORT: ${{ secrets.DB_PORT }}
         run: |
           echo "Running main.py with year=${{ github.event.inputs.year }}, week=${{ github.event.inputs.week }}, staging"
           python main.py --year ${{ github.event.inputs.year }} --week ${{ github.event.inputs.week }} --staging > output.log 2>&1 || true
