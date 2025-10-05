@@ -1,4 +1,3 @@
-
 import cvxpy as cp # type: ignore
 import networkx as nx # type: ignore
 import numpy as np # type: ignore
@@ -6,7 +5,6 @@ import pandas as pd # type: ignore
 
 from model.process_data import get_data_by_year_up_to_week
 from model.prior_model import get_prior_ratings
-from model.connectivity import lambda_decay
 
 def get_ratings(year, week = None):
 
@@ -26,11 +24,11 @@ def get_ratings(year, week = None):
             prior_ratings[team] = 35
 
     # Parameters
-    lambda_max = 10
-    full_trust_week = 7
     _lambda = cp.Parameter(nonneg=True) # calculate term based on lambda_max and connectivity matrix
     if week:
-        _lambda.value = lambda_decay(week, connectivity, lambda_max, full_trust_week)
+        print(f"Connectivity: {connectivity}")
+        _lambda.value = (7 - week) / 700
+        print(f"Using week-based lambda: {_lambda.value}")
     else:
         _lambda.value = 0
     M = 200 # Big M 200 > 138 = Number of FBS teams
@@ -38,7 +36,8 @@ def get_ratings(year, week = None):
     beta = 2.0 # penalty multipler for FCS loss slack
     R_min = 5 # mininum FCS rating
     R_max = 15 # maximum FCS rating
-    gamma = 1 # small regularization constant
+    gamma = 0.01 # small regularization constant
+    nu = 500 # large regularization constant
 
     # Decision Variables
     r = {team: cp.Variable(name = f"r_{team}") for team in teams} # team rating
@@ -53,7 +52,7 @@ def get_ratings(year, week = None):
     slack_terms = []
     for (i, j, k, winner, margin, alpha, _, _) in games:
         if winner == j:
-            slack_terms.append(margin * alpha * z[(i, j, k)])
+            slack_terms.append(nu * margin * alpha * z[(i, j, k)])
 
     # FCS Slack Terms
     fcs_slack = cp.sum([beta * z_fcs[team] for (team, _, _, _, _) in fcs_losses])
@@ -63,13 +62,13 @@ def get_ratings(year, week = None):
 
     # Soft Margin Penalty
     soft_margin_penalty = cp.sum([
-        cp.pos(r[j] + margin - r[i])**2
+        cp.pos(r[j] + margin - r[i])**2 * gamma
         for (i, j, k, winner, margin, alpha, _, _) in games
         if winner == i  # i beat j
     ])
 
     # Objective Function
-    objective = cp.Minimize(cp.sum(slack_terms) + gamma * soft_margin_penalty + fcs_slack + fcs_reg + prior_term)
+    objective = cp.Minimize(cp.sum(slack_terms) + soft_margin_penalty + fcs_slack + fcs_reg + prior_term)
 
     # Constraints
     constraints = []
@@ -84,7 +83,7 @@ def get_ratings(year, week = None):
 
     # Solve
     problem = cp.Problem(objective, constraints)
-    problem.solve(verbose = False)
+    problem.solve(verbose = True)
     if problem.status not in ["infeasible", "unbounded"]:
         # Otherwise, problem.value is inf or -inf, respectively.
         print("Optimal value: %s" % problem.value)
@@ -96,5 +95,39 @@ def get_ratings(year, week = None):
             elif variable.name()[0:2] == "z_":
                 slack.append((variable.name()[2:], variable.value.astype(float)))
         ratings = dict(sorted(ratings.items(), key = lambda item: item[1], reverse = True))
+
+        for slack in slack:
+            print(f"Slack {slack[0]}: {slack[1]}")
+
+        # 1. Count games where the rating order violates the winner rule
+        violations = []
+        tol = 1e-6
+        for (i, j, k, winner, margin, alpha, _, _) in games:
+            # determine winner/loser indices consistent with your games tuple
+            if winner == i:
+                r_w = r[i].value
+                r_l = r[j].value
+            else:
+                r_w = r[j].value
+                r_l = r[i].value
+
+            if r_w is None or r_l is None:
+                continue
+            if (r_w - r_l) < -tol:  # winner is below loser (serious)
+                violations.append(((i,j,k), r_w, r_l))
+
+        print("Num strict violations (winner below loser):", len(violations))
+
+        # 2. Count games where slack is meaningfully > 1e-6
+        slack_nonzero = [(idx, zvar.value) for idx, zvar in z.items() if zvar.value and zvar.value > 1e-6]
+        print("Number of slacks > 1e-6:", len(slack_nonzero))
+
+        # 3. Print magnitudes of objective components
+        print("Prior term:", prior_term.value if 'prior_term' in locals() else 'n/a')
+        print("Slack objective (sum margin*alpha*z):", sum([
+            margin * alpha * z[(i, j, k)].value
+            for (i, j, k, _, margin, alpha, _, _) in games if z[(i, j, k)].value
+        ]))
+        print("Soft margin penalty:", soft_margin_penalty.value if 'soft_margin_penalty' in locals() else 'n/a')
 
         return ratings, records

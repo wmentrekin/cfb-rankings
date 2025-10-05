@@ -25,10 +25,3 @@ def compute_connectivity_index(games, teams):
         print("Non-FBS teams in graph:", extra_nodes)
 
     return len(largest_cc) / len(teams)
-
-def lambda_decay(week, connectivity, lambda_max, full_week):
-    if week < 3:
-        return lambda_max
-    decay_factor = (1 - (week - 3) / (full_week - 3))**2
-    adjusted = lambda_max * decay_factor * (0.5 + 0.5 * (1 - connectivity))  # mix in C
-    return max(0, adjusted)

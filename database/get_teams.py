@@ -4,82 +4,69 @@ from dotenv import load_dotenv # type: ignore
 import os
 from sqlalchemy import create_engine # type: ignore
 
-load_dotenv()
-API_KEY = os.getenv("API_KEY")
-BASE_URL = "https://api.collegefootballdata.com"
-
-def get_fbs_teams_by_year(year):
-    api_key = API_KEY
+def get_fbs_teams_by_year(year, week=None):
+    API_KEY = os.getenv("API_KEY")
+    BASE_URL = "https://api.collegefootballdata.com"
     url = f"{BASE_URL}/teams/fbs?year={year}"
-    headers = {"Authorization": f"Bearer {api_key}"}
+    headers = {"Authorization": f"Bearer {API_KEY}"}
     response = requests.get(url, headers=headers)
     response.raise_for_status()
-    teams_df = pd.DataFrame(response.json())
+    teams = response.json()
+    data = []
+    for team in teams:
+        location = team.get("location", {})
+        data.append({
+            'id': team.get('id'),
+            'season': year,
+            'school': team.get('school'),
+            'mascot': team.get('mascot'),
+            'abbreviation': team.get('abbreviation'),
+            'alternateNames': team.get('alternateNames', []),
+            'conference': team.get('conference'),
+            'division': team.get('division'),
+            'classification': team.get('classification'),
+            'color': team.get('color'),
+            'alternateColor': team.get('alternateColor'),
+            'logos': team.get('logos', []),
+            'twitter': team.get('twitter'),
+            'stadium_id': location.get('id'),
+            'name': location.get('name'),
+            'city': location.get('city'),
+            'state': location.get('state'),
+            'zip': location.get('zip'),
+            'countryCode': location.get('countryCode'),
+            'timezone': location.get('timezone'),
+            'latitude': location.get('latitude'),
+            'longitude': location.get('longitude'),
+            'elevation': location.get('elevation'),
+            'capacity': location.get('capacity'),
+            'constructionYear': location.get('constructionYear'),
+            'grass': location.get('grass'),
+            'dome': location.get('dome')
+        })
+    df = pd.DataFrame(data)
+    df['alternateNames'] = df['alternateNames'].apply(lambda x: x if isinstance(x, list) else [])
+    df['logos'] = df['logos'].apply(lambda x: x if isinstance(x, list) else [])
+    df['grass'] = df['grass'].apply(lambda x: bool(x) if pd.notnull(x) else None)
+    df['dome'] = df['dome'].apply(lambda x: bool(x) if pd.notnull(x) else None)
+    return df
 
-    teams_df["alternateNames"] = teams_df["alternateNames"].apply(list)
-    teams_df["logos"] = teams_df["logos"].apply(list)
-    location = pd.json_normalize(teams_df["location"])
-    location = location.rename(columns={'id': 'stadium_id'})
-    teams_df = pd.concat([teams_df.drop('location', axis=1), location], axis=1)
-    teams_df["elevation"] = teams_df["elevation"].astype(float)
-    teams_df["constructionYear"] = teams_df["constructionYear"].fillna(0).astype(int)
-    teams_df["capacity"] = teams_df["capacity"].fillna(0).astype(int)
-    teams_df["season"] = year
-
-    return teams_df
-
-def load_teams_to_db(year):
-    teams_df = get_fbs_teams_by_year(year)
+def load_teams_to_db(year, week=None):
+    load_dotenv()
+    teams_df = get_fbs_teams_by_year(year, week)
     teams_df = teams_df.where(pd.notnull(teams_df), None)
-
-    # Use SQLAlchemy engine for DB connection
     db_url = (
         f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
         f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
         "?sslmode=require"
     )
     engine = create_engine(db_url)
-    with engine.begin() as conn:
-        rows = [
-            (
-                row["id"],
-                row["season"],
-                row["school"],
-                row["mascot"],
-                row["abbreviation"],
-                row["alternateNames"],
-                row["conference"],
-                row["division"],
-                row["classification"],
-                row["color"],
-                row["alternateColor"],
-                row["logos"],
-                row["twitter"],
-                row["stadium_id"],
-                row["name"],
-                row["city"],
-                row["state"],
-                row["zip"],
-                row["countryCode"],
-                row["timezone"],
-                row["latitude"],
-                row["longitude"],
-                row["elevation"],
-                row["capacity"],
-                row["constructionYear"],
-                row["grass"],
-                row["dome"]
-            ) for _, row in teams_df.iterrows()
-        ]
-        insert_sql = """
-        INSERT INTO teams (
-            id, season, school, mascot, abbreviation, alternateNames,
-            conference, division, classification, color, alternateColor, logos, twitter,
-            stadium_id, name, city, state, zip, countryCode, timezone,
-            latitude, longitude, elevation, capacity, constructionYear, grass, dome
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (id, season) DO NOTHING;
-        """
-        conn.execute(insert_sql, rows)
-    print(f"Teams for the year {year} loaded successfully into the database.")
+    teams_df = teams_df.rename(columns={
+        'alternateNames': 'alternatenames',
+        'alternateColor': 'alternatecolor',
+        'countryCode': 'countrycode',
+        'constructionYear': 'constructionyear'
+    })
+    teams_df.to_sql("teams", engine, if_exists="append", index=False)
+    engine.dispose()
+    print(f"Teams for year {year} week {week} loaded into DB.")

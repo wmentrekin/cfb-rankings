@@ -92,7 +92,7 @@ def get_games_by_year_week(year, week=None):
     )
     engine = create_engine(db_url)
     if week:
-        query = f"SELECT * FROM games WHERE season = {year} AND week = {week};"
+        query = f"SELECT * FROM games WHERE season = {year} AND week <= {week};"
     else:
         query = f"SELECT * FROM games WHERE season = {year};"
     df = pd.read_sql_query(query, engine)

@@ -42,7 +42,7 @@ def ratings_to_df(ratings: Dict[str, float], records: Dict[str, Any], season: in
             print("Skipping fcs team")
     return pd.DataFrame(data)
 
-def insert_model_results_to_db(ratings_df: pd.DataFrame):
+def insert_model_results_to_db(ratings_df: pd.DataFrame, staging: bool = False):
     """
     Insert model results DataFrames into database tables.
     Args:
@@ -58,5 +58,8 @@ def insert_model_results_to_db(ratings_df: pd.DataFrame):
         "?sslmode=require"
     )
     engine = create_engine(db_url)
-    ratings_df.to_sql(f"ratings", engine, if_exists="append", index=False)
+    if staging == False:
+        ratings_df.to_sql(f"ratings", engine, if_exists="append", index=False)
+    else:   
+        ratings_df.to_sql(f"ratings_test", engine, if_exists="append", index=False)
     engine.dispose()
