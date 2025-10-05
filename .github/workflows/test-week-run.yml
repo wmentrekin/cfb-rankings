@@ -11,10 +11,6 @@ on:
         description: 'CFB week number'
         required: true
         default: '5'
-      staging:
-        description: 'Write to staging table? true/false'
-        required: true
-        default: 'True'
 
 jobs:
   test_run:
