@@ -21,7 +21,7 @@ def get_cfb_week(today: date, season_start_override: date) -> int:
 
     if season_start_override is None:
         year = today.year
-        aug25 = date(year, 8, 25) # default: first monday after week 0
+        aug25 = date(year, 8, 24) # default: first sunday after week 0
         season_start = aug25 - timedelta(days=aug25.weekday())
     else:
         season_start = season_start_override
