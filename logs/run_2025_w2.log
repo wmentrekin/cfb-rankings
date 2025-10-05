@@ -1,0 +1,35 @@
+2025-10-04 23:47:23,898 INFO: Logger initialized, writing to logs/run_2025_w2.log
+2025-10-04 23:47:23,899 INFO: Starting model run: year=2025 week=2 staging=True
+2025-10-04 23:47:23,899 INFO: Loading games into DB for year=2025 week=2
+2025-10-04 23:47:33,007 WARNING: Games loading raised an exception (they may already be loaded). Continuing. Exception: (psycopg2.errors.UniqueViolation) duplicate key value violates unique constraint "games_pkey"
+DETAIL:  Key (id)=(401754528) already exists.
+
+[SQL: INSERT INTO games (id, season, week, season_type, start_date, home_team, home_score, away_team, away_score, neutral_site, conference_game, venue, venueid, home_conference, away_conference, margin, winner, alpha) VALUES (%(id__0)s, %(season__0)s, %(we ... 27824 characters truncated ... )s, %(home_conference__82)s, %(away_conference__82)s, %(margin__82)s, %(winner__82)s, %(alpha__82)s)]
+[parameters: {'home_score__0': 28, 'home_team__0': 'Louisville', 'venueid__0': 3873, 'margin__0': 14, 'id__0': 401754528, 'home_conference__0': 'ACC', 'season_type__0': 'regular', 'conference_game__0': False, 'away_conference__0': 'Sun Belt', 'alpha__0': 0.8, 'start_date__0': datetime.datetime(2025, 9, 5, 23, 0, tzinfo=datetime.timezone.utc), 'away_score__0': 14, 'neutral_site__0': False, 'venue__0': 'L&N Federal Credit Union Stadium', 'winner__0': 'Louisville', 'week__0': 2, 'away_team__0': 'James Madison', 'season__0': 2025, 'home_score__1': 42, 'home_team__1': 'Northwestern', 'venueid__1': 5960, 'margin__1': 35, 'id__1': 401752817, 'home_conference__1': 'Big Ten', 'season_type__1': 'regular', 'conference_game__1': False, 'away_conference__1': 'Big South-OVC', 'alpha__1': 0.8, 'start_date__1': datetime.datetime(2025, 9, 5, 23, 30, tzinfo=datetime.timezone.utc), 'away_score__1': 7, 'neutral_site__1': False, 'venue__1': 'Lanny and Sharon Martin Stadium', 'winner__1': 'Northwestern', 'week__1': 2, 'away_team__1': 'Western Illinois', 'season__1': 2025, 'home_score__2': 20, 'home_team__2': 'Maryland', 'venueid__2': 3665, 'margin__2': 11, 'id__2': 401752826, 'home_conference__2': 'Big Ten', 'season_type__2': 'regular', 'conference_game__2': False, 'away_conference__2': 'Mid-American', 'alpha__2': 0.8, 'start_date__2': datetime.datetime(2025, 9, 5, 23, 30, tzinfo=datetime.timezone.utc), 'away_score__2': 9, 'neutral_site__2': False, 'venue__2': 'SECU Stadium' ... 1394 parameters truncated ... 'id__80': 401754526, 'home_conference__80': 'Big 12', 'season_type__80': 'regular', 'conference_game__80': False, 'away_conference__80': 'ACC', 'alpha__80': 0.8, 'start_date__80': datetime.datetime(2025, 9, 7, 2, 15, tzinfo=datetime.timezone.utc), 'away_score__80': 3, 'neutral_site__80': False, 'venue__80': 'LaVell Edwards Stadium', 'winner__80': 'BYU', 'week__80': 2, 'away_team__80': 'Stanford', 'season__80': 2025, 'home_score__81': 70, 'home_team__81': 'Washington', 'venueid__81': 3765, 'margin__81': 60, 'id__81': 401752821, 'home_conference__81': 'Big Ten', 'season_type__81': 'regular', 'conference_game__81': False, 'away_conference__81': 'Big Sky', 'alpha__81': 0.8, 'start_date__81': datetime.datetime(2025, 9, 7, 3, 0, tzinfo=datetime.timezone.utc), 'away_score__81': 10, 'neutral_site__81': False, 'venue__81': 'Husky Stadium', 'winner__81': 'Washington', 'week__81': 2, 'away_team__81': 'UC Davis', 'season__81': 2025, 'home_score__82': 37, 'home_team__82': "Hawai'i", 'venueid__82': 7220, 'margin__82': 17, 'id__82': 401757230, 'home_conference__82': 'Mountain West', 'season_type__82': 'regular', 'conference_game__82': False, 'away_conference__82': 'Conference USA', 'alpha__82': 0.8, 'start_date__82': datetime.datetime(2025, 9, 7, 3, 59, tzinfo=datetime.timezone.utc), 'away_score__82': 20, 'neutral_site__82': False, 'venue__82': 'Clarence T.C. Ching Athletics Complex', 'winner__82': "Hawai'i", 'week__82': 2, 'away_team__82': 'Sam Houston', 'season__82': 2025}]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+2025-10-04 23:47:33,008 INFO: Running model.get_ratings(year=2025, week=2)
+2025-10-04 23:47:39,874 INFO: Model returned 136 rating rows; sample:
+2025-10-04 23:47:39,881 INFO: 
+          team     rating  wins  losses  ties  season  week
+        Oregon 186.488540     2       0     0    2025     2
+    Ohio State 184.518796     2       0     0    2025     2
+       Indiana 159.779457     2       0     0    2025     2
+         Texas 145.272836     1       1     0    2025     2
+    Penn State 142.732377     2       0     0    2025     2
+    Notre Dame 128.256296     0       1     0    2025     2
+      Illinois 124.977113     2       0     0    2025     2
+South Carolina 119.802885     2       0     0    2025     2
+      Ole Miss 118.493784     2       0     0    2025     2
+           SMU 117.827931     1       1     0    2025     2
+       Georgia 116.530433     2       0     0    2025     2
+         Miami 115.540839     2       0     0    2025     2
+          UNLV 114.773158     3       0     0    2025     2
+          Army 114.399910     1       1     0    2025     2
+       Florida 113.047557     1       1     0    2025     2
+     Minnesota 112.006220     2       0     0    2025     2
+           LSU 111.071921     2       0     0    2025     2
+     Texas A&M 110.365140     2       0     0    2025     2
+           USC 109.425392     2       0     0    2025     2
+      Oklahoma 108.783801     2       0     0    2025     2
+2025-10-04 23:47:40,479 INFO: Insert complete.
+2025-10-04 23:47:40,479 INFO: Run finished successfully for year=2025 week=2

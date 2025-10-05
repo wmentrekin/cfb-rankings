@@ -1,0 +1,48 @@
+name: Manual Test - Weekly Rankings Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: 'Season year'
+        required: true
+        default: '2025'
+      week:
+        description: 'CFB week number'
+        required: true
+        default: '5'
+      staging:
+        description: 'Write to staging table? true/false'
+        required: true
+        default: 'true'
+
+jobs:
+  test_run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run model for inputs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+        run: |
+          echo "Running main.py with year=${{ github.event.inputs.year }}, week=${{ github.event.inputs.week }}, staging=${{ github.event.inputs.staging }}"
+          python main.py --year ${{ github.event.inputs.year }} --week ${{ github.event.inputs.week }} --staging ${{ github.event.inputs.staging }} > output.log 2>&1 || true
+          # make sure exit code doesn't block artifact upload so you can inspect logs
+
+      - name: Upload output log
+        uses: actions/upload-artifact@v3
+        with:
+          name: weekly-run-log
+          path: output.log

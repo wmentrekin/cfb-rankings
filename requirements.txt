@@ -1,0 +1,9 @@
+cvxpy
+numpy
+pandas
+networkx
+psycopg2-binary
+python-dotenv
+supabase
+requests
+sqlalchemy
