@@ -20,9 +20,9 @@ The model is designed to:
 |------------|----------|-------------|
 | **Data Source** | [College Football Data API](https://collegefootballdata.com/) | `requests` → `Supabase` |
 | **Database** | Stores team, game, and model results tables | **[Supabase](https://supabase.com/) PostgreSQL** |
-| **Data Processing** | Loads teams/games and prepares features | `process_data.py` |
+| **Data Processing** | Loads teams/games and prepares features | `process_data.py`, `get_games.py`, `get_teams.py` |
 | **Model** | Solves convex QP for team ratings | `cvxpy`, `numpy`, `pandas` |
-| **Automation** | Weekly GitHub Action scheduled via cron (Sundays 3AM ET) | `.github/workflows/auto_run.yml` |
+| **Automation** | Weekly GitHub Action scheduled via cron (Sundays 3AM ET) | `.github/workflows/weekly_update.yml` |
 | **Frontend (planned)** | Public rankings display | `Streamlit` (to be added) |
 
 **Data Flow Summary:**
