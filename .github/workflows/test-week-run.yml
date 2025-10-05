@@ -10,7 +10,7 @@ on:
       week:
         description: 'CFB week number'
         required: true
-        default: '5'
+        default: '1'
 
 jobs:
   test_run:

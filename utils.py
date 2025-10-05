@@ -11,10 +11,12 @@ from datetime import datetime, date, timedelta
 
 def get_cfb_week(today: date, season_start_override: date) -> int:
     """
-    Compute CFB week number from a given date.
-    Default rule: week 0 starts on `season_start_override` or a reasonable default.
-    Adjust season_start_override each year to the actual first week date you want.
-    Returns integer week in [0, 16] (cap).
+    Calculate the current CFB week number based on today's date and an optional season start override.
+    Args:
+        today (date): Current date. If None, uses today's date. Defaults to None.
+        season_start_override (date, optional): If provided, uses this date as the season start instead of calculating the first Sunday after August 24th. Defaults to None.
+    Returns:
+        week_num (int): Current CFB week number (0-16)
     """
     if today is None:
         today = datetime.now().date()
@@ -35,7 +37,13 @@ def get_cfb_week(today: date, season_start_override: date) -> int:
     return max(0, min(16, week_num))
 
 def setup_logging(year: int, week: int) -> logging.Logger:
-    """Create logger that prints to stdout and writes to a file."""
+    """Create logger that prints to stdout and writes to a file.
+    Args:
+        year (int): Year of the season
+        week (int): Week number
+    Returns:
+        logger (logging.Logger): Configured logger instance
+    """
     logger = logging.getLogger("cfb_lp")
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter("%(asctime)s %(levelname)s: %(message)s")

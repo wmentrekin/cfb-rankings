@@ -1,10 +1,18 @@
-import requests
+import requests # tye: ignore
 import pandas as pd # type: ignore
 from dotenv import load_dotenv # type: ignore
 import os
 from sqlalchemy import create_engine # type: ignore
 
 def get_fbs_teams_by_year(year, week=None):
+    """
+    Fetch FBS teams for a given year from the College Football Data API.
+    Args:
+        year (int): Year of the season
+        week (int, optional): Week number. Defaults to None.
+    Returns:
+        pd.DataFrame: DataFrame containing team information
+    """
     API_KEY = os.getenv("API_KEY")
     BASE_URL = "https://api.collegefootballdata.com"
     url = f"{BASE_URL}/teams/fbs?year={year}"
@@ -52,6 +60,12 @@ def get_fbs_teams_by_year(year, week=None):
     return df
 
 def load_teams_to_db(year, week=None):
+    """
+    Load FBS teams for a given year into the database.
+    Args:
+        year (int): Year of the season
+        week (int, optional): Week number. Defaults to None.
+    """
     load_dotenv()
     teams_df = get_fbs_teams_by_year(year, week)
     teams_df = teams_df.where(pd.notnull(teams_df), None)

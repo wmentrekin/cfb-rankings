@@ -7,6 +7,22 @@ from model.process_data import get_data_by_year_up_to_week
 from model.prior_model import get_prior_ratings
 
 def get_ratings(year, week = None):
+    """
+    Get team ratings for a given year and optional week.
+    Args:
+        year (int): Year of the season
+        week (int, optional): Week number. Defaults to None.
+    Returns:
+        ratings (dict): Dictionary of team ratings
+        records (dict): Dictionary of team records
+    Raises:
+        ValueError: If the optimization problem is infeasible or unbounded
+    Notes:
+        - Uses CVXPY for convex optimization
+        - Handles FCS losses with a dummy team
+        - Regularizes ratings based on prior year ratings
+        - Prints diagnostic information about the solution
+    """
 
     # Get Data
     teams, games, fcs_losses, records, connectivity = get_data_by_year_up_to_week(year, week)

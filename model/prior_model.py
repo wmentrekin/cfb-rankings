@@ -6,6 +6,20 @@ import pandas as pd # type: ignore
 from model.process_data import get_data_by_year_up_to_week
 
 def get_prior_ratings(year):
+    """
+    Get prior team ratings for a given year using all games from that year.
+    Args:
+        year (int): Year of the season
+    Returns:
+        prior_ratings (dict): Dictionary of team ratings
+    Raises:
+        ValueError: If the optimization problem is infeasible or unbounded
+    Notes:
+        - Uses CVXPY for convex optimization
+        - Handles FCS losses with a dummy team
+        - Regularizes ratings to be non-negative and within bounds for FCS team
+        - Prints diagnostic information about the solution
+    """
 
     # Get Data
     teams, games, fcs_losses, records, connectivity = get_data_by_year_up_to_week(year)
@@ -21,7 +35,7 @@ def get_prior_ratings(year):
     beta = 2.0 # penalty multipler for FCS loss slack
     R_min = 5 # mininum FCS rating
     R_max = 15 # maximum FCS rating
-    gamma = 5 # small regularization constant
+    gamma = 0.01 # small regularization constant
 
     # Decision Variables
     r = {team: cp.Variable(name = f"r_{team}") for team in teams} # team rating

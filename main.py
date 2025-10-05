@@ -10,7 +10,23 @@ import pandas as pd #type: ignore
 from datetime import datetime, date, timedelta
 
 def main():
-    
+    """
+    Main function to run the model and handle data loading and saving.
+    Args:
+        year (int): Year of the season
+        week (int, optional): Week number. Defaults to None.
+        staging (bool, optional): Whether to write to staging table. Defaults to False.
+        season_start (str, optional): YYYY-MM-DD to override season start date for week calculation
+    Returns:
+        None
+    Raises:
+        Various exceptions for data loading, model execution, and database insertion
+    Notes:
+        - Uses argparse for command line arguments
+        - Logs progress and errors
+        - Loads game data into the database before running the model
+        - Converts model results to DataFrame and inserts into database
+    """
     # PARSE ARGS
     parser = argparse.ArgumentParser(description="Run CFB QP model and prepare data for DB upload.")
     parser.add_argument('--year', type=int, default=None, help='Season year (e.g., 2024). If not provided, current year is used.')

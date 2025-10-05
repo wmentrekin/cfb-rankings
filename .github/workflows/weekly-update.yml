@@ -1,9 +1,8 @@
 name: Weekly Rankings - Auto Update
 
-# Runs on schedule and can be manually triggered
 on:
   schedule:
-    # Every Sunday at 07:00 UTC = 03:00 ET (while ET = UTC-4 during DST).
+    # Every Sunday at 07:00 UTC = 03:00 ET
     - cron: '0 7 * * 0'
   workflow_dispatch:
 

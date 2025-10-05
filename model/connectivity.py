@@ -2,11 +2,14 @@
 import networkx as nx # type: ignore
 
 def compute_connectivity_index(games, teams):
-    '''
-    Compute the connectivity index C / |T| where:
-    - games is a list of tuples (team1, team2)
-    - teams is a list of all FBS team names (no duplicates)
-    '''
+    """
+    Compute the connectivity index for the given games and teams.
+    Args:
+        games (list of tuples): List of tuples (team1, team2) representing games played
+        teams (list): List of FBS team names
+    Returns:
+        float: Connectivity index (size of largest connected component / number of teams)
+    """
     teams = list(set(teams))
     team_set = set(teams)
 

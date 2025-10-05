@@ -5,7 +5,18 @@ import os
 from sqlalchemy import create_engine # type: ignore
 
 def process_game_data(games_df, fbs_teams_df):
-
+    """
+    Process game data to extract teams, games, FCS losses, records, and connectivity index.
+    Args:
+        games_df (pd.DataFrame): DataFrame containing game data.
+        fbs_teams_df (pd.DataFrame): DataFrame containing FBS team data.
+    Returns:
+        teams (list): List of FBS team names.
+        games (list): List of tuples (i, j, k, winner, margin, location_multiplier, week, season).
+        fcs_losses (list): List of tuples (team, margin, location_multiplier, week, season).
+        records (dict): Dictionary with team names as keys and [wins, losses, ties] as values.
+        connectivity (float): Connectivity index of the schedule.
+    """
     teams = fbs_teams_df['school'].tolist()
     games = []
     fcs_losses = []
@@ -84,6 +95,14 @@ def process_game_data(games_df, fbs_teams_df):
     return teams, games, fcs_losses, records, connectivity
 
 def get_games_by_year_week(year, week=None):
+    """
+    Fetch game data from the database for a given year and optional week.
+    Args:
+        year (int): Year of the season.
+        week (int, optional): Week number. Defaults to None.
+    Returns:
+        pd.DataFrame: DataFrame containing game data.
+    """
     load_dotenv()
     db_url = (
         f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
@@ -100,6 +119,13 @@ def get_games_by_year_week(year, week=None):
     return df
 
 def get_fbs_teams_by_year(year):
+    """
+    Fetch FBS team data from the database for a given year.
+    Args:
+        year (int): Year of the season
+    Returns:
+        pd.DataFrame: DataFrame containing FBS team data.
+    """
     load_dotenv()
     db_url = (
         f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
@@ -113,6 +139,18 @@ def get_fbs_teams_by_year(year):
     return df
 
 def get_data_by_year_up_to_week(year, week = None):
+    """
+    Get processed data for a given year and optional week.
+    Args:
+        year (int): Year of the season
+        week (int, optional): Week number. Defaults to None.
+    Returns:
+        teams (list): List of FBS team names.
+        games (list): List of tuples (i, j, k, winner, margin, location_multiplier, week, season).
+        fcs_losses (list): List of tuples (team, margin, location_multiplier, week, season).
+        records (dict): Dictionary with team names as keys and [wins, losses, ties] as values.
+        connectivity (float): Connectivity index of the schedule.
+    """
     games_df = get_games_by_year_week(year, week)
     if week:
         games_df = games_df[games_df["week"] <= week]

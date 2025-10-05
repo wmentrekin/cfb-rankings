@@ -1,4 +1,4 @@
-import requests
+import requests # type: ignore
 import pandas as pd # type: ignore
 from dotenv import load_dotenv # type: ignore
 import os
@@ -9,6 +9,15 @@ API_KEY = os.getenv("API_KEY")
 BASE_URL = "https://api.collegefootballdata.com"
 
 def get_games_by_year_week(year, week=None, season_type='regular'):
+    """
+    Fetches game data from the College Football Data API for a given year and optional week.
+    Args:
+        year (int): Year of the season
+        week (int, optional): Week number. Defaults to None.
+        season_type (str, optional): Type of season ('regular', 'postseason', etc.). Defaults to 'regular'.
+    Returns:
+        pd.DataFrame: DataFrame containing game data
+    """
     api_key = API_KEY
     url = f"{BASE_URL}/games"
     headers = {"Authorization": f"Bearer {api_key}"}
@@ -72,6 +81,13 @@ def get_games_by_year_week(year, week=None, season_type='regular'):
     return games_df
 
 def load_games_to_db(year, week=None, season_type='regular'):
+    """
+    Loads game data into the database for a given year and optional week.
+    Args:
+        year (int): Year of the season
+        week (int, optional): Week number. Defaults to None.
+        season_type (str, optional): Type of season ('regular', 'postseason', etc.). Defaults to 'regular'.
+    """
     games_df = get_games_by_year_week(year, week, season_type)
     games_df = games_df.where(pd.notnull(games_df), None)
 
