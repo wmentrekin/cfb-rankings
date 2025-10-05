@@ -37,8 +37,8 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
         run: |
-          echo "Running main.py with year=${{ github.event.inputs.year }}, week=${{ github.event.inputs.week }}, staging=${{ github.event.inputs.staging }}"
-          python main.py --year ${{ github.event.inputs.year }} --week ${{ github.event.inputs.week }} --staging ${{ github.event.inputs.staging }} > output.log 2>&1 || true
+          echo "Running main.py with year=${{ github.event.inputs.year }}, week=${{ github.event.inputs.week }}, staging"
+          python main.py --year ${{ github.event.inputs.year }} --week ${{ github.event.inputs.week }} --staging > output.log 2>&1 || true
           # make sure exit code doesn't block artifact upload so you can inspect logs
 
       - name: Upload output log
