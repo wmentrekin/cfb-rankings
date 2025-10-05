@@ -36,7 +36,7 @@ The model is designed to:
 
 ## **Model**
 
-The model assigns each FBS team \( i \) a continuous rating \( r_i \), and a dummy FCS rating \( r_{\text{FCS}} \).  
+The model assigns each FBS team i a continuous rating rᵢ, and a dummy FCS rating r_fcs.  
 It minimizes total “ranking inconsistency” subject to logical constraints about game results and prior-season expectations.
 
 ### Objective Function
@@ -90,17 +90,10 @@ For every game `(i, j, k)` where team *i* played team *j*:
 ---
 
 ### Model Notes
-- **Prior ratings** are carried over from the previous season’s final model output. New FBS teams receive a default prior rating of 35.
+- **Prior ratings** are carried over from the previous season’s final model output. It anchors early-season ratings to the previous season, fading linearly through Week 7. New FBS teams receive a default prior rating of 35.
 - The **λ** parameter gradually reduces early-season dependence on priors.
 - **FCS losses** are handled via a dummy FCS team whose rating is constrained within a realistic range.
-- The **soft margin penalty** mildly rewards larger win margins while preventing overfitting.
-- The model is solved via **CVXPY**, ensuring convexity and numerical stability.
-
-
-### **Interpretation**
-- **Slack variables** \( z \) absorb violations where a team is rated below an opponent it lost to.  
+- **FCS terms** keep lower-division results from overwhelming the model.
 - **Soft margin penalties** gently reward greater separation between winners and losers.  
-- **FCS terms** keep lower-division results from overwhelming the model.  
-- **Prior regularization** anchors early-season ratings to the previous season, fading linearly through Week 7.  
-
-The optimization is solved using [**CVXPY**](https://www.cvxpy.org/) with default convex solvers, returning team ratings sorted in descending order.
+- **Slack variables** \( z \) absorb violations where a team is rated below an opponent it lost to.  
+- The optimization is solved using [**CVXPY**](https://www.cvxpy.org/) with default convex solvers, returning team ratings sorted in descending order.
