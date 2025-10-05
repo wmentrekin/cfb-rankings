@@ -47,7 +47,8 @@ def main():
             print("Invalid --season-start format; expected YYYY-MM-DD. Ignoring override.")
             season_start_override = None
     if args.week is None:
-        args.week = get_cfb_week(season_start_override=season_start_override)
+        today = datetime.now().date()
+        args.week = get_cfb_week(today=today,season_start_override=season_start_override)
         print(f"No --week provided: computed week={args.week} based on date.")
 
     # SETUP LOGGING
