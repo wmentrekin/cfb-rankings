@@ -39,54 +39,63 @@ The model is designed to:
 The model assigns each FBS team \( i \) a continuous rating \( r_i \), and a dummy FCS rating \( r_{\text{FCS}} \).  
 It minimizes total “ranking inconsistency” subject to logical constraints about game results and prior-season expectations.
 
-### **Decision Variables**
-\[
-\begin{aligned}
-r_i &\ge 0 &&\text{rating of team } i \\
-r_{\text{FCS}} &\in [R_{\min}, R_{\max}] &&\text{rating of dummy FCS team} \\
-z_{ijk} &\ge 0 &&\text{slack variable for game } k \text{ between teams } i,j \\
-z^{\text{FCS}}_i &\ge 0 &&\text{slack variable for FCS losses}
-\end{aligned}
-\]
+### Objective Function
+We minimize a weighted combination of slack penalties, prior regularization, and soft margin terms:
 
-### **Parameters**
-| Symbol | Meaning | Typical Value |
-|---------|----------|----------------|
-| \( M \) | Big-M for slack constraints | 200 |
-| \( \mu \) | FCS regularization penalty | 20 |
-| \( \beta \) | Penalty multiplier for FCS loss slack | 2.0 |
-| \( R_{\min}, R_{\max} \) | Bounds on FCS rating | 5, 15 |
-| \( \gamma \) | Soft margin penalty weight | 0.01 |
-| \( \nu \) | Loss slack penalty | 500 |
-| \( \lambda \) | Prior regularization weight | \((7 - \text{week}) / 700\) |
+**Minimize:**
 
-### **Objective Function**
+Σ ( ν · marginᵢⱼ · αᵢⱼ · zᵢⱼ )  
++ Σ ( γ · [ max(0, (rⱼ + marginᵢⱼ − rᵢ))² ] )  
++ Σ ( β · z_fcsᵢ )  
++ μ · (r_fcs − R_min)²  
++ λ · Σ (rᵢ − priorᵢ)²
 
-The model minimizes a composite loss:
-\[
-\min_{r, r_{\text{FCS}}, z} 
-\underbrace{\sum_{(i,j,k) \in G} \nu \, \text{margin}_{ijk} \, \alpha_{ijk} \, z_{ijk}}_{\text{Loss slack penalty}}
-+ \underbrace{\gamma \sum_{(i,j,k) \in G_w} \max(0, r_j + \text{margin}_{ijk} - r_i)^2}_{\text{Soft margin penalty}}
-+ \underbrace{\beta \sum_{i \in FCS} z^{\text{FCS}}_i}_{\text{FCS loss slack}}
-+ \underbrace{\mu (r_{\text{FCS}} - R_{\min})^2}_{\text{FCS regularization}}
-+ \underbrace{\lambda \sum_i (r_i - r_i^{\text{prior}})^2}_{\text{Prior smoothness term}}
-\]
+---
 
-Where:
-- \( G \) is the set of all games,
-- \( G_w \subset G \) is the subset of games where the winner is known,
-- \( \alpha_{ijk} \) is the location multiplier,
-- \( \text{margin}_{ijk} \) is the final score differential.
+### Constraints
+For every game `(i, j, k)` where team *i* played team *j*:
 
-### **Constraints**
-\[
-\begin{aligned}
-r_i + z_{ijk} &\le r_j + M &&\forall (i,j,k) \in G \\
-r_i + z^{\text{FCS}}_i &\le r_{\text{FCS}} + M &&\forall i \text{ with FCS losses} \\
-r_i &\ge 0 &&\forall i \\
-R_{\min} \le r_{\text{FCS}} &\le R_{\max}
-\end{aligned}
-\]
+1. **Loss slack constraint:**  
+   rᵢ + zᵢⱼᵏ ≤ rⱼ + M
+
+2. **FCS loss constraint:**  
+   r_team + z_fcs_team ≤ r_fcs + M
+
+3. **Rating bounds:**  
+   rᵢ ≥ 0   ∀ i ∈ teams  
+   R_min ≤ r_fcs ≤ R_max
+
+---
+
+### Decision Variables
+- **rᵢ:** continuous rating for each FBS team  
+- **r_fcs:** single rating for the dummy FCS team  
+- **zᵢⱼᵏ:** nonnegative slack variable representing a violation (team *i* ranked above *j* despite losing)  
+- **z_fcsᵢ:** slack for losses to FCS teams
+
+---
+
+### Parameters
+| Symbol | Description | Default Value |
+|:-------:|:-------------|:---------------:|
+| λ | Weight on prior regularization term, decays with week | (7 − week) / 700 |
+| μ | Penalty for deviation of FCS rating from baseline | 20 |
+| β | Weight for FCS loss slack | 2.0 |
+| γ | Penalty on small winning margins (soft margin regularization) | 0.01 |
+| ν | Scaling factor for loss slack (margin and home-field adjusted) | 500 |
+| M | Big-M constant (should exceed number of teams) | 200 |
+| R_min | Lower bound for FCS team rating | 5 |
+| R_max | Upper bound for FCS team rating | 15 |
+
+---
+
+### Model Notes
+- **Prior ratings** are carried over from the previous season’s final model output. New FBS teams receive a default prior rating of 35.
+- The **λ** parameter gradually reduces early-season dependence on priors.
+- **FCS losses** are handled via a dummy FCS team whose rating is constrained within a realistic range.
+- The **soft margin penalty** mildly rewards larger win margins while preventing overfitting.
+- The model is solved via **CVXPY**, ensuring convexity and numerical stability.
+
 
 ### **Interpretation**
 - **Slack variables** \( z \) absorb violations where a team is rated below an opponent it lost to.  

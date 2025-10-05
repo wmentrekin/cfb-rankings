@@ -1,7 +1,5 @@
 import os
 import sys
-import inspect
-import argparse
 from model.model import get_ratings
 from database.model_to_db import ratings_to_df, insert_model_results_to_db
 from database.get_games import load_games_to_db
