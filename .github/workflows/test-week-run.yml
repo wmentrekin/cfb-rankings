@@ -14,7 +14,7 @@ on:
       staging:
         description: 'Write to staging table? true/false'
         required: true
-        default: 'true'
+        default: 'True'
 
 jobs:
   test_run:
