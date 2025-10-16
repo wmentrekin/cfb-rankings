@@ -159,8 +159,8 @@ def load_previous_rankings_for_week(season: int, week: int) -> pd.DataFrame:
         return pd.DataFrame()
     prev_week = week - 1
     res = supabase.table("ratings").select("*").eq("season", season).eq("week", prev_week).execute()
-    if res.error:
-        raise RuntimeError(f"Supabase error: {res.error}")
+    # if res.error:
+    #     raise RuntimeError(f"Supabase error: {res.error}")
     prev_df = pd.DataFrame(res.data)
     return prev_df
 
