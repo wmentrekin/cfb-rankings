@@ -97,9 +97,6 @@ def format_delta_cell(delta: int) -> str:
 def get_available_seasons() -> List[int]:
     """Query distinct seasons from rankings table"""
     res = supabase.table("ratings").select("season", count="exact").execute()
-    # if res.error:
-    #     st.error("Error fetching seasons from Supabase: " + str(res.error))
-    #     return []
     seasons = sorted({row["season"] for row in res.data}, reverse=True)
     return seasons
 
@@ -107,9 +104,6 @@ def get_available_seasons() -> List[int]:
 def get_weeks_for_season(season: int) -> List[int]:
     """Query distinct weeks for a given season from rankings table"""
     res = supabase.table("ratings").select("week").eq("season", season).execute()
-    # if res.error:
-    #     st.error("Error fetching weeks from Supabase: " + str(res.error))
-    #     return []
     weeks = sorted({row["week"] for row in res.data})
     return weeks
 
@@ -122,8 +116,6 @@ def load_rankings_from_db(season: int, week: int) -> pd.DataFrame:
     """
     # Primary query: rankings table (assumes team name stored in 'team')
     res = supabase.table("ratings").select("*").eq("season", season).eq("week", week).execute()
-    # if res.error:
-    #     raise RuntimeError(f"Supabase error: {res.error}")
     df = pd.DataFrame(res.data)
     if df.empty:
         return df
@@ -140,10 +132,6 @@ def load_rankings_from_db(season: int, week: int) -> pd.DataFrame:
     if "logos" not in df.columns:
         # fetch teams table for the season
         team_rows = supabase.table("teams").select("school, logos").eq("season", season).execute()
-        # if team_rows.error:
-        #     # skip enrichment on error
-        #     df["logos"] = [[] for _ in range(len(df))]
-        #     return df
         team_map = {row["school"]: row.get("logos", []) for row in team_rows.data}
         df["logos"] = df["team"].map(lambda t: team_map.get(t, []))
     else:
@@ -159,8 +147,6 @@ def load_previous_rankings_for_week(season: int, week: int) -> pd.DataFrame:
         return pd.DataFrame()
     prev_week = week - 1
     res = supabase.table("ratings").select("*").eq("season", season).eq("week", prev_week).execute()
-    # if res.error:
-    #     raise RuntimeError(f"Supabase error: {res.error}")
     prev_df = pd.DataFrame(res.data)
     return prev_df
 
@@ -255,9 +241,10 @@ table_style = """
 table {border-collapse: collapse; width: 100%;}
 th, td {text-align: left; padding: 8px;}
 th {background-color: #f8f9fa;}
-tr:nth-child(even){background-color: #fbfbfb;}
 </style>
 """
+
+# tr:nth-child(even){background-color: #fbfbfb;}
 
 # Render table as HTML
 html_table = table_style + disp_df.to_html(escape=False, index=False)
