@@ -35,7 +35,7 @@ def get_prior_ratings(year):
     beta = 2.0 # penalty multipler for FCS loss slack
     R_min = 5 # mininum FCS rating
     R_max = 15 # maximum FCS rating
-    gamma = 0.01 # small regularization constant
+    gamma = 1 # small regularization constant
 
     # Decision Variables
     r = {team: cp.Variable(name = f"r_{team}") for team in teams} # team rating
@@ -45,9 +45,22 @@ def get_prior_ratings(year):
 
     # Slack Terms
     slack_terms = []
+    slack_term_infos = []
     for (i, j, k, winner, margin, alpha, _, _) in games:
-        if winner == j:
-            slack_terms.append(margin * alpha * z[(i, j, k)])
+        if winner == i:
+            winner_team = i
+            loser_team = j
+            factor = nu * margin * alpha
+            z_var = z[(i, j, k)]
+        else:
+            winner_team = j
+            loser_team = i
+            alpha_safe = alpha if (alpha is not None and alpha != 0) else 1.0
+            factor = nu * margin * (1.0 / alpha_safe)
+            z_var = z[(i, j, k)]
+
+        slack_terms.append(factor * z_var)
+        slack_term_infos.append(((i, j, k), winner_team, loser_team, margin, alpha, factor, z_var))
 
     # FCS Slack Terms
     fcs_slack = cp.sum([beta * z_fcs[team] for (team, _, _, _, _) in fcs_losses])
@@ -56,19 +69,30 @@ def get_prior_ratings(year):
     fcs_reg = mu * (r_fcs - R_min)**2
 
     # Soft Margin Penalty
-    soft_margin_penalty = cp.sum([
-        cp.pos(r[j] + margin - r[i])**2
-        for (i, j, k, winner, margin, alpha, _, _) in games
-        if winner == i  # i beat j
-    ])
+    soft_margin_terms = []
+    for (i, j, k, winner, margin, alpha, _, _) in games:
+        if winner == i:
+            winner_team = i
+            loser_team = j
+        else:
+            winner_team = j
+            loser_team = i
+        soft_margin_terms.append(cp.pos(r[loser_team] + margin - r[winner_team])**2 * gamma)
+    soft_margin_penalty = cp.sum(soft_margin_terms)
 
     # Objective Function
-    objective = cp.Minimize(cp.sum(slack_terms) + gamma * soft_margin_penalty + fcs_slack + fcs_reg)
+    objective = cp.Minimize(cp.sum(slack_terms) + soft_margin_penalty + fcs_slack + fcs_reg)
 
     # Constraints
     constraints = []
     for (i, j, k, winner, _, _, _, _) in games:
-        constraints.append(r[i] + z[(i, j, k)] <= r[j] + M) # slack constraints for losses to lower ranked teams
+        if winner == i:
+            winner_team = i
+            loser_team = j
+        else:
+            winner_team = j
+            loser_team = i
+        constraints.append(r[loser_team] + z[(i, j, k)] <= r[winner_team] + M) # slack constraints for losses to lower ranked teams
     for (team, _, _, _, _) in fcs_losses:
         constraints.append(r[team] + z_fcs[team] <= r_fcs + M) # slack constraints for losses to FCS teams
     for (team) in teams:
