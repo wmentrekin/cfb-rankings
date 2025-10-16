@@ -140,10 +140,10 @@ def load_rankings_from_db(season: int, week: int) -> pd.DataFrame:
     if "logos" not in df.columns:
         # fetch teams table for the season
         team_rows = supabase.table("teams").select("school, logos").eq("season", season).execute()
-        if team_rows.error:
-            # skip enrichment on error
-            df["logos"] = [[] for _ in range(len(df))]
-            return df
+        # if team_rows.error:
+        #     # skip enrichment on error
+        #     df["logos"] = [[] for _ in range(len(df))]
+        #     return df
         team_map = {row["school"]: row.get("logos", []) for row in team_rows.data}
         df["logos"] = df["team"].map(lambda t: team_map.get(t, []))
     else:
