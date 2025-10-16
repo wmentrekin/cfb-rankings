@@ -240,11 +240,9 @@ table_style = """
 <style>
 table {border-collapse: collapse; width: 100%;}
 th, td {text-align: left; padding: 8px;}
-th {background-color: #f8f9fa;}
+th, td {background-color: #f8f9fa;}
 </style>
 """
-
-# tr:nth-child(even){background-color: #fbfbfb;}
 
 # Render table as HTML
 html_table = table_style + disp_df.to_html(escape=False, index=False)
