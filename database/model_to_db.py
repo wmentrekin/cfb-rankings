@@ -1,6 +1,7 @@
 import pandas as pd #type: ignore
 from typing import Dict, List, Tuple, Any
-from sqlalchemy import create_engine #type: ignore
+from sqlalchemy import create_engine, Table, MetaData #type: ignore
+from sqlalchemy.dialects.postgresql import insert #type: ignore
 import os
 from dotenv import load_dotenv #type: ignore
 
@@ -58,8 +59,17 @@ def insert_model_results_to_db(ratings_df: pd.DataFrame, staging: bool = False):
         "?sslmode=require"
     )
     engine = create_engine(db_url)
-    if staging == False:
-        ratings_df.to_sql(f"ratings", engine, if_exists="append", index=False)
-    else:   
-        ratings_df.to_sql(f"ratings_test", engine, if_exists="append", index=False)
+    table_name = "ratings" if not staging else "ratings_test"
+    metadata = MetaData()
+    table = Table(table_name, metadata, autoload_with=engine)
+    # Upsert each row
+    with engine.begin() as conn:
+        for _, row in ratings_df.iterrows():
+            stmt = insert(table).values(**row.to_dict())
+            update_dict = {c: getattr(stmt.excluded, c) for c in ratings_df.columns if c not in ["team", "season", "week"]}
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["team", "season", "week"],
+                set_=update_dict
+            )
+            conn.execute(stmt)
     engine.dispose()
