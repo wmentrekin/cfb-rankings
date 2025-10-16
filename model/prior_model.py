@@ -36,6 +36,7 @@ def get_prior_ratings(year):
     R_min = 5 # mininum FCS rating
     R_max = 15 # maximum FCS rating
     gamma = 1 # small regularization constant
+    nu = 500 # large regularization constant
 
     # Decision Variables
     r = {team: cp.Variable(name = f"r_{team}") for team in teams} # team rating
