@@ -32,12 +32,12 @@ st.markdown(
 with st.sidebar:
     st.header("Filters")
     # Fetch available seasons from DB
-    seasons_data = supabase.table("rankings").select("season").execute()
+    seasons_data = supabase.table("ratings").select("season").execute()
     seasons = sorted(list({item["season"] for item in seasons_data.data}), reverse=True)
     selected_season = st.selectbox("Season", seasons, index=0)
 
     # Fetch available weeks for selected season
-    weeks_data = supabase.table("rankings").select("week").eq("season", selected_season).execute()
+    weeks_data = supabase.table("ratings").select("week").eq("season", selected_season).execute()
     weeks = sorted(list({item["week"] for item in weeks_data.data}))
     selected_week = st.selectbox("Week", weeks, index=len(weeks)-1 if weeks else 0)
 
@@ -46,7 +46,7 @@ with st.sidebar:
 # ------------------------------------------------
 @st.cache_data(ttl=3600)
 def load_rankings(season, week):
-    res = supabase.table("rankings") \
+    res = supabase.table("ratings") \
         .select("*") \
         .eq("season", season) \
         .eq("week", week) \
@@ -71,7 +71,7 @@ if df is not None:
 
     @st.cache_data(ttl=3600)
     def load_team_history(team_name):
-        res = supabase.table("rankings").select("*").eq("team", team_name).eq("season", selected_season).execute()
+        res = supabase.table("ratings").select("*").eq("team", team_name).eq("season", selected_season).execute()
         hist_df = pd.DataFrame(res.data)
         return hist_df.sort_values("week")
 
