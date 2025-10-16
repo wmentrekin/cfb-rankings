@@ -68,7 +68,7 @@ def get_ratings(year, week = None):
     slack_terms = []
     for (i, j, k, winner, margin, alpha, _, _) in games:
         if winner == j:
-            slack_terms.append(nu * margin * alpha * z[(i, j, k)])
+            slack_terms.append(nu * margin * z[(i, j, k)] / alpha)
 
     # FCS Slack Terms
     fcs_slack = cp.sum([beta * z_fcs[team] for (team, _, _, _, _) in fcs_losses])
