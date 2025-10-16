@@ -52,7 +52,7 @@ def get_ratings(year, week = None):
     beta = 2.0 # penalty multipler for FCS loss slack
     R_min = 5 # mininum FCS rating
     R_max = 15 # maximum FCS rating
-    gamma = 0.01 # small regularization constant
+    gamma = 1 # small regularization constant
     nu = 500 # large regularization constant
 
     # Decision Variables
