@@ -240,7 +240,7 @@ table_style = """
 <style>
 table {border-collapse: collapse; width: 100%;}
 th, td {text-align: left; padding: 8px;}
-th {background-color: #fbfbfb;}
+th, td {background-color: #fbfbfb;}
 </style>
 """
 # tr:nth-child(even){background-color: #fbfbfb;}
