@@ -96,7 +96,7 @@ def format_delta_cell(delta: int) -> str:
 @st.cache_data(ttl=3600)
 def get_available_seasons() -> List[int]:
     """Query distinct seasons from rankings table"""
-    res = supabase.table("rankings").select("season", count="exact").execute()
+    res = supabase.table("ratings").select("season", count="exact").execute()
     if res.error:
         st.error("Error fetching seasons from Supabase: " + str(res.error))
         return []
@@ -106,7 +106,7 @@ def get_available_seasons() -> List[int]:
 @st.cache_data(ttl=3600)
 def get_weeks_for_season(season: int) -> List[int]:
     """Query distinct weeks for a given season from rankings table"""
-    res = supabase.table("rankings").select("week").eq("season", season).execute()
+    res = supabase.table("ratings").select("week").eq("season", season).execute()
     if res.error:
         st.error("Error fetching weeks from Supabase: " + str(res.error))
         return []
@@ -121,7 +121,7 @@ def load_rankings_from_db(season: int, week: int) -> pd.DataFrame:
     We'll try to fetch logos from the 'teams' table by joining in Python if not present.
     """
     # Primary query: rankings table (assumes team name stored in 'team')
-    res = supabase.table("rankings").select("*").eq("season", season).eq("week", week).execute()
+    res = supabase.table("ratings").select("*").eq("season", season).eq("week", week).execute()
     if res.error:
         raise RuntimeError(f"Supabase error: {res.error}")
     df = pd.DataFrame(res.data)
@@ -158,7 +158,7 @@ def load_previous_rankings_for_week(season: int, week: int) -> pd.DataFrame:
     if week <= 0:
         return pd.DataFrame()
     prev_week = week - 1
-    res = supabase.table("rankings").select("*").eq("season", season).eq("week", prev_week).execute()
+    res = supabase.table("ratings").select("*").eq("season", season).eq("week", prev_week).execute()
     if res.error:
         raise RuntimeError(f"Supabase error: {res.error}")
     prev_df = pd.DataFrame(res.data)
