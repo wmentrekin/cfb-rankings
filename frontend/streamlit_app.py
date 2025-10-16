@@ -107,9 +107,9 @@ def get_available_seasons() -> List[int]:
 def get_weeks_for_season(season: int) -> List[int]:
     """Query distinct weeks for a given season from rankings table"""
     res = supabase.table("ratings").select("week").eq("season", season).execute()
-    if res.error:
-        st.error("Error fetching weeks from Supabase: " + str(res.error))
-        return []
+    # if res.error:
+    #     st.error("Error fetching weeks from Supabase: " + str(res.error))
+    #     return []
     weeks = sorted({row["week"] for row in res.data})
     return weeks
 
@@ -122,8 +122,8 @@ def load_rankings_from_db(season: int, week: int) -> pd.DataFrame:
     """
     # Primary query: rankings table (assumes team name stored in 'team')
     res = supabase.table("ratings").select("*").eq("season", season).eq("week", week).execute()
-    if res.error:
-        raise RuntimeError(f"Supabase error: {res.error}")
+    # if res.error:
+    #     raise RuntimeError(f"Supabase error: {res.error}")
     df = pd.DataFrame(res.data)
     if df.empty:
         return df
