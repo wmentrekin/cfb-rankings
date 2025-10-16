@@ -97,10 +97,9 @@ def format_delta_cell(delta: int) -> str:
 def get_available_seasons() -> List[int]:
     """Query distinct seasons from rankings table"""
     res = supabase.table("ratings").select("season", count="exact").execute()
-    print(f"Error: {res.error}")
-    if res.error:
-        st.error("Error fetching seasons from Supabase: " + str(res.error))
-        return []
+    # if res.error:
+    #     st.error("Error fetching seasons from Supabase: " + str(res.error))
+    #     return []
     seasons = sorted({row["season"] for row in res.data}, reverse=True)
     return seasons
 
