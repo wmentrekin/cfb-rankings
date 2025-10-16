@@ -224,7 +224,7 @@ def make_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     def team_html(row):
         logos = row["logos"] if "logos" in row and row["logos"] is not None else []
         logo_html = logo_img_html(safe_parse_logos(logos))
-        name = row["team"] + " " + row["mascot"]
+        name = row["team"]
         return f'<div style="display:flex;align-items:center;">{logo_html}<span style="vertical-align:middle">{name}</span></div>'
 
     disp["Team"] = df.apply(team_html, axis=1)
