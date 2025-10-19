@@ -41,7 +41,7 @@ def get_ratings(year, week = None):
 
     # Parameters
     _lambda = cp.Parameter(nonneg=True) # calculate term based on lambda_max and connectivity matrix
-    if week:
+    if week < 7:
         print(f"Connectivity: {connectivity}")
         _lambda.value = (7 - week) / 700
         print(f"Using week-based lambda: {_lambda.value}")
