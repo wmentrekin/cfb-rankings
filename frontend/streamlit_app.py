@@ -19,7 +19,7 @@ st.set_page_config(
 st.title("🏈 College Football Ranking")
 st.caption("a convex quadratic program to optimally rank college football teams based on game outcomes")
 st.markdown("College Football Data API (https://collegefootballdata.com/).")
-st.markdwon("Github Repository (https://github.com/wmentrekin/cfb-rankings/tree/main).")
+st.markdown("Github Repository (https://github.com/wmentrekin/cfb-rankings/tree/main).")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
