@@ -61,7 +61,7 @@ def logo_img_html(logo_urls: List[str], width: int = 36) -> str:
     """
     if not logo_urls:
         return ""
-    url = logo_urls[1]
+    url = logo_urls[0]
     # simple img tag; width controls size
     return f'<img src="{url}" alt="logo" style="width:{width}px;height:auto;border-radius:4px;margin-right:8px;vertical-align:middle;">'
 
