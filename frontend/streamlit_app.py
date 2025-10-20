@@ -11,29 +11,18 @@ from typing import List, Optional
 # Configuration / Init
 # ---------------------------
 st.set_page_config(
-    page_title="CFB LP Rankings",
+    page_title="CFB Rankings",
     page_icon="🏈",
     layout="wide"
 )
 
-st.title("🏈 College Football — LP Rankings")
-st.caption("Objective rankings computed with a convex optimization model. Data: Supabase (read-only anon key).")
+st.title("🏈 College Football Ranking")
+st.caption("a convex quadratic program to optimally rank college football teams based on game outcomes")
+st.markdown("College Football Data API (https://collegefootballdata.com/).")
+st.markdwon("Github Repository (https://github.com/wmentrekin/cfb-rankings/tree/main).")
 
-# Supabase credentials should be added as Streamlit Secrets:
-#
-# SUPABASE_URL: https://your-project.supabase.co
-# SUPABASE_KEY: your_anon_public_key
-#
-# In Streamlit Cloud: App Settings → Secrets
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error(
-        "Supabase credentials missing. Set SUPABASE_URL and SUPABASE_KEY in Streamlit Secrets (or environment). "
-        "Use the anon (public) key for read-only access."
-    )
-    st.stop()
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
