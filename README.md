@@ -42,11 +42,16 @@ We minimize a weighted combination of slack penalties, prior regularization, and
 
 Minimize:
 
-$$\sum_{\text{games}} \nu \cdot \text{margin} \cdot \alpha \cdot z_{\text{winner,loser}} \; \text{[Slack penalty]}$$
-$$+ \sum_{\text{games}} \gamma \cdot [\max(0, r_{\text{loser}} + \text{margin} - r_{\text{winner}})]^2 \;\; \text{[Soft margin]}$$
-$$+ \sum_{\text{FCS losses}} \beta \cdot z_{\text{fcs}} \; \text{[FCS penalty]}$$
-$$+ \mu \cdot (r_{\text{fcs}} - R_{\text{min}})^2 \; \text{[FCS regularization]}$$
-$$+ \lambda \sum_{\text{teams}} (r_{\text{team}} - \text{prior}_{\text{team}})^2 \; \text{[Prior regularization]}$$
+$$ \sum_{\text{games}} \nu \cdot \text{margin} \cdot \alpha \cdot z_{\text{winner,loser}} $$
+$$ \text{[Slack penalty]} $$
+$$+ \sum_{\text{games}} \gamma \cdot [\max(0, r_{\text{loser}} + \text{margin} - r_{\text{winner}})]^2 $$
+$$ \text{[Soft margin]} $$
+$$+ \sum_{\text{FCS losses}} \beta \cdot z_{\text{fcs}} $$
+$$ \text{[FCS penalty]} $$
+$$+ \mu \cdot (r_{\text{fcs}} - R_{\text{min}})^2 $$
+$$ \text{[FCS regularization]} $$
+$$+ \lambda \sum_{\text{teams}} (r_{\text{team}} - \text{prior}_{\text{team}})^2 $$
+$$ \text{[Prior regularization]} $$
 
 Where:
 - For each game, winner and loser are determined by the actual game outcome
