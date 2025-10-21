@@ -42,11 +42,15 @@ We minimize a weighted combination of slack penalties, prior regularization, and
 
 **Minimize:**
 
-Σ_{all games} ( ν · margin · α · z_{winner,loser} )  [Slack penalty for ranking violations]
-+ Σ_{all games} ( γ · [ max(0, (r_loser + margin − r_winner))² ] )  [Soft margin penalty]
-+ Σ_{all FCS losses} ( β · z_fcs_team )  [FCS loss penalty]
-+ μ · (r_fcs − R_min)²  [FCS rating regularization]
-+ λ · Σ_{all teams} (r_team − prior_team)²  [Prior season regularization]
+$$
+\begin{align*}
+& \sum_{\text{games}} \nu \cdot \text{margin} \cdot \alpha \cdot z_{\text{winner,loser}} && \text{[Slack penalty]} \\
++ & \sum_{\text{games}} \gamma \cdot [\max(0, r_{\text{loser}} + \text{margin} - r_{\text{winner}})]^2 && \text{[Soft margin]} \\
++ & \sum_{\text{FCS losses}} \beta \cdot z_{\text{fcs}} && \text{[FCS penalty]} \\
++ & \mu \cdot (r_{\text{fcs}} - R_{\text{min}})^2 && \text{[FCS regularization]} \\
++ & \lambda \sum_{\text{teams}} (r_{\text{team}} - \text{prior}_{\text{team}})^2 && \text{[Prior regularization]}
+\end{align*}
+$$
 
 Where:
 - For each game, winner and loser are determined by the actual game outcome
@@ -58,27 +62,27 @@ Where:
 ---
 
 ### Constraints
-For every game `(i, j, k)` where team *i* played team *j* for the *k*th time:
+For every game $(i, j, k)$ where team $i$ played team $j$ for the $k$th time:
 
 1. **Loss slack constraint:**  
-   r_loser + z_{winner,loser} ≤ r_winner + M  
-   (If r_loser > r_winner, z_{winner,loser} must absorb the violation)
+   $$r_{\text{loser}} + z_{\text{winner,loser}} \leq r_{\text{winner}} + M$$
+   (If $r_{\text{loser}} > r_{\text{winner}}$, $z_{\text{winner,loser}}$ must absorb the violation)
 
 2. **FCS loss constraint:**  
-   r_team + z_fcs_team ≤ r_fcs + M  
+   $$r_{\text{team}} + z_{\text{fcs,team}} \leq r_{\text{fcs}} + M$$
    (For teams that lost to FCS opponents)
 
 3. **Rating bounds:**  
-   rᵢ ≥ 0   ∀ i ∈ teams  
-   R_min ≤ r_fcs ≤ R_max
+   $$r_i \geq 0 \quad \forall i \in \text{teams}$$
+   $$R_{\text{min}} \leq r_{\text{fcs}} \leq R_{\text{max}}$$
 
 ---
 
 ### Decision Variables
-- **rᵢ:** continuous rating for each FBS team  
-- **r_fcs:** single rating for the dummy FCS team  
-- **zᵢⱼᵏ:** nonnegative slack variable representing a violation (team *i* ranked above *j* despite losing)  
-- **z_fcsᵢ:** slack for losses to FCS teams
+- $r_i$: continuous rating for each FBS team  
+- $r_{\text{fcs}}$: single rating for the dummy FCS team  
+- $z_{ijk}$: nonnegative slack variable representing a violation (team $i$ ranked above $j$ despite losing)  
+- $z_{\text{fcs},i}$: slack for losses to FCS teams
 
 ---
 
