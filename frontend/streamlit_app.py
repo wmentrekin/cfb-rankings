@@ -8,7 +8,75 @@ import ast
 from typing import List, Optional
 
 # ---------------------------
-# Configuration / Init
+## ---------------------------
+# Footer / Documentation
+# ---------------------------
+st.markdown("---")
+
+st.markdown("""
+## Model Details
+
+The model assigns each FBS team $i$ a continuous rating $r_i$, and a dummy FCS rating $r_{fcs}$.  
+It minimizes total "ranking inconsistency" subject to logical constraints about game results and prior-season expectations.
+
+### Objective Function
+We minimize a weighted combination of slack penalties, prior regularization, and soft margin terms:
+
+Minimize:
+
+$\sum_{\text{games}} \nu \cdot \text{margin} \cdot \alpha \cdot z_{\text{winner,loser}}$ [Slack penalty]
+
+$+ \sum_{\text{games}} \gamma \cdot [\max(0, r_{\text{loser}} + \text{margin} - r_{\text{winner}})]^2$ [Soft margin]
+
+$+ \sum_{\text{FCS losses}} \beta \cdot z_{\text{fcs}}$ [FCS penalty]
+
+$+ \mu \cdot (r_{\text{fcs}} - R_{\text{min}})^2$ [FCS regularization]
+
+$+ \lambda \sum_{\text{teams}} (r_{\text{team}} - \text{prior}_{\text{team}})^2$ [Prior regularization]
+
+Where:
+- For each game, winner and loser are determined by the actual game outcome
+- $\\alpha$ adjusts for home/away games ($\\alpha = 1.0$ for neutral site games, $0.8$ if home team wins, $1.2$ if away team wins)
+- margin is the point differential in the game
+- $z_{\\text{winner,loser}}$ is the slack variable when the winner's rating is below the loser's
+- $\\lambda$ decays to zero after week 7 to rely fully on current season data
+
+### Constraints
+For every game $(i, j, k)$ where team $i$ played team $j$ for the $k$th time:
+
+1. **Loss slack constraint:**  
+   $r_{\text{loser}} + z_{\text{winner,loser}} \leq r_{\text{winner}} + M$  
+   (If $r_{\text{loser}} > r_{\text{winner}}$, $z_{\text{winner,loser}}$ must absorb the violation)
+
+2. **FCS loss constraint:**  
+   $r_{\text{team}} + z_{\text{fcs,team}} \leq r_{\text{fcs}} + M$  
+   (For teams that lost to FCS opponents)
+
+3. **Rating bounds:**  
+   $r_i \geq 0 \quad \forall i \in \text{teams}$  
+   $R_{\text{min}} \leq r_{\text{fcs}} \leq R_{\text{max}}$
+
+### Parameters
+| Parameter | Description | Default Value |
+|:-------:|:-------------|:---------------:|
+| $\\lambda$ | Weight on prior regularization term | $(7 - week) / 700$ before week 7, 0 after |
+| $\\mu$ | Penalty for deviation of FCS rating | 20 |
+| $\\beta$ | Weight for FCS loss slack | 2.0 |
+| $\\gamma$ | Penalty on small winning margins | 1.0 |
+| $\\nu$ | Scaling factor for loss slack | 500 |
+| $M$ | Big-M constant | 200 |
+| $R_{min}$ | Lower bound for FCS rating | 5 |
+| $R_{max}$ | Upper bound for FCS rating | 15 |
+
+### Model Notes
+- **Prior ratings** are carried over from the previous season's final model output. New FBS teams receive a default prior rating of 35.
+- The $\\lambda$ parameter enforces prior-season influence through Week 6, then drops to 0 to rely entirely on current season results.
+- **FCS losses** are handled via a dummy FCS team whose rating is constrained between $R_{min}$ and $R_{max}$.
+- **Slack variables** ($z$) capture ranking violations, weighted by margin and location (home/away/neutral).
+- **Soft margin penalties** encourage appropriate rating separation based on game margins.
+- **Home/away adjustments** use $\\alpha$ multipliers to account for game location advantage.
+- The optimization is solved using [CVXPY](https://www.cvxpy.org/) with default convex solvers, returning team ratings sorted in descending order.
+""") Init
 # ---------------------------
 st.set_page_config(
     page_title="CFB Rankings",
