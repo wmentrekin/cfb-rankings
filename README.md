@@ -16,12 +16,12 @@ The model is designed to:
 
 | Component | Purpose | Technology |
 |------------|----------|-------------|
-| **Data Source** | [College Football Data API](https://collegefootballdata.com/) | `requests` → `Supabase` |
+| **Data Source** | `requests` → `Supabase` | [College Football Data API](https://collegefootballdata.com/) |
 | **Database** | Stores team, game, and model results tables | **[Supabase](https://supabase.com/) PostgreSQL** |
 | **Data Processing** | Loads teams/games and prepares features | `process_data.py`, `get_games.py`, `get_teams.py` |
 | **Model** | Solves convex QP for team ratings | `cvxpy`, `numpy`, `pandas` |
 | **Automation** | Weekly GitHub Action scheduled via cron (Sundays 3AM ET) | `.github/workflows/weekly_update.yml` |
-| **Frontend (planned)** | Public rankings display | **[Streamlit](hhttps://cfb-rankings-wmentrekin.streamlit.app/#college-football-lp-rankings)** |
+| **Frontend (planned)** | Public rankings display | **[Streamlit](hhttps://cfb-rankings-wmentrekin.streamlit.app/)** |
 
 **Data Flow Summary:**
 1. GitHub Action triggers `main.py` every Sunday morning.  
