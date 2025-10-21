@@ -76,7 +76,7 @@ For every game $(i, j, k)$ where team $i$ played team $j$ for the $k$th time:
 - **Soft margin penalties** encourage appropriate rating separation based on game margins.
 - **Home/away adjustments** use $\\alpha$ multipliers to account for game location advantage.
 - The optimization is solved using [CVXPY](https://www.cvxpy.org/) with default convex solvers, returning team ratings sorted in descending order.
-""") Init
+""")
 # ---------------------------
 st.set_page_config(
     page_title="CFB Rankings",
