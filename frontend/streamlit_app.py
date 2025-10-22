@@ -192,6 +192,17 @@ st.markdown("""
         border-radius: 0.5rem;
         margin-bottom: 1rem;
     }
+    
+    /* Force vertical stacking on mobile (both portrait and landscape) */
+    @media (max-width: 767px) {
+        .filters > div {
+            flex-direction: column !important;
+        }
+        .filters > div > [data-testid="column"] {
+            width: auto !important;
+            margin-bottom: 0.75rem;
+        }
+    }
     .stSelectbox {
         min-width: 120px;
     }
