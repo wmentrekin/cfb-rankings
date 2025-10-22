@@ -295,7 +295,6 @@ table_style = """
         margin: 1rem 0;
     }
     th {
-        background-color: #f0f2f6;
         color: #262730;
         font-weight: 600;
         text-align: center !important;
