@@ -30,42 +30,25 @@ def get_prior_ratings(year):
     fcs_losses = fcs_losses  # List of tuples: (team, margin, location_multiplier, week, season)
 
     # Parameters
-    M = 200 # Big M 200 > 138 = Number of FBS teams
-    beta = 2.0 # penalty multipler for FCS loss slack
-    R_min = 5 # mininum FCS rating
-    R_max = 15 # maximum FCS rating
-    gamma = 1 # small regularization constant
-    nu = 500 # large regularization constant
+    r_min = 0 # minimum team rating
+    r_max = 100 # maximum team rating
+    r_fcs_min = 5 # mininum FCS rating
+    r_fcs_max = 15 # maximum FCS rating
+    gamma_margin = 0.05 # small margin penalty coefficient
+    gamma_loss = 0.5 # regularization constant for loss rate
+    gamma_fcs = 5 # regularization constant for FCS loss
 
     # Decision Variables
     r = {team: cp.Variable(name = f"r_{team}") for team in teams} # team rating
-    z = {(i, j, k): cp.Variable(nonneg=True, name = f"z_{i},{j}^{k}") for (i, j, k, _, _, _, _, _) in games} # slack variable
     r_fcs = cp.Variable(name = "r_fcs") # rating for dummy FCS team
-    z_fcs = {team: cp.Variable(nonneg=True, name = "z_fcs_team") for (team, _, _, _, _) in fcs_losses} # slack variable for loss to dummy FCS team
 
-    # Slack Terms
-    slack_terms = []
-    slack_term_infos = []
-    for (i, j, k, winner, margin, alpha, _, _) in games:
-        if winner == i:
-            winner_team = i
-            loser_team = j
-            factor = nu * margin * alpha
-            z_var = z[(i, j, k)]
-        else:
-            winner_team = j
-            loser_team = i
-            alpha_safe = alpha if (alpha is not None and alpha != 0) else 1.0
-            factor = nu * margin * (1.0 / alpha_safe)
-            z_var = z[(i, j, k)]
+    # FCS Loss Penalty Terms
+    fcs_loss_terms = []
+    for (team, margin, alpha, _, _) in fcs_losses:
+        fcs_loss_terms.append(cp.pos(r[team] + (margin * alpha) - r_fcs)**2 * gamma_fcs)
+    fcs_loss_penalty = cp.sum(fcs_loss_terms)
 
-        slack_terms.append(factor * z_var)
-        slack_term_infos.append(((i, j, k), winner_team, loser_team, margin, alpha, factor, z_var))
-
-    # FCS Slack Terms
-    fcs_slack = cp.sum([beta * z_fcs[team] for (team, _, _, _, _) in fcs_losses])
-
-    # Soft Margin Penalty
+    # Soft Margin Penalty Terms
     soft_margin_terms = []
     for (i, j, k, winner, margin, alpha, _, _) in games:
         if winner == i:
@@ -74,42 +57,66 @@ def get_prior_ratings(year):
         else:
             winner_team = j
             loser_team = i
-        soft_margin_terms.append(cp.pos(r[loser_team] + margin - r[winner_team])**2 * gamma)
+        soft_margin_terms.append(cp.pos(r[loser_team] + (margin * alpha) - r[winner_team])**2 * gamma_margin)
     soft_margin_penalty = cp.sum(soft_margin_terms)
 
+    # Loss Rate Penalty Terms
+    loss_rate_terms = []
+    for team, record in records.items():
+        wins = record[0]
+        losses = record[1]
+        games_played = wins + losses
+        if games_played > 0:
+            loss_rate = losses / games_played
+            loss_rate_terms.append((r[team] * loss_rate)**2 * gamma_loss)
+    loss_rate_penalty = cp.sum(loss_rate_terms)
+
     # Objective Function
-    objective = cp.Minimize(cp.sum(slack_terms) + soft_margin_penalty + fcs_slack)
+    objective = cp.Minimize(soft_margin_penalty + loss_rate_penalty + fcs_loss_penalty)
 
     # Constraints
     constraints = []
-    for (i, j, k, winner, _, _, _, _) in games:
-        if winner == i:
-            winner_team = i
-            loser_team = j
-        else:
-            winner_team = j
-            loser_team = i
-        constraints.append(r[loser_team] + z[(i, j, k)] <= r[winner_team] + M) # slack constraints for losses to lower ranked teams
-    for (team, _, _, _, _) in fcs_losses:
-        constraints.append(r[team] + z_fcs[team] <= r_fcs + M) # slack constraints for losses to FCS teams
+    for (team) in teams:
+        constraints.append(r[team] >= r_min)
+        constraints.append(r[team] <= r_max)
+    constraints.append(r_fcs >= r_fcs_min)
+    constraints.append(r_fcs <= r_fcs_max)
     for (team) in teams:
         constraints.append(r[team] >= 0)
-    constraints.append(r_fcs >= R_min)
-    constraints.append(r_fcs <= R_max)
+    constraints.append(r_fcs >= r_fcs_min)
+    constraints.append(r_fcs <= r_fcs_max)
 
     # Solve
     problem = cp.Problem(objective, constraints)
     problem.solve(verbose = False)
     if problem.status not in ["infeasible", "unbounded"]:
-        # Otherwise, problem.value is inf or -inf, respectively.
         print("Optimal value: %s" % problem.value)
         prior_ratings = {}
-        slack = []
         for variable in problem.variables():
-            if variable.name()[0:2] == "r_":
-                prior_ratings[variable.name()[2:]] = variable.value.astype(float)
-            elif variable.name()[0:2] == "z_":
-                slack.append((variable.name()[2:], variable.value.astype(float)))    
+            name = variable.name()
+            if name.startswith("r_"):
+                team_name = name[2:]
+                try:
+                    prior_ratings[team_name] = float(variable.value)
+                except Exception:
+                    prior_ratings[team_name] = float(np.asarray(variable.value).item())
         prior_ratings = dict(sorted(prior_ratings.items(), key = lambda item: item[1], reverse = True))
+        
+        violations = []
+        for (i, j, k, winner, margin, alpha, _, _) in games:
+            if winner == i:
+                r_w = r[i].value
+                r_l = r[j].value
+            else:
+                r_w = r[j].value
+                r_l = r[i].value
+            if r_w is None or r_l is None:
+                continue
+            if (r_w - r_l) < 0:
+                violations.append(((i, j, k), r_w, r_l))
+        print("Num strict violations (winner below loser):", len(violations))
+        print("Margin penalty:", soft_margin_penalty.value)
+        print("Loss rate penalty:", loss_rate_penalty.value)
+        print("FCS margin penalty:", fcs_loss_penalty.value)
 
     return prior_ratings
