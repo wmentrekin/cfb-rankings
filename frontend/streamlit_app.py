@@ -404,9 +404,9 @@ with st.expander("📐 Objective Function", expanded=False):
     """)
     
     st.markdown("""
-    Margin penalties give a quadratic penalty for any game where the rating difference does not sufficiently explain the margin of victory, adjusted for home/away/neutral site.
-    Loss rate penalties discourage teams with poor win-loss records from having high ratings.
-    Prior regularization ties team ratings to their prior season's ratings early in the season when data is sparse.
+    - Margin penalties give a quadratic penalty for any game where the rating difference does not sufficiently explain the margin of victory, adjusted for home/away/neutral site.
+    - Loss rate penalties discourage teams with poor win-loss records from having high ratings.
+    - Prior regularization ties team ratings to their prior season's ratings early in the season when data is sparse.
     """)
 
 with st.expander("⚖️ Constraints", expanded=False):
