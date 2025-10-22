@@ -287,7 +287,7 @@ with st.expander("📐 Objective Function", expanded=False):
     We minimize a weighted combination of slack penalties, prior regularization, and soft margin terms:
     """)
     
-    st.latex(r"\sum_{\text{games}} \nu \cdot \text{margin} \cdot \alpha \cdot z_{\text{winner,loser}} \quad \text{[Slack penalty]}")
+    st.latex(r"\sum_{\text{games}} \nu \cdot \text{margin} \cdot \alpha \cdot z_{\text{i,j,k}} \quad \text{[Slack penalty]}")
     
     st.latex(r"\quad + \sum_{\text{games}} \gamma \cdot [\max(0, r_{\text{loser}} + \text{margin} - r_{\text{winner}})]^2 \quad \text{[Soft margin penalty]}")
     
@@ -303,7 +303,7 @@ with st.expander("📐 Objective Function", expanded=False):
         - $\\alpha = 0.8$ if home team wins
         - $\\alpha = 1.2$ if away team wins
     - $\\text{margin}$ is the point differential in the game
-    - $z_{\\text{winner,loser}}$ is the slack variable representing ranking violation
+    - $z_{\\text{i,j,k}}$ is the slack variable representing ranking violation from the kth game between team i and j
     - $\\lambda$ decays to zero after week 7 to rely fully on current season data
     """)
 
