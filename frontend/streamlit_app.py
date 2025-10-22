@@ -337,7 +337,7 @@ table_style = """
     @media (min-width: 768px) {
         /* Center table on desktop */
         table {
-            max-width: 800px;
+            max-width: 1000px;
             margin-left: auto;
             margin-right: auto;
         }
