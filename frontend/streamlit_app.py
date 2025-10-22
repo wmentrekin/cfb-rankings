@@ -286,7 +286,7 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     **Sets**
     - $\mathcal{T}$: set of all FBS teams
     - $\mathcal{G}$: set of all games $(i,j,k)$ where team $i \in \mathcal{T}$ played team $j \in \mathcal{T}$ in their $k$th matchup
-    - $\mathcal{F}$: set of games where FBS teams lost to FCS opponents
+    - $\mathcal{F}$: set of FBS teams that lost to FCS opponents
 
     **Variables**
     - $r_i \in \mathbb{R}_+$ : rating for team $i$, $\\forall i \in \mathcal{T}$
@@ -337,20 +337,20 @@ with st.expander("⚖️ Constraints", expanded=False):
     st.markdown("""
     Subject to the following constraints:
     
-    **1. Loss slack constraint:**
+    **Loss slack constraint:**
     $$
-    r_i + z_{i,j,k} \\leq r_j + M \\quad \\forall (i,j,k) \\in \\mathcal{G} \\text{ where } i \\text{ lost to } j
+    r_i + z_{i,j,k} \\leq r_j + M \\quad \\forall (i,j,k) \\in \\mathcal{G}
     $$
 
-    **2. FCS loss constraint:**
+    **FCS loss constraint:**
     $$
     r_i + z_{\\text{fcs},i} \\leq r_{\\text{fcs}} + M \\quad \\forall i \\in \\mathcal{F}
     $$
 
-    **3. Rating bounds:**
+    **Rating bounds:**
     $$
     \\begin{aligned}
-    r_i &\\geq 0 && \\forall i \\in \\mathcal{T} \\\\[0.5em]
+    r_i &\\geq 0 && \\forall i \\in \\mathcal{T}
     R_{\\text{min}} &\\leq r_{\\text{fcs}} \\leq R_{\\text{max}}
     \\end{aligned}
     $$
