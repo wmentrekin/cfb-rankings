@@ -48,7 +48,7 @@ def get_ratings(year, week = None):
     else:
         _lambda.value = 0
 
-    M = 50 #
+    M = 50 # big M
     beta = 2.0 # penalty multipler for FCS loss slack
     R_min = 5 # mininum FCS rating
     R_max = 15 # maximum FCS rating
@@ -115,14 +115,14 @@ def get_ratings(year, week = None):
 
     # Constraints
     constraints = []
-    for (i, j, k, winner, _, _, _, _) in games:
-        if winner == i:
-            winner_team = i
-            loser_team = j
-        else:
-            winner_team = j
-            loser_team = i
-        constraints.append(r[loser_team] + z[(i, j, k)] <= r[winner_team] + M) # slack constraints for losses to lower ranked teams
+    # for (i, j, k, winner, _, _, _, _) in games:
+    #     if winner == i:
+    #         winner_team = i
+    #         loser_team = j
+    #     else:
+    #         winner_team = j
+    #         loser_team = i
+    #     constraints.append(r[loser_team] + z[(i, j, k)] <= r[winner_team] + M) # slack constraints for losses to lower ranked teams
     for (team, _, _, _, _) in fcs_losses:
         constraints.append(r[team] + z_fcs[team] <= r_fcs + M) # slack constraints for losses to FCS teams
     for (team) in teams:
