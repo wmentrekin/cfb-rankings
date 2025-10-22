@@ -87,8 +87,8 @@ def get_ratings(year, week = None):
     # FCS Slack Terms
     fcs_slack = cp.sum([beta * z_fcs[team] for (team, _, _, _, _) in fcs_losses])
 
-    # FCS Rating Regularization
-    fcs_reg = mu * (r_fcs - R_min)**2
+    # # FCS Rating Regularization
+    # fcs_reg = mu * (r_fcs - R_min)**2
 
     # Soft Margin Penalty
     soft_margin_terms = []
@@ -103,7 +103,7 @@ def get_ratings(year, week = None):
     soft_margin_penalty = cp.sum(soft_margin_terms)
 
     # Objective Function
-    objective = cp.Minimize(cp.sum(slack_terms) + soft_margin_penalty + fcs_slack + fcs_reg + prior_term)
+    objective = cp.Minimize(cp.sum(slack_terms) + soft_margin_penalty + fcs_slack + prior_term)
 
     # Constraints
     constraints = []
