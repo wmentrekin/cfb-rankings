@@ -292,6 +292,8 @@ At the core, this model is very simple, it tries to assign ratings to teams such
 - It minimizes total "ranking inconsistency" subject to logical constraints about game results.
 
 Additionally, this model has been a great exercise for me to apply my optimization and mathematical modeling knowledge from my undergraduate background in industrial engineering and operations research, my cloud computing and automation experience from working professionally as a data engineer, and my passion for college football.
+Unlike some computer rankings, my code and methodology are fully open and transparent for anyone to review, critique, and improve upon, so please feel free to reach out to me if you have any suggestions, thoughts, or questions.
+I plan on continuing to refine and improve this model over time and adding more features to this app as well.
 I hope you find this model as interesting and useful as I have found building it!
 """)
 
