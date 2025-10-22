@@ -346,13 +346,15 @@ with st.expander("⚖️ Constraints", expanded=False):
     $$
     r_i + z_{\\text{fcs},i} \\leq r_{\\text{fcs}} + M \\quad \\forall i \\in \\mathcal{F}
     $$
-
-    **Rating bounds:**
+                
+    **Non-negativity constraints:**
     $$
-    \\begin{aligned}
-    r_i &\\geq 0 & \\forall i \\in \\mathcal{T} \\\\
-    & R_{\\text{min}} \\leq r_{\\text{fcs}} \\leq R_{\\text{max}}
-    \\end{aligned}
+    r_i &\\geq 0 & \\forall i \\in \\mathcal{T}
+    $$          
+
+    **FCS rating bounds:**
+    $$
+    R_{\\text{min}} \\leq r_{\\text{fcs}} \\leq R_{\\text{max}}
     $$
     """)
 
