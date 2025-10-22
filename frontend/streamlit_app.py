@@ -322,6 +322,9 @@ table_style = """
 </style>
 """
 
+st.caption(f"Rankings for Season {selected_season} Week {selected_week}")
+st.caption("Note: Ratings of 0.0 are not actually zero, but represent very low ratings rounded to two decimal places.")
+
 # Render table as HTML
 html_table = table_style + disp_df.to_html(escape=False, index=False)
 st.markdown(html_table, unsafe_allow_html=True)
