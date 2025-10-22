@@ -37,7 +37,7 @@ jobs:
           DB_PORT: ${{ secrets.DB_PORT }}
         run: |
           echo "Running main.py with year=${{ github.event.inputs.year }}, week=${{ github.event.inputs.week }}, staging"
-          python main.py --year ${{ github.event.inputs.year }} --week ${{ github.event.inputs.week }} > output.log 2>&1 || true
+          python main.py --year ${{ github.event.inputs.year }} --week ${{ github.event.inputs.week }} --staging > output.log 2>&1 || true
 
       - name: Upload output log
         uses: actions/upload-artifact@v4
