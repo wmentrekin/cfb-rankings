@@ -264,15 +264,10 @@ def make_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             - rating: Numerical rating value
             - delta: Change in ranking from previous week
     Returns:
-        pd.DataFrame: Formatted DataFrame with columns:
-            - Rank: Numerical ranking
-            - Team: HTML-formatted team name with logo
-            - Record: Win-loss record
-            - Rating: Formatted rating value
-            - Δ: HTML-formatted ranking change indicator
+        pd.DataFrame: Formatted DataFrame with columns using responsive column names
     """
     disp = pd.DataFrame()
-    disp["Rank"] = df["rank"]
+    disp["<span class='desktop-only'>Rank</span><span class='mobile-only'>#</span>"] = df["rank"]
     # Logo + Team HTML
     def team_html(row):
         logos = row["logos"] if "logos" in row and row["logos"] is not None else []
@@ -281,8 +276,8 @@ def make_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         return f'<div style="display:flex;align-items:center;">{logo_html}<span style="vertical-align:middle">{name}</span></div>'
 
     disp["Team"] = df.apply(team_html, axis=1)
-    disp["Record"] = df["record"]
-    disp["Rating"] = df["rating"].map(lambda x: f"{x:.2f}")
+    disp["<span class='desktop-only'>Record</span><span class='mobile-only'>W-L</span>"] = df["record"]
+    disp["<span class='desktop-only'>Rating</span><span class='mobile-only'>RTG</span>"] = df["rating"].map(lambda x: f"{x:.2f}")
     disp["Δ"] = df["delta"].map(format_delta_cell)
     return disp
 
@@ -333,8 +328,15 @@ table_style = """
         text-overflow: ellipsis;
     }
 
+    /* Responsive header text */
+    .mobile-only { display: inline; }
+    .desktop-only { display: none; }
+    
     /* Desktop adjustments for team column */
     @media (min-width: 768px) {
+        .mobile-only { display: none; }
+        .desktop-only { display: inline; }
+        
         td:nth-child(2) div {
             justify-content: center;
         }
