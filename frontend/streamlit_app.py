@@ -278,7 +278,8 @@ st.markdown("---")
 st.header("Methodology")
 
 st.markdown("""
-The goal of this model is to minimize total "ranking inconsistency" subject to logical constraints about game results and prior-season expectations. \\\\
+The goal of this model is to minimize total "ranking inconsistency" subject to logical constraints about game results and prior-season expectations.
+I have implemented the solution using a convex quadratic programming model.
 In simpler terms, it tries to assign ratings to teams such that:
 - Teams that win games have higher ratings than the teams they beat
 - Teams that lose to FCS opponents are penalized appropriately
