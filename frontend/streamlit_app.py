@@ -378,8 +378,8 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     - $\\gamma_{\\text{loss}} = 1.0$ : Loss penalty coefficient
     - $r_{\\text{min}} = 0$ : Lower bound for FBS team rating
     - $r_{\\text{max}} = 100$ : Upper bound for FBS team rating
-    - $r_{\\text{fcs_min}} = 5$ : Lower bound for FCS team rating
-    - $r_{\\text{fcs_max}} = 15$ : Upper bound for FCS team rating
+    - $r_{\\text{fcs-min}} = 5$ : Lower bound for FCS team rating
+    - $r_{\\text{fcs-max}} = 15$ : Upper bound for FCS team rating
     - $\\alpha = \\begin{cases}
       1.0 & \\text{neutral site} \\\\
       0.8 & \\text{home team win} \\\\
