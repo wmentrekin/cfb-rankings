@@ -17,6 +17,7 @@ st.set_page_config(
 
 st.title("🏈 College Football Rankings")
 st.caption("A convex quadratic program to optimally rank college football teams based on game outcomes")
+st.caption("Developed by Wyatt Entrekin")
 
 st.markdown("""
 ### Project Links
