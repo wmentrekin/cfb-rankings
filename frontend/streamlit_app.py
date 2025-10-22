@@ -182,22 +182,39 @@ def load_previous_rankings_for_week(season: int, week: int) -> pd.DataFrame:
 # ---------------------------
 # Layout - filters on top
 # ---------------------------
+st.markdown("""
+<style>
+    .filters {
+        background-color: #f0f2f6;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    .stSelectbox {
+        min-width: 120px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 seasons = get_available_seasons()
 if not seasons:
     st.warning("No seasons found in the rankings table.")
     st.stop()
-col_a, col_b, col_c = st.columns([1, 1, 6])
-with col_a:
-    selected_season = st.selectbox("Season", seasons, index=0)
-with col_b:
-    weeks = get_weeks_for_season(selected_season)
-    if not weeks:
-        st.warning("No weeks found for the selected season.")
-        st.stop()
-    selected_week = st.selectbox("Week", weeks, index=len(weeks)-1)
-with col_c:
-    st.write("")
-st.markdown("---")
+
+with st.container():
+    st.markdown('<div class="filters">', unsafe_allow_html=True)
+    col_a, col_b, col_c = st.columns([1, 1, 6])
+    with col_a:
+        selected_season = st.selectbox("📅 Season", seasons, index=0)
+    with col_b:
+        weeks = get_weeks_for_season(selected_season)
+        if not weeks:
+            st.warning("No weeks found for the selected season.")
+            st.stop()
+        selected_week = st.selectbox("📊 Week", weeks, index=len(weeks)-1)
+    with col_c:
+        st.write("")
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------
 # Load data & compute ranking table
@@ -269,11 +286,39 @@ def make_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 disp_df = make_display_dataframe(df)
 
-# Add a small style block for the HTML table
+# Add styling for the rankings table
 table_style = """
 <style>
-table {border-collapse: collapse; width: 100%;}
-th, td {text-align: left; padding: 8px;}
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+    }
+    th {
+        background-color: #f0f2f6;
+        color: #262730;
+        font-weight: 600;
+        text-align: center !important;
+        padding: 12px 8px;
+    }
+    td {
+        text-align: center !important;
+        padding: 8px;
+        vertical-align: middle;
+    }
+    /* Column widths */
+    th:nth-child(1), td:nth-child(1) { width: 10%; } /* Rank */
+    th:nth-child(2), td:nth-child(2) { width: 40%; } /* Team */
+    th:nth-child(3), td:nth-child(3) { width: 15%; } /* Record */
+    th:nth-child(4), td:nth-child(4) { width: 20%; } /* Rating */
+    th:nth-child(5), td:nth-child(5) { width: 15%; } /* Delta */
+    
+    /* Keep team names left-aligned while centering the cell overall */
+    td:nth-child(2) div {
+        justify-content: flex-start;
+        margin: 0 auto;
+        max-width: 300px;
+    }
 </style>
 """
 
