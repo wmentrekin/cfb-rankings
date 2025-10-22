@@ -1,5 +1,18 @@
-# streamlit_app.py
-import streamlit as st # type: ignore
+# streamlit_app.pyst.title("🏈 College Football Rankings")
+st.caption("A convex quadratic program to optimally rank college football teams based on game outcomes")
+
+st.markdown("""
+### Project Links
+
+**Data Source:** [📊 College Football Data API](https://collegefootballdata.com/)  
+**Source Code:** [💻 GitHub Repository](https://github.com/wmentrekin/cfb-rankings/tree/main)  
+**Data Storage:** [🔐 Supabase](https://supabase.com/)  
+**Frontend:** [🚀 Streamlit](https://streamlit.io/)  
+**Documentation:** [📘 Methodology](#methodology)  
+**Contact:**  
+- ✉️ wentrekin@gmail.com
+- [🔗 LinkedIn](https://linkedin.com/in/wmentrekin)
+""")s st # type: ignore
 from supabase import create_client, Client # type: ignore
 import pandas as pd
 import numpy as np
