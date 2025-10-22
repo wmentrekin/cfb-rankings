@@ -373,7 +373,6 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
       0 & \\text{if } w \\geq 7
       \\end{cases}$
       where $w$ is the week number
-    - $\\beta = 2.0$ : FCS loss slack weight
     - $\\gamma_{\\text{margin}} = 0.01$ : Small margin penalty coefficient
     - $\\gamma_{\\text{loss}} = 1.0$ : Loss penalty coefficient
     - $r_{\\text{min}} = 0$ : Lower bound for FBS team rating

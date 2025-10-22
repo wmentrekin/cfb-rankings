@@ -48,14 +48,13 @@ def get_ratings(year, week = None):
     else:
         _lambda.value = 0
 
-    beta = 2.0 # penalty multipler for FCS loss slack
     r_min = 0 # minimum team rating
     r_max = 100 # maximum team rating
     r_fcs_min = 5 # mininum FCS rating
     r_fcs_max = 15 # maximum FCS rating
     gamma_margin = 0.01 # small regularization constant
     gamma_loss = 1 # regularitzation constant for loss rate
-    gamma_fcs = 1 # regularization constant for FCS loss
+    gamma_fcs = 2 # regularization constant for FCS loss
 
     # Decision Variables
     r = {team: cp.Variable(name = f"r_{team}") for team in teams} # team rating
@@ -68,7 +67,7 @@ def get_ratings(year, week = None):
     fcs_loss_terms = []
     for (team, margin, alpha, _, _) in fcs_losses:
         fcs_loss_terms.append(cp.pos(r[team] + (margin * alpha) - r_fcs)**2 * gamma_fcs)
-    fcs_slack = cp.sum(fcs_loss_terms)
+    fcs_loss_penalty = cp.sum(fcs_loss_terms)
 
     # Soft Margin Penalty Terms
     soft_margin_terms = []
@@ -94,7 +93,7 @@ def get_ratings(year, week = None):
     loss_rate_penalty = cp.sum(loss_rate_terms)
 
     # Objective Function
-    objective = cp.Minimize(soft_margin_penalty + loss_rate_penalty + fcs_slack + prior_term)
+    objective = cp.Minimize(soft_margin_penalty + loss_rate_penalty + fcs_loss_penalty + prior_term)
 
     # Constraints
     constraints = []
