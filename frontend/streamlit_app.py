@@ -317,13 +317,13 @@ with st.expander("📐 Objective Function", expanded=False):
     We solve the following optimization problem:
     """)
     
-    st.latex(r"\begin{aligned} \text{minimize} \quad & \sum_{(i,j,k) \in \mathcal{G}} \nu \cdot \text{margin}_{i,j,k} \cdot \alpha_{i,j,k} \cdot z_{i,j,k} \quad \text{[Slack penalty]} \\")
+    st.latex(r"\\begin{aligned} \\text{minimize} \\quad & \\sum_{(i,j,k) \\in \\mathcal{G}} \\nu \\cdot \\text{margin}_{i,j,k} \\cdot \\alpha_{i,j,k} \\cdot z_{i,j,k} \\quad \\text{[Slack penalty]} \\\\")
     
-    st.latex(r"& + \sum_{(i,j,k) \in \mathcal{G}} \gamma \cdot [\max(0, r_{\text{loser}} + \text{margin}_{i,j,k} - r_{\text{winner}})]^2 \quad \text{[Soft margin penalty]} \\")
+    st.latex(r"& + \\sum_{(i,j,k) \\in \\mathcal{G}} \\gamma \\cdot [\\max(0, r_{\\text{loser}} + \\text{margin}_{i,j,k} - r_{\\text{winner}})]^2 \\quad \\text{[Soft margin penalty]} \\\\")
     
-    st.latex(r"& + \sum_{i \in \mathcal{F}} \beta \cdot z_{\text{fcs},i} \quad \text{[FCS loss penalty]} \\")
+    st.latex(r"& + \\sum_{i \\in \\mathcal{F}} \\beta \\cdot z_{\\text{fcs},i} \\quad \\text{[FCS loss penalty]} \\\\")
     
-    st.latex(r"& + \lambda \sum_{i \in \mathcal{T}} (r_i - \text{prior}_i)^2 \quad \text{[Prior regularization]}")
+    st.latex(r"& + \\lambda \\sum_{i \\in \\mathcal{T}} (r_i - \\text{prior}_i)^2 \\quad \\text{[Prior regularization]} \\end{aligned}")
     
     st.markdown("""
     Where:
