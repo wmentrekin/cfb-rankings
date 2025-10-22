@@ -275,10 +275,9 @@ st.markdown(f"**Last updated:** Season {selected_season}, Week {selected_week}")
 # Model Documentation
 # ---------------------------
 st.markdown("---")
-st.header("Model Documentation")
+st.header("Methodology")
 
 st.markdown("""
-The model assigns each FBS team $i$ a continuous rating $r_i$, and a dummy FCS rating $r_{\\text{fcs}}$.  
 It minimizes total "ranking inconsistency" subject to logical constraints about game results and prior-season expectations.
 """)
 
@@ -287,7 +286,7 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     **Sets**
     - $\mathcal{T}$: set of all FBS teams
     - $\mathcal{G}$: set of all games $(i,j,k)$ where team $i$ played team $j$ in their $k$th matchup
-    - $\mathcal{F}$: set of FBS teams that lost to FCS opponents
+    - $\mathcal{F}$: set of games where FBS teams lost to FCS opponents
 
     **Variables**
     - $r_i \in \mathbb{R}_+$ : rating for team $i$, $\\forall i \in \mathcal{T}$
@@ -321,11 +320,9 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
 
 with st.expander("📐 Objective Function", expanded=False):
     st.markdown("""
-    We solve the following optimization problem:
-
     $$
     \\begin{aligned}
-    \\text{minimize  } \\quad & \\sum_{(i,j,k) \\in \\mathcal{G}} \\nu \\cdot \\text{margin}_{i,j,k} \\cdot \\alpha_{i,j,k} \\cdot z_{i,j,k} & [\\text{Slack penalty}] \\\\
+    \\text{minimize} \\quad & \\sum_{(i,j,k) \\in \\mathcal{G}} \\nu \\cdot \\text{margin}_{i,j,k} \\cdot \\alpha_{i,j,k} \\cdot z_{i,j,k} & [\\text{Slack penalty}] \\\\
     & + \\sum_{(i,j,k) \\in \\mathcal{G}} \\gamma \\cdot [\\max(0, r_{\\text{loser}} + \\text{margin}_{i,j,k} - r_{\\text{winner}})]^2 & [\\text{Soft margin penalty}] \\\\
     & + \\sum_{i \\in \\mathcal{F}} \\beta \\cdot z_{\\text{fcs},i} & [\\text{FCS loss penalty}] \\\\
     & + \\lambda \\sum_{i \\in \\mathcal{T}} (r_i - \\text{prior}_i)^2 & [\\text{Prior regularization}]
@@ -334,30 +331,32 @@ with st.expander("📐 Objective Function", expanded=False):
     """)
     
     st.markdown("""
-    Where:
-    - For each game, winner and loser are determined by the actual game outcome
     """)
 
 with st.expander("⚖️ Constraints", expanded=False):
-    st.write("For every game $(i, j, k)$ where team $i$ played team $j$ for the $k$th time:")
-
     st.markdown("""
-    1. **Loss slack constraint:**
-    """)
-    st.latex(r"r_{\text{loser}} + z_{\text{winner,loser}} \leq r_{\text{winner}} + M")
-    st.write("(If $r_{\\text{loser}} > r_{\\text{winner}}$, $z_{\\text{winner,loser}}$ must absorb the violation)")
+    Subject to the following constraints:
 
-    st.markdown("""
-    2. **FCS loss constraint:**
-    """)
-    st.latex(r"r_{\text{team}} + z_{\text{fcs,team}} \leq r_{\text{fcs}} + M")
-    st.write("(For teams that lost to FCS opponents)")
+    **1. Loss slack constraint:** For all games $(i,j,k) \\in \\mathcal{G}$ where team $i$ lost to team $j$:
+    $$
+    r_i + z_{i,j,k} \\leq r_j + M
+    $$
+    This ensures when team $i$ loses to team $j$, either $r_i < r_j$ or the slack variable $z_{i,j,k}$ absorbs the violation.
 
-    st.markdown("""
-    3. **Rating bounds:**
+    **2. FCS loss constraint:** For all teams $i \\in \\mathcal{F}$ that lost to FCS opponents:
+    $$
+    r_i + z_{\\text{fcs},i} \\leq r_{\\text{fcs}} + M
+    $$
+    This handles losses to FCS teams through the dummy FCS team rating.
+
+    **3. Rating bounds:** Non-negativity and FCS rating bounds:
+    $$
+    \\begin{aligned}
+    r_i &\\geq 0 && \\forall i \\in \\mathcal{T} \\\\
+    R_{\\text{min}} &\\leq r_{\\text{fcs}} \\leq R_{\\text{max}}
+    \\end{aligned}
+    $$
     """)
-    st.latex(r"r_i \geq 0 \quad \forall i \in \text{teams}")
-    st.latex(r"R_{\text{min}} \leq r_{\text{fcs}} \leq R_{\text{max}}")
 
 with st.expander("📝 Implementation Notes", expanded=False):
     st.markdown("""
