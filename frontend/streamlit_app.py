@@ -16,10 +16,25 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🏈 College Football Ranking")
-st.caption("a convex quadratic program to optimally rank college football teams based on game outcomes")
-st.markdown("College Football Data API (https://collegefootballdata.com/)")
-st.markdown("Github Repository (https://github.com/wmentrekin/cfb-rankings/tree/main)")
+st.title("🏈 College Football Rankings")
+st.caption("A convex quadratic program to optimally rank college football teams based on game outcomes")
+
+# Create two rows of buttons using columns
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.link_button("📊 CFBD API", "https://collegefootballdata.com/")
+with col2:
+    st.link_button("💻 GitHub Repo", "https://github.com/wmentrekin/cfb-rankings/tree/main")
+with col3:
+    st.link_button("🔐 Supabase", "https://supabase.com/")
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.link_button("🚀 Streamlit", "https://streamlit.io/")
+with col2:
+    st.link_button("📘 Documentation", "https://github.com/wmentrekin/cfb-rankings#readme")
+with col3:
+    st.link_button("✉️ Contact", "mailto:wmentrekin@gmail.com")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -385,4 +400,3 @@ with st.expander("📝 Implementation Notes", expanded=False):
     - The optimization is solved using [CVXPY](https://www.cvxpy.org/) with default convex solvers, returning team ratings sorted in descending order.
     """)
 st.markdown("---")
-
