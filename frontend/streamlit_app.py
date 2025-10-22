@@ -288,7 +288,8 @@ At the core, this model is very simple, it tries to assign ratings to teams such
 - Teams that lose to FCS opponents are penalized severely
 - In order to avoid arbitrary early-season rankings, teams' ratings are tied more closely to their prior-season performance earlier in the season, until enough games are played to connect enough teams through common opponents. Imagine a network graph where teams are nodes and games are edges; as more edges are added, the relative positions of nodes become clearer.
 - It minimizes total "ranking inconsistency" subject to logical constraints about game results.
-Additionally, this model has been a great exercise for me to apply my optimization and mathemtical modeling knowledge from my undergraduate background in industrial engineering and operations research, my cloud computing and automation experience from working professionally as a data engineer, and my passion for college football.
+
+Additionally, this model has been a great exercise for me to apply my optimization and mathematical modeling knowledge from my undergraduate background in industrial engineering and operations research, my cloud computing and automation experience from working professionally as a data engineer, and my passion for college football.
 I hope you find this model as interesting and useful as I have found building it!
 """)
 
