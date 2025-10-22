@@ -48,7 +48,7 @@ def get_ratings(year, week = None):
     else:
         _lambda.value = 0
 
-    M = 100 #
+    M = 50 #
     beta = 2.0 # penalty multipler for FCS loss slack
     R_min = 5 # mininum FCS rating
     R_max = 15 # maximum FCS rating
