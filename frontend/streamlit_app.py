@@ -348,12 +348,8 @@ with st.expander("⚖️ Constraints", expanded=False):
     $$
 
     **Rating bounds:**
-    $$
-    \\begin{aligned}
-    r_i &\\geq 0 && \\forall i \\in \\mathcal{T} \\\\
-    & R_{\\text{min}} &\\leq r_{\\text{fcs}} \\leq R_{\\text{max}}
-    \\end{aligned}
-    $$
+    $r_i &\\geq 0 && \\forall i \\in \\mathcal{T}$
+    $R_{\\text{min}} &\\leq r_{\\text{fcs}} \\leq R_{\\text{max}}$
     """)
 
 with st.expander("📝 Implementation Notes", expanded=False):
