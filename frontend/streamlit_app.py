@@ -279,8 +279,10 @@ st.header("Methodology")
 
 st.markdown("""
 The inspiration for this ranking model came from a personal desire to objectively rank college football teams solely based on game outcomes.
+            
 Year after year, I find that college football discourse is filled with subjective opinions about which teams are "better" or "worse," often influenced by biases, media narratives, and historical prestige.
 I'm tired of hearing debates about hypothetical matchups when we are lucky enough as fans to witness so many real games each season.
+            
 Thus, I was inspired to spend time developing a model that ranked teams solely based on game outcomes, without the influence of subjective factors such as recruiting rankings, preseason expectations, or traditional power ratings.
 I chose to implement this using a constraint optimization approach, specifically a convex quadratic programming model, because I hadn't seen many existing models that took this approach in a transparent and mathematically rigorous way.
 At the core, this model is very simple, it tries to assign ratings to teams such that:
