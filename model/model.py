@@ -49,11 +49,11 @@ def get_ratings(year, week = None):
         _lambda.value = 0
 
     M = 200 # Big M 200 > 138 = Number of FBS teams
-    mu = 20 # regularization penalty for on FCS rating
+    # mu = 20 # regularization penalty for on FCS rating
     beta = 2.0 # penalty multipler for FCS loss slack
     R_min = 5 # mininum FCS rating
     R_max = 15 # maximum FCS rating
-    gamma = 1 # small regularization constant
+    gamma = 0.01 # small regularization constant
     nu = 500 # large regularization constant
 
     # Decision Variables
