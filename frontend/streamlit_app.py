@@ -297,15 +297,19 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     """)
 
     st.markdown("""
-    | Parameter | Description | Default Value |
-    |:---------:|:------------|:-------------:|
-    | $\\lambda$ | Prior regularization weight | $\\lambda(w) = \\begin{cases} \\frac{7-w}{700} & \\text{if } w < 7 \\\\ 0 & \\text{if } w \\geq 7 \\end{cases}$ where $w$ is the week number |
-    | $\\beta$ | FCS loss slack weight | 2.0 |
-    | $\\gamma$ | Small margin penalty | 1.0 |
-    | $\\nu$ | Loss slack scaling | 500 |
-    | $M$ | Big-M constant | 200 |
-    | $R_{\\text{min}}$ | FCS rating lower bound | 5 |
-    | $R_{\\text{max}}$ | FCS rating upper bound | 15 |
+    **Parameters**
+    - $\\lambda(w)$ : Prior regularization weight where:
+      $\\lambda(w) = \\begin{cases} 
+      \\frac{7-w}{700} & \\text{if } w < 7 \\\\
+      0 & \\text{if } w \\geq 7
+      \\end{cases}$
+      where $w$ is the week number
+    - $\\beta = 2.0$ : FCS loss slack weight
+    - $\\gamma = 1.0$ : Small margin penalty coefficient
+    - $\\nu = 500$ : Loss slack scaling factor
+    - $M = 200$ : Big-M constant for constraint formulation
+    - $R_{\\text{min}} = 5$ : Lower bound for FCS team rating
+    - $R_{\\text{max}} = 15$ : Upper bound for FCS team rating
     """)
 
 with st.expander("📐 Objective Function", expanded=False):
