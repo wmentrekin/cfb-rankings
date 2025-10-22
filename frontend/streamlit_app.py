@@ -27,8 +27,8 @@ st.markdown("""
 **Frontend:** [🚀 Streamlit](https://streamlit.io/)  
 **Documentation:** [📘 Methodology](#methodology)  
 **Contact:**  
-- ✉️ wentrekin@gmail.com
-- [🔗 LinkedIn](https://linkedin.com/in/wentrekin)
+- ✉️ wmentrekin@gmail.com
+- [🔗 LinkedIn](https://linkedin.com/in/wmentrekin)
 """)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
