@@ -330,10 +330,16 @@ with st.expander("⚖️ Constraints", expanded=False):
 
 with st.expander("🔢 Decision Variables", expanded=False):
     st.markdown("""
-    - $r_i$: continuous rating for each FBS team  
-    - $r_{\\text{fcs}}$: single rating for the dummy FCS team  
-    - $z_{ijk}$: nonnegative slack variable representing a violation (team $i$ ranked above $j$ despite losing)  
-    - $z_{\\text{fcs},i}$: slack for losses to FCS teams
+    **Sets**
+    - $\mathcal{T}$: set of all FBS teams
+    - $\mathcal{G}$: set of all games $(i,j,k)$ where team $i$ played team $j$ in their $k$th matchup
+    - $\mathcal{F}$: set of FBS teams that lost to FCS opponents
+
+    **Variables**
+    - $r_i \in \mathbb{R}_+$ : rating for team $i$, $\forall i \in \mathcal{T}$
+    - $r_{\text{fcs}} \in \mathbb{R}_+$ : rating for the dummy FCS team
+    - $z_{i,j,k} \in \mathbb{R}_+$ : ranking violation slack for game $(i,j,k)$, $\forall (i,j,k) \in \mathcal{G}$
+    - $z_{\text{fcs},i} \in \mathbb{R}_+$ : FCS loss slack for team $i$, $\forall i \in \mathcal{F}$
     """)
 
 with st.expander("🎛️ Parameters", expanded=False):
@@ -360,3 +366,4 @@ with st.expander("📝 Implementation Notes", expanded=False):
     - The optimization is solved using [CVXPY](https://www.cvxpy.org/) with default convex solvers, returning team ratings sorted in descending order.
     """)
 st.markdown("---")
+
