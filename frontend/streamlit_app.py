@@ -293,7 +293,6 @@ table_style = """
         margin: 1rem 0;
     }
     th {
-        color: #262730;
         font-weight: 600;
         text-align: center !important;
         padding: 12px 8px;
