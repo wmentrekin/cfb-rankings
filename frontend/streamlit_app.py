@@ -374,7 +374,8 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
       \\end{cases}$
       where $w$ is the week number
     - $\\gamma_{\\text{margin}} = 0.01$ : Small margin penalty coefficient
-    - $\\gamma_{\\text{loss}} = 1.0$ : Loss penalty coefficient
+    - $\\gamma_{\\text{loss}} = 1.0$ : FBS Loss penalty coefficient
+    - $\\gamma_{\\text{fcs}} = 2.0$ : FCS Loss penalty coefficient
     - $r_{\\text{min}} = 0$ : Lower bound for FBS team rating
     - $r_{\\text{max}} = 100$ : Upper bound for FBS team rating
     - $r_{\\text{fcs-min}} = 5$ : Lower bound for FCS team rating
@@ -393,7 +394,7 @@ with st.expander("📐 Objective Function", expanded=False):
     $$
     \\begin{aligned}
     \\text{minimize} \\quad & \\sum_{(i,j,k) \\in \\mathcal{G}} \\nu \\cdot \\text{margin}_{i,j,k} \\cdot \\alpha_{i,j,k} \\cdot z_{i,j,k} & [\\text{Slack penalty}] \\\\
-    & + \\sum_{(i,j,k) \\in \\mathcal{G}} \\gamma \\cdot [\\max(0, r_{\\text{loser}} + \\text{margin}_{i,j,k} - r_{\\text{winner}})]^2 & [\\text{Soft margin penalty}] \\\\
+    & + \\sum_{(i,j,k) \\in \\mathcal{G}} \\gamma \\cdot [\\max(0, r_{\\text{loser}} + \\text{margin}_{i,j,k} \\cdot \\text{alpha} - r_{\\text{winner}})]^2 & [\\text{Soft margin penalty}] \\\\
     & + \\sum_{i \\in \\mathcal{F}} \\beta \\cdot z_{\\text{fcs},i} & [\\text{FCS loss penalty}] \\\\
     & + \\sum_{i \\in \\mathcal{T}} \\lambda \\cdot (r_i - \\text{prior}_i)^2 & [\\text{Prior regularization}]
     \\end{aligned}
