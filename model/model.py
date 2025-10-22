@@ -54,7 +54,7 @@ def get_ratings(year, week = None):
     R_max = 15 # maximum FCS rating
     gamma_margin = 0.01 # small regularization constant
     gamma_loss = 0.02 # regularitzation constant for loss rate
-    nu = 500 # large regularization constant
+    nu = 50000 # large regularization constant
 
     # Decision Variables
     r = {team: cp.Variable(name = f"r_{team}") for team in teams} # team rating
@@ -188,6 +188,7 @@ def get_ratings(year, week = None):
         print("Prior term:", prior_val)
         print("Slack objective (weighted sum):", slack_obj_sum)
         print("Soft margin penalty:", soft_margin_val)
+        print("Loss rate penalty:", loss_rate_penalty.value)
 
         return ratings, records
 
