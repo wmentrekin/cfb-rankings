@@ -192,19 +192,15 @@ st.markdown("""
         border-radius: 0.5rem;
         margin-bottom: 1rem;
     }
-    
-    /* Force vertical stacking on mobile (both portrait and landscape) */
-    @media (max-width: 767px) {
-        .filters > div {
-            flex-direction: column !important;
-        }
-        .filters > div > [data-testid="column"] {
-            width: auto !important;
-            margin-bottom: 0.75rem;
-        }
-    }
     .stSelectbox {
         min-width: 120px;
+        margin-bottom: 1rem;
+    }
+    /* Hide last margin on desktop mode */
+    @media (min-width: 768px) {
+        .stSelectbox {
+            margin-bottom: 0;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -216,17 +212,31 @@ if not seasons:
 
 with st.container():
     st.markdown('<div class="filters">', unsafe_allow_html=True)
-    col_a, col_b, col_c = st.columns([1, 1, 6])
-    with col_a:
+    
+    # Check if we're likely in desktop mode (will show side by side)
+    use_columns = st.session_state.get('_is_desktop', True)
+    
+    if use_columns:
+        col_a, col_b, col_c = st.columns([1, 1, 6])
+        with col_a:
+            selected_season = st.selectbox("📅 Season", seasons, index=0)
+        with col_b:
+            weeks = get_weeks_for_season(selected_season)
+            if not weeks:
+                st.warning("No weeks found for the selected season.")
+                st.stop()
+            selected_week = st.selectbox("📊 Week", weeks, index=len(weeks)-1)
+        with col_c:
+            st.write("")
+    else:
+        # Stack filters vertically on mobile
         selected_season = st.selectbox("📅 Season", seasons, index=0)
-    with col_b:
         weeks = get_weeks_for_season(selected_season)
         if not weeks:
             st.warning("No weeks found for the selected season.")
             st.stop()
         selected_week = st.selectbox("📊 Week", weeks, index=len(weeks)-1)
-    with col_c:
-        st.write("")
+    
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------
