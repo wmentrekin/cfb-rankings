@@ -289,9 +289,9 @@ with st.expander("📐 Objective Function", expanded=False):
     
     st.latex(r"\sum_{\text{games}} \nu \cdot \text{margin} \cdot \alpha \cdot z_{\text{winner,loser}} \quad \text{[Slack penalty]}")
     
-    st.latex(r"\quad + \sum_{\text{games}} \gamma \cdot [\max(0, r_{\text{loser}} + \text{margin} - r_{\text{winner}})]^2 \quad \text{[Soft margin]}")
+    st.latex(r"\quad + \sum_{\text{games}} \gamma \cdot [\max(0, r_{\text{loser}} + \text{margin} - r_{\text{winner}})]^2 \quad \text{[Soft margin penalty]}")
     
-    st.latex(r"\quad + \sum_{\text{FCS losses}} \beta \cdot z_{\text{fcs}} \quad \text{[FCS penalty]}")
+    st.latex(r"\quad + \sum_{\text{FCS losses}} \beta \cdot z_{\text{fcs}} \quad \text{[FCS loss penalty]}")
     
     st.latex(r"\quad + \lambda \sum_{\text{teams}} (r_{\text{team}} - \text{prior}_{\text{team}})^2 \quad \text{[Prior regularization]}")
     
@@ -303,7 +303,7 @@ with st.expander("📐 Objective Function", expanded=False):
         - $\\alpha = 0.8$ if home team wins
         - $\\alpha = 1.2$ if away team wins
     - $\\text{margin}$ is the point differential in the game
-    - $z_{\\text{winner,loser}}$ is the slack variable when the winner's rating is below the loser's
+    - $z_{\\text{winner,loser}}$ is the slack variable representing ranking violation
     - $\\lambda$ decays to zero after week 7 to rely fully on current season data
     """)
 
@@ -327,6 +327,14 @@ with st.expander("⚖️ Constraints", expanded=False):
     """)
     st.latex(r"r_i \geq 0 \quad \forall i \in \text{teams}")
     st.latex(r"R_{\text{min}} \leq r_{\text{fcs}} \leq R_{\text{max}}")
+
+with st.expander("🔢 Decision Variables", expanded=False):
+    st.markdown("""
+    - $r_i$: continuous rating for each FBS team  
+    - $r_{\\text{fcs}}$: single rating for the dummy FCS team  
+    - $z_{ijk}$: nonnegative slack variable representing a violation (team $i$ ranked above $j$ despite losing)  
+    - $z_{\\text{fcs},i}$: slack for losses to FCS teams
+    """)
 
 with st.expander("🎛️ Parameters", expanded=False):
     st.markdown("""
