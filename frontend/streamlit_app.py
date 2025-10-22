@@ -410,7 +410,7 @@ with st.expander("⚖️ Constraints", expanded=False):
                 
     **FBS rating bounds:**
     $$
-    r_{\\text{min}} \\leq r_i \\leq r_{\\text{max}} \\forall i \\in \\mathcal{T}
+    r_{\\text{min}} \\leq r_i \\leq r_{\\text{max}} \\quad \\forall i \\in \\mathcal{T}
     $$          
 
     **FCS rating bounds:**
