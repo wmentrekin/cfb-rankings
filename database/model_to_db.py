@@ -62,7 +62,6 @@ def insert_model_results_to_db(ratings_df: pd.DataFrame, staging: bool = False):
     table_name = "ratings" if not staging else "ratings_test"
     metadata = MetaData()
     table = Table(table_name, metadata, autoload_with=engine)
-    # Upsert each row
     with engine.begin() as conn:
         for _, row in ratings_df.iterrows():
             stmt = insert(table).values(**row.to_dict())

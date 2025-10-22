@@ -7,7 +7,7 @@ This project builds an automated, data-driven **college football team ranking sy
 The model is designed to:
 - Rank all **FBS teams** based on results from the season up to the current week.  
 - Account for **margin of victory, game location, and opponent strength.**  
-- Handle **FCS losses** with a dummy “FCS” rating variable.  
+- Handle **FCS losses** with a dummy “FCS” rating variable. 
 - Smoothly transition from **prior-season ratings** to **current-season rankings** as the season progresses. 
 
 ---
@@ -48,8 +48,6 @@ $$+ \sum_{\text{games}} \gamma \cdot [\max(0, r_{\text{loser}} + \text{margin} -
 $$ \text{[Soft margin penalty]} $$
 $$+ \sum_{\text{FCS losses}} \beta \cdot z_{\text{fcs}} $$
 $$ \text{[FCS penalty]} $$
-$$+ \mu \cdot (r_{\text{fcs}} - R_{\text{min}})^2 $$
-$$ \text{[FCS regularization]} $$
 $$+ \lambda \sum_{\text{teams}} (r_{\text{team}} - \text{prior}_{\text{team}})^2 $$
 $$ \text{[Prior regularization]} $$
 
@@ -91,7 +89,6 @@ For every game $(i, j, k)$ where team $i$ played team $j$ for the $k$th time:
 | Symbol | Description | Default Value |
 |:-------:|:-------------|:---------------:|
 | λ | Weight on prior regularization term, decays with week | (7 − week) / 700 before week 7, 0 after |
-| μ | Penalty for deviation of FCS rating from baseline | 20 |
 | β | Weight for FCS loss slack | 2.0 |
 | γ | Penalty on small winning margins (soft margin regularization) | 1.0 |
 | ν | Scaling factor for loss slack (margin and home-field adjusted) | 500 |

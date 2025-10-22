@@ -31,7 +31,6 @@ def get_prior_ratings(year):
 
     # Parameters
     M = 200 # Big M 200 > 138 = Number of FBS teams
-    mu = 20 # regularization penalty for on FCS rating
     beta = 2.0 # penalty multipler for FCS loss slack
     R_min = 5 # mininum FCS rating
     R_max = 15 # maximum FCS rating
@@ -66,9 +65,6 @@ def get_prior_ratings(year):
     # FCS Slack Terms
     fcs_slack = cp.sum([beta * z_fcs[team] for (team, _, _, _, _) in fcs_losses])
 
-    # FCS Rating Regularization
-    fcs_reg = mu * (r_fcs - R_min)**2
-
     # Soft Margin Penalty
     soft_margin_terms = []
     for (i, j, k, winner, margin, alpha, _, _) in games:
@@ -82,7 +78,7 @@ def get_prior_ratings(year):
     soft_margin_penalty = cp.sum(soft_margin_terms)
 
     # Objective Function
-    objective = cp.Minimize(cp.sum(slack_terms) + soft_margin_penalty + fcs_slack + fcs_reg)
+    objective = cp.Minimize(cp.sum(slack_terms) + soft_margin_penalty + fcs_slack)
 
     # Constraints
     constraints = []

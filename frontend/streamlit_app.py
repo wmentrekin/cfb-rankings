@@ -57,7 +57,13 @@ def safe_parse_logos(value) -> List[str]:
 
 def logo_img_html(logo_urls: List[str], width: int = 36) -> str:
     """
-    Return HTML snippet for the first logo URL found.
+    Generate an HTML img tag for displaying a team logo.
+    Args:
+        logo_urls (List[str]): List of URLs to potential logo images
+        width (int, optional): Width in pixels for the logo image. Defaults to 36.
+    Returns:
+        str: HTML string containing an img tag with the first valid logo URL,
+             or empty string if no logos available
     """
     if not logo_urls:
         return ""
@@ -66,10 +72,16 @@ def logo_img_html(logo_urls: List[str], width: int = 36) -> str:
 
 def format_delta_cell(delta: int) -> str:
     """
-    Return an HTML string representing delta with colors:
-      positive (moved up) -> green with up arrow
-      negative (moved down) -> red with down arrow
-      zero -> yellow dash
+    Format a ranking change value as colored HTML with directional indicators.
+    Args:
+        delta (int): The change in ranking (positive = moved up, negative = moved down)
+    
+    Returns:
+        str: HTML string with:
+            - Green up arrow (▲) for positive changes
+            - Red down arrow (▼) for negative changes
+            - Yellow dash (—) for no change
+            Value is formatted with appropriate color and arrow/dash
     """
     if delta > 0:
         return f'<span style="color:green;font-weight:600;">▲ {delta}</span>'
@@ -83,14 +95,28 @@ def format_delta_cell(delta: int) -> str:
 # ---------------------------
 @st.cache_data(ttl=3600)
 def get_available_seasons() -> List[int]:
-    """Query distinct seasons from rankings table"""
+    """
+    Retrieve all unique season years available in the rankings database.
+    Returns:
+        List[int]: List of season years in descending order (most recent first)
+    Note:
+        Results are cached for 1 hour (3600 seconds) using Streamlit's caching
+    """
     res = supabase.table("ratings").select("season", count="exact").execute()
     seasons = sorted({row["season"] for row in res.data}, reverse=True)
     return seasons
 
 @st.cache_data(ttl=3600)
 def get_weeks_for_season(season: int) -> List[int]:
-    """Query distinct weeks for a given season from rankings table"""
+    """
+    Retrieve all available weeks for a specific season from the rankings database.
+    Args:
+        season (int): The year of the season to query
+    Returns:
+        List[int]: List of week numbers in ascending order
+    Note:
+        Results are cached for 1 hour (3600 seconds) using Streamlit's caching
+    """
     res = supabase.table("ratings").select("week").eq("season", season).execute()
     weeks = sorted({row["week"] for row in res.data})
     return weeks
@@ -122,7 +148,18 @@ def load_rankings_from_db(season: int, week: int) -> pd.DataFrame:
 
 @st.cache_data(ttl=3600)
 def load_previous_rankings_for_week(season: int, week: int) -> pd.DataFrame:
-    """Load the rankings for the previous week (week - 1). If not available, return empty DF."""
+    """
+    Retrieve rankings from the previous week for delta calculations.
+    Args:
+        season (int): Season year
+        week (int): Current week number
+    Returns:
+        pd.DataFrame: Rankings data from the previous week (week - 1) containing
+                     columns: team, rating, etc. Returns empty DataFrame if week <= 0
+                     or if previous week's data is not available
+    Note:
+        Results are cached for 1 hour (3600 seconds) using Streamlit's caching
+    """
     if week <= 0:
         return pd.DataFrame()
     prev_week = week - 1
@@ -185,6 +222,24 @@ except Exception:
     df["delta"] = 0
 
 def make_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Transform the raw rankings DataFrame into a display-ready format with HTML formatting.
+    Args:
+        df (pd.DataFrame): Raw rankings data containing columns:
+            - rank: Current ranking position
+            - team: Team name
+            - logos: List of logo URLs
+            - record: Win-loss record
+            - rating: Numerical rating value
+            - delta: Change in ranking from previous week
+    Returns:
+        pd.DataFrame: Formatted DataFrame with columns:
+            - Rank: Numerical ranking
+            - Team: HTML-formatted team name with logo
+            - Record: Win-loss record
+            - Rating: Formatted rating value
+            - Δ: HTML-formatted ranking change indicator
+    """
     disp = pd.DataFrame()
     disp["Rank"] = df["rank"]
     # Logo + Team HTML
@@ -223,70 +278,74 @@ st.markdown("---")
 st.header("Model Documentation")
 
 st.markdown("""
-The model assigns each FBS team $i$ a continuous rating $r_i$, and a dummy FCS rating $r_{fcs}$.  
+The model assigns each FBS team $i$ a continuous rating $r_i$, and a dummy FCS rating $r_{\\text{fcs}}$.  
 It minimizes total "ranking inconsistency" subject to logical constraints about game results and prior-season expectations.
 """)
 
 with st.expander("📐 Objective Function", expanded=False):
-    st.markdown("""
+    st.write("""
     We minimize a weighted combination of slack penalties, prior regularization, and soft margin terms:
-
-    Minimize:
-
-    $\sum_{\text{games}} \nu \cdot \text{margin} \cdot \alpha \cdot z_{\text{winner,loser}}$ [Slack penalty]
-
-    $+ \sum_{\text{games}} \gamma \cdot [\max(0, r_{\text{loser}} + \text{margin} - r_{\text{winner}})]^2$ [Soft margin]
-
-    $+ \sum_{\text{FCS losses}} \beta \cdot z_{\text{fcs}}$ [FCS penalty]
-
-    $+ \mu \cdot (r_{\text{fcs}} - R_{\text{min}})^2$ [FCS regularization]
-
-    $+ \lambda \sum_{\text{teams}} (r_{\text{team}} - \text{prior}_{\text{team}})^2$ [Prior regularization]
-
+    """)
+    
+    st.latex(r"\sum_{\text{games}} \nu \cdot \text{margin} \cdot \alpha \cdot z_{\text{winner,loser}} \quad \text{[Slack penalty]}")
+    
+    st.latex(r"\quad + \sum_{\text{games}} \gamma \cdot [\max(0, r_{\text{loser}} + \text{margin} - r_{\text{winner}})]^2 \quad \text{[Soft margin]}")
+    
+    st.latex(r"\quad + \sum_{\text{FCS losses}} \beta \cdot z_{\text{fcs}} \quad \text{[FCS penalty]}")
+    
+    st.latex(r"\quad + \lambda \sum_{\text{teams}} (r_{\text{team}} - \text{prior}_{\text{team}})^2 \quad \text{[Prior regularization]}")
+    
+    st.markdown("""
     Where:
     - For each game, winner and loser are determined by the actual game outcome
-    - $\\alpha$ adjusts for home/away games ($\\alpha = 1.0$ for neutral site games, $0.8$ if home team wins, $1.2$ if away team wins)
-    - margin is the point differential in the game
+    - $\\alpha$ adjusts for home/away games:
+        - $\\alpha = 1.0$ for neutral site games
+        - $\\alpha = 0.8$ if home team wins
+        - $\\alpha = 1.2$ if away team wins
+    - $\\text{margin}$ is the point differential in the game
     - $z_{\\text{winner,loser}}$ is the slack variable when the winner's rating is below the loser's
     - $\\lambda$ decays to zero after week 7 to rely fully on current season data
     """)
 
 with st.expander("⚖️ Constraints", expanded=False):
+    st.write("For every game $(i, j, k)$ where team $i$ played team $j$ for the $k$th time:")
+
     st.markdown("""
-    For every game $(i, j, k)$ where team $i$ played team $j$ for the $k$th time:
-
-    1. **Loss slack constraint:**  
-       $r_{\text{loser}} + z_{\text{winner,loser}} \leq r_{\text{winner}} + M$  
-       (If $r_{\text{loser}} > r_{\text{winner}}$, $z_{\text{winner,loser}}$ must absorb the violation)
-
-    2. **FCS loss constraint:**  
-       $r_{\text{team}} + z_{\text{fcs,team}} \leq r_{\text{fcs}} + M$  
-       (For teams that lost to FCS opponents)
-
-    3. **Rating bounds:**  
-       $r_i \geq 0 \quad \forall i \in \text{teams}$  
-       $R_{\text{min}} \leq r_{\text{fcs}} \leq R_{\text{max}}$
+    1. **Loss slack constraint:**
     """)
+    st.latex(r"r_{\text{loser}} + z_{\text{winner,loser}} \leq r_{\text{winner}} + M")
+    st.write("(If $r_{\\text{loser}} > r_{\\text{winner}}$, $z_{\\text{winner,loser}}$ must absorb the violation)")
+
+    st.markdown("""
+    2. **FCS loss constraint:**
+    """)
+    st.latex(r"r_{\text{team}} + z_{\text{fcs,team}} \leq r_{\text{fcs}} + M")
+    st.write("(For teams that lost to FCS opponents)")
+
+    st.markdown("""
+    3. **Rating bounds:**
+    """)
+    st.latex(r"r_i \geq 0 \quad \forall i \in \text{teams}")
+    st.latex(r"R_{\text{min}} \leq r_{\text{fcs}} \leq R_{\text{max}}")
 
 with st.expander("🎛️ Parameters", expanded=False):
     st.markdown("""
     | Parameter | Description | Default Value |
-    |:-------:|:-------------|:---------------:|
-    | $\\lambda$ | Weight on prior regularization term | $(7 - week) / 700$ before week 7, 0 after |
-    | $\\mu$ | Penalty for deviation of FCS rating | 20 |
-    | $\\beta$ | Weight for FCS loss slack | 2.0 |
-    | $\\gamma$ | Penalty on small winning margins | 1.0 |
-    | $\\nu$ | Scaling factor for loss slack | 500 |
+    |:---------:|:------------|:-------------:|
+    | $\\lambda$ | Prior regularization weight | $(7 - \\text{week}) / 700$ before week 7, 0 after |
+    | $\\beta$ | FCS loss slack weight | 2.0 |
+    | $\\gamma$ | Small margin penalty | 1.0 |
+    | $\\nu$ | Loss slack scaling | 500 |
     | $M$ | Big-M constant | 200 |
-    | $R_{min}$ | Lower bound for FCS rating | 5 |
-    | $R_{max}$ | Upper bound for FCS rating | 15 |
+    | $R_{\\text{min}}$ | FCS rating lower bound | 5 |
+    | $R_{\\text{max}}$ | FCS rating upper bound | 15 |
     """)
 
 with st.expander("📝 Implementation Notes", expanded=False):
     st.markdown("""
     - **Prior ratings** are carried over from the previous season's final model output. New FBS teams receive a default prior rating of 35.
     - The $\\lambda$ parameter enforces prior-season influence through Week 6, then drops to 0 to rely entirely on current season results.
-    - **FCS losses** are handled via a dummy FCS team whose rating is constrained between $R_{min}$ and $R_{max}$.
+    - **FCS losses** are handled via a dummy FCS team whose rating is constrained between $R_{\\text{min}}$ and $R_{\\text{max}}$.
     - **Slack variables** ($z$) capture ranking violations, weighted by margin and location (home/away/neutral).
     - **Soft margin penalties** encourage appropriate rating separation based on game margins.
     - **Home/away adjustments** use $\\alpha$ multipliers to account for game location advantage.

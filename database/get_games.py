@@ -94,7 +94,6 @@ def load_games_to_db(year, week=None, season_type='regular'):
     games_df = get_games_by_year_week(year, week, season_type)
     games_df = games_df.where(pd.notnull(games_df), None)
 
-    # Use SQLAlchemy engine for DB connection
     db_url = (
         f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
         f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
@@ -102,15 +101,12 @@ def load_games_to_db(year, week=None, season_type='regular'):
     )
     engine = create_engine(db_url)
     
-    # Set up table metadata for upsert
     metadata = MetaData()
     table = Table('games', metadata, autoload_with=engine)
     
-    # Perform upsert for each row
     with engine.begin() as conn:
         for _, row in games_df.iterrows():
             stmt = insert(table).values(**row.to_dict())
-            # Update all columns except id (the primary key)
             update_dict = {c: getattr(stmt.excluded, c) for c in games_df.columns if c != 'id'}
             stmt = stmt.on_conflict_do_update(
                 index_elements=['id'],
