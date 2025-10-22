@@ -336,23 +336,21 @@ with st.expander("📐 Objective Function", expanded=False):
 with st.expander("⚖️ Constraints", expanded=False):
     st.markdown("""
     Subject to the following constraints:
+    
+    **1. Loss slack constraint:**
+    $$
+    r_i + z_{i,j,k} \\leq r_j + M \\quad \\forall (i,j,k) \\in \\mathcal{G} \\text{ where } i \\text{ lost to } j
+    $$
 
-    **1. Loss slack constraint:** For all games $(i,j,k) \\in \\mathcal{G}$ where team $i$ lost to team $j$:
+    **2. FCS loss constraint:**
     $$
-    r_i + z_{i,j,k} \\leq r_j + M
+    r_i + z_{\\text{fcs},i} \\leq r_{\\text{fcs}} + M \\quad \\forall i \\in \\mathcal{F}
     $$
-    This ensures when team $i$ loses to team $j$, either $r_i < r_j$ or the slack variable $z_{i,j,k}$ absorbs the violation.
 
-    **2. FCS loss constraint:** For all teams $i \\in \\mathcal{F}$ that lost to FCS opponents:
-    $$
-    r_i + z_{\\text{fcs},i} \\leq r_{\\text{fcs}} + M
-    $$
-    This handles losses to FCS teams through the dummy FCS team rating.
-
-    **3. Rating bounds:** Non-negativity and FCS rating bounds:
+    **3. Rating bounds:**
     $$
     \\begin{aligned}
-    r_i &\\geq 0 && \\forall i \\in \\mathcal{T} \\\\
+    r_i &\\geq 0 && \\forall i \\in \\mathcal{T} \\\\[0.5em]
     R_{\\text{min}} &\\leq r_{\\text{fcs}} \\leq R_{\\text{max}}
     \\end{aligned}
     $$
