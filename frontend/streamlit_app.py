@@ -367,8 +367,8 @@ with st.expander("⚖️ Constraints", expanded=False):
 with st.expander("📝 Implementation Notes", expanded=False):
     st.markdown("""
     - **Prior ratings** are carried over from the previous season's final model output. New FBS teams receive a default prior rating of 35.
-    - The $\\lambda$ parameter enforces prior-season influence through Week 6, then drops to 0 to rely entirely on current season results.
-    - **FCS losses** are handled via a dummy FCS team whose rating is constrained between $R_{\\text{min}}$ and $R_{\\text{max}}$.
+    - The $\\lambda$ parameter enforces prior-season influence, linearly dropping to 0 from Week 1 to Week 7, eventually to rely entirely on current season results.
+    - **FCS losses** are handled via a dummy FCS team whose rating is constrained between $R_{\\text{min}}$ and $R_{\\text{max}}$. This allows the model to penalize FBS teams losing to FCS opponents without needing to explicitly rate every FCS team.
     - **Slack variables** ($z$) capture ranking violations, weighted by margin and location (home/away/neutral).
     - **Soft margin penalties** encourage appropriate rating separation based on game margins.
     - **Home/away adjustments** use $\\alpha$ multipliers to account for game location advantage.
