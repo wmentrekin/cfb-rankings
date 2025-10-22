@@ -334,7 +334,7 @@ table_style = """
     }
 
     /* Desktop adjustments */
-    @media (min-width: 768px) {
+    @media (min-width: 600px) {
         th:nth-child(1), td:nth-child(1) { width: 7%; } /* Rank */
         th:nth-child(2), td:nth-child(2) { width: 35%; } /* Team */
         th:nth-child(3), td:nth-child(3) { width: 12%; } /* Record */
