@@ -310,6 +310,13 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     - $M = 200$ : Big-M constant for constraint formulation
     - $R_{\\text{min}} = 5$ : Lower bound for FCS team rating
     - $R_{\\text{max}} = 15$ : Upper bound for FCS team rating
+    - $\\alpha = \\begin{cases}
+      1.0 & \\text{neutral site} \\\\
+      0.8 & \\text{home team win} \\\\
+      1.2 & \\text{away team win}
+      \\end{cases}$
+    - $\\text{margin}_{i,j,k}$ : point differential in game $(i,j,k)$
+    - $\\text{prior}_i$ : prior rating for team $i$ from previous season's final rankings (default 35 for new FBS teams)
     """)
 
 with st.expander("📐 Objective Function", expanded=False):
@@ -329,13 +336,6 @@ with st.expander("📐 Objective Function", expanded=False):
     st.markdown("""
     Where:
     - For each game, winner and loser are determined by the actual game outcome
-    - $\\alpha$ adjusts for home/away games:
-        - $\\alpha = 1.0$ for neutral site games
-        - $\\alpha = 0.8$ if home team wins
-        - $\\alpha = 1.2$ if away team wins
-    - $\\text{margin}$ is the point differential in the game
-    - $z_{\\text{i,j,k}}$ is the slack variable representing ranking violation from the kth game between team i and j
-    - $\\lambda$ decays to zero after week 7 to rely fully on current season data
     """)
 
 with st.expander("⚖️ Constraints", expanded=False):
