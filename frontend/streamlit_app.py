@@ -314,16 +314,16 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
 
 with st.expander("📐 Objective Function", expanded=False):
     st.write("""
-    We minimize a weighted combination of slack penalties, prior regularization, and soft margin terms:
+    We solve the following optimization problem:
     """)
     
-    st.latex(r"\sum_{\text{games}} \nu \cdot \text{margin} \cdot \alpha \cdot z_{\text{i,j,k}} \quad \text{[Slack penalty]}")
+    st.latex(r"\begin{aligned} \text{minimize} \quad & \sum_{(i,j,k) \in \mathcal{G}} \nu \cdot \text{margin}_{i,j,k} \cdot \alpha_{i,j,k} \cdot z_{i,j,k} \quad \text{[Slack penalty]} \\")
     
-    st.latex(r"\quad + \sum_{\text{games}} \gamma \cdot [\max(0, r_{\text{loser}} + \text{margin} - r_{\text{winner}})]^2 \quad \text{[Soft margin penalty]}")
+    st.latex(r"& + \sum_{(i,j,k) \in \mathcal{G}} \gamma \cdot [\max(0, r_{\text{loser}} + \text{margin}_{i,j,k} - r_{\text{winner}})]^2 \quad \text{[Soft margin penalty]} \\")
     
-    st.latex(r"\quad + \sum_{\text{FCS losses}} \beta \cdot z_{\text{fcs}} \quad \text{[FCS loss penalty]}")
+    st.latex(r"& + \sum_{i \in \mathcal{F}} \beta \cdot z_{\text{fcs},i} \quad \text{[FCS loss penalty]} \\")
     
-    st.latex(r"\quad + \lambda \sum_{\text{teams}} (r_{\text{team}} - \text{prior}_{\text{team}})^2 \quad \text{[Prior regularization]}")
+    st.latex(r"& + \lambda \sum_{i \in \mathcal{T}} (r_i - \text{prior}_i)^2 \quad \text{[Prior regularization]}")
     
     st.markdown("""
     Where:
