@@ -349,7 +349,7 @@ with st.expander("⚖️ Constraints", expanded=False):
                 
     **Non-negativity constraints:**
     $$
-    r_i &\\geq 0 & \\forall i \\in \\mathcal{T}
+    r_i \\geq 0 & \\forall i \\in \\mathcal{T}
     $$          
 
     **FCS rating bounds:**
