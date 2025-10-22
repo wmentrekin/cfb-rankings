@@ -365,7 +365,6 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     **Variables**
     - $r_i \in \mathbb{R}_+$ : rating for team $i$, $\\forall i \in \mathcal{T}$
     - $r_{\\text{fcs}} \in \mathbb{R}_+$ : rating for the dummy FCS team
-    - $z_{\\text{fcs},i} \in \mathbb{R}_+$ : FCS loss slack for team $i$, $\\forall i \in \mathcal{F}$
     """)
 
     st.markdown("""
