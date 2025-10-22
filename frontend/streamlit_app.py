@@ -278,7 +278,12 @@ st.markdown("---")
 st.header("Methodology")
 
 st.markdown("""
-It minimizes total "ranking inconsistency" subject to logical constraints about game results and prior-season expectations.
+The goal of this model is to minimize total "ranking inconsistency" subject to logical constraints about game results and prior-season expectations.
+In simpler terms, it tries to assign ratings to teams such that:
+- Teams that win games have higher ratings than the teams they beat
+- Teams that lose to FCS opponents are penalized appropriately
+- Earlier in the season, teams' ratings are tied more closely to their prior-season performance, until later in the season when enough games have been played so as to connect enough teams through common opponents. Imagine a network graph where teams are nodes and games are edges; as more edges are added, the relative positions of nodes become clearer.
+- It minimizes total "ranking inconsistency" subject to logical constraints about game results and prior-season expectations.
 """)
 
 with st.expander("🔢 Decision Variables & Parameters", expanded=False):
