@@ -295,29 +295,55 @@ table_style = """
         border-collapse: collapse;
         width: 100%;
         margin: 1rem 0;
+        table-layout: fixed;
     }
     th {
         font-weight: 600;
         text-align: center !important;
-        padding: 12px 8px;
+        padding: 12px 4px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
     td {
         text-align: center !important;
-        padding: 8px;
+        padding: 8px 4px;
         vertical-align: middle;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
-    /* Column widths */
-    th:nth-child(1), td:nth-child(1) { width: 10%; } /* Rank */
-    th:nth-child(2), td:nth-child(2) { width: 40%; } /* Team */
+
+    /* Default column widths (mobile) */
+    th:nth-child(1), td:nth-child(1) { width: 8%; } /* Rank */
+    th:nth-child(2), td:nth-child(2) { width: 52%; } /* Team */
     th:nth-child(3), td:nth-child(3) { width: 15%; } /* Record */
-    th:nth-child(4), td:nth-child(4) { width: 20%; } /* Rating */
-    th:nth-child(5), td:nth-child(5) { width: 15%; } /* Delta */
+    th:nth-child(4), td:nth-child(4) { width: 15%; } /* Rating */
+    th:nth-child(5), td:nth-child(5) { width: 10%; } /* Delta */
     
-    /* Keep team names left-aligned while centering the cell overall */
+    /* Team column specific styling */
+    td:nth-child(2) {
+        padding-right: 8px;
+        min-width: 180px; /* Prevent too narrow on mobile */
+    }
     td:nth-child(2) div {
         justify-content: flex-start;
-        margin: 0 auto;
-        max-width: 300px;
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Desktop adjustments */
+    @media (min-width: 768px) {
+        th:nth-child(1), td:nth-child(1) { width: 7%; } /* Rank */
+        th:nth-child(2), td:nth-child(2) { width: 35%; } /* Team */
+        th:nth-child(3), td:nth-child(3) { width: 12%; } /* Record */
+        th:nth-child(4), td:nth-child(4) { width: 12%; } /* Rating */
+        th:nth-child(5), td:nth-child(5) { width: 8%; } /* Delta */
+        
+        td:nth-child(2) {
+            max-width: 400px; /* Prevent too wide on desktop */
+        }
     }
 </style>
 """
