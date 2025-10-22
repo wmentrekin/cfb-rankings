@@ -110,10 +110,10 @@ def load_games_to_db(year, week=None, season_type='regular'):
     with engine.begin() as conn:
         for _, row in games_df.iterrows():
             stmt = insert(table).values(**row.to_dict())
-            # Update all columns except id, season, and week which form the unique key
-            update_dict = {c: getattr(stmt.excluded, c) for c in games_df.columns if c not in ['id', 'season', 'week']}
+            # Update all columns except id (the primary key)
+            update_dict = {c: getattr(stmt.excluded, c) for c in games_df.columns if c != 'id'}
             stmt = stmt.on_conflict_do_update(
-                index_elements=['id', 'season', 'week'],
+                index_elements=['id'],
                 set_=update_dict
             )
             conn.execute(stmt)
