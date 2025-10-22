@@ -52,7 +52,8 @@ def get_ratings(year, week = None):
     beta = 2.0 # penalty multipler for FCS loss slack
     R_min = 5 # mininum FCS rating
     R_max = 15 # maximum FCS rating
-    gamma = 0.01 # small regularization constant
+    gamma_margin = 0.01 # small regularization constant
+    gamma_loss = 0.02 # regularitzation constant for loss rate
     nu = 500 # large regularization constant
 
     # Decision Variables
@@ -79,14 +80,14 @@ def get_ratings(year, week = None):
             alpha_safe = alpha if (alpha is not None and alpha != 0) else 1.0
             factor = nu * margin * (1.0 / alpha_safe)
             z_var = z[(i, j, k)]
-
         slack_terms.append(factor * z_var)
         slack_term_infos.append(((i, j, k), winner_team, loser_team, margin, alpha, factor, z_var))
+    slack_penalty = cp.sum(slack_terms)
 
     # FCS Slack Terms
     fcs_slack = cp.sum([beta * z_fcs[team] for (team, _, _, _, _) in fcs_losses])
 
-    # Soft Margin Penalty
+    # Soft Margin Penalty Terms
     soft_margin_terms = []
     for (i, j, k, winner, margin, alpha, _, _) in games:
         if winner == i:
@@ -95,11 +96,22 @@ def get_ratings(year, week = None):
         else:
             winner_team = j
             loser_team = i
-        soft_margin_terms.append(cp.pos(r[loser_team] + margin - r[winner_team])**2 * gamma)
+        soft_margin_terms.append(cp.pos(r[loser_team] + margin - r[winner_team])**2 * gamma_margin)
     soft_margin_penalty = cp.sum(soft_margin_terms)
 
+    # Loss Rate Penalty Terms
+    loss_rate_terms = []
+    for team, record in records.items():
+        wins = record[0]
+        losses = record[1]
+        games_played = wins + losses
+        if games_played > 0:
+            loss_rate = losses / games_played
+            loss_rate_terms.append((r[team] * loss_rate) * gamma_loss)
+    loss_rate_penalty = cp.sum(loss_rate_terms)
+
     # Objective Function
-    objective = cp.Minimize(cp.sum(slack_terms) + soft_margin_penalty + fcs_slack + prior_term)
+    objective = cp.Minimize(slack_penalty + soft_margin_penalty + loss_rate_penalty + fcs_slack + prior_term)
 
     # Constraints
     constraints = []
