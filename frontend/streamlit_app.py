@@ -1,18 +1,4 @@
-# streamlit_app.pyst.title("🏈 College Football Rankings")
-st.caption("A convex quadratic program to optimally rank college football teams based on game outcomes")
-
-st.markdown("""
-### Project Links
-
-**Data Source:** [📊 College Football Data API](https://collegefootballdata.com/)  
-**Source Code:** [💻 GitHub Repository](https://github.com/wmentrekin/cfb-rankings/tree/main)  
-**Data Storage:** [🔐 Supabase](https://supabase.com/)  
-**Frontend:** [🚀 Streamlit](https://streamlit.io/)  
-**Documentation:** [📘 Methodology](#methodology)  
-**Contact:**  
-- ✉️ wentrekin@gmail.com
-- [🔗 LinkedIn](https://linkedin.com/in/wmentrekin)
-""")s st # type: ignore
+import streamlit as st # type: ignore
 from supabase import create_client, Client # type: ignore
 import pandas as pd
 import numpy as np
@@ -32,22 +18,18 @@ st.set_page_config(
 st.title("🏈 College Football Rankings")
 st.caption("A convex quadratic program to optimally rank college football teams based on game outcomes")
 
-# Create two rows of buttons using columns
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.link_button("📊 CFBD API", "https://collegefootballdata.com/")
-with col2:
-    st.link_button("💻 GitHub Repo", "https://github.com/wmentrekin/cfb-rankings/tree/main")
-with col3:
-    st.link_button("🔐 Supabase", "https://supabase.com/")
+st.markdown("""
+### Project Links
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.link_button("🚀 Streamlit", "https://streamlit.io/")
-with col2:
-    st.link_button("📘 Documentation", "https://github.com/wmentrekin/cfb-rankings#readme")
-with col3:
-    st.link_button("✉️ Contact", "mailto:wmentrekin@gmail.com")
+**Data Source:** [📊 College Football Data API](https://collegefootballdata.com/)  
+**Source Code:** [💻 GitHub Repository](https://github.com/wmentrekin/cfb-rankings/tree/main)  
+**Data Storage:** [🔐 Supabase](https://supabase.com/)  
+**Frontend:** [🚀 Streamlit](https://streamlit.io/)  
+**Documentation:** [📘 Methodology](#methodology)  
+**Contact:**  
+- ✉️ wentrekin@gmail.com
+- [🔗 LinkedIn](https://linkedin.com/in/wentrekin)
+""")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
