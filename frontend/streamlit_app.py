@@ -410,7 +410,7 @@ with st.expander("⚖️ Constraints", expanded=False):
     
     **Loss slack constraints:**
     $$
-    r_loser + z_{i,j,k} \\leq r_winner + M \\quad \\forall (i,j,k) \\in \\mathcal{G}
+    r_{\\text{loser}} + z_{i,j,k} \\leq r_{\\text{winner}} + M \\quad \\forall (i,j,k) \\in \\mathcal{G}
     $$
 
     **FCS loss constraints:**
