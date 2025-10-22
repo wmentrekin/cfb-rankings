@@ -337,12 +337,12 @@ with st.expander("⚖️ Constraints", expanded=False):
     st.markdown("""
     Subject to the following constraints:
     
-    **Loss slack constraint:**
+    **Loss slack constraints:**
     $$
     r_i + z_{i,j,k} \\leq r_j + M \\quad \\forall (i,j,k) \\in \\mathcal{G}
     $$
 
-    **FCS loss constraint:**
+    **FCS loss constraints:**
     $$
     r_i + z_{\\text{fcs},i} \\leq r_{\\text{fcs}} + M \\quad \\forall i \\in \\mathcal{F}
     $$
