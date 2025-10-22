@@ -282,6 +282,32 @@ The model assigns each FBS team $i$ a continuous rating $r_i$, and a dummy FCS r
 It minimizes total "ranking inconsistency" subject to logical constraints about game results and prior-season expectations.
 """)
 
+with st.expander("🔢 Decision Variables & Parameters", expanded=False):
+    st.markdown("""
+    **Sets**
+    - $\mathcal{T}$: set of all FBS teams
+    - $\mathcal{G}$: set of all games $(i,j,k)$ where team $i$ played team $j$ in their $k$th matchup
+    - $\mathcal{F}$: set of FBS teams that lost to FCS opponents
+
+    **Variables**
+    - $r_i \in \mathbb{R}_+$ : rating for team $i$, $\\forall i \in \mathcal{T}$
+    - $r_{\\text{fcs}} \in \mathbb{R}_+$ : rating for the dummy FCS team
+    - $z_{i,j,k} \in \mathbb{R}_+$ : ranking violation slack for game $(i,j,k)$, $\\forall (i,j,k) \in \mathcal{G}$
+    - $z_{\\text{fcs},i} \in \mathbb{R}_+$ : FCS loss slack for team $i$, $\\forall i \in \mathcal{F}$
+    """)
+
+    st.markdown("""
+    | Parameter | Description | Default Value |
+    |:---------:|:------------|:-------------:|
+    | $\\lambda$ | Prior regularization weight | $\\lambda(w) = \\begin{cases} \\frac{7-w}{700} & \\text{if } w < 7 \\\\ 0 & \\text{if } w \\geq 7 \\end{cases}$ where $w$ is the week number |
+    | $\\beta$ | FCS loss slack weight | 2.0 |
+    | $\\gamma$ | Small margin penalty | 1.0 |
+    | $\\nu$ | Loss slack scaling | 500 |
+    | $M$ | Big-M constant | 200 |
+    | $R_{\\text{min}}$ | FCS rating lower bound | 5 |
+    | $R_{\\text{max}}$ | FCS rating upper bound | 15 |
+    """)
+
 with st.expander("📐 Objective Function", expanded=False):
     st.write("""
     We minimize a weighted combination of slack penalties, prior regularization, and soft margin terms:
@@ -327,33 +353,6 @@ with st.expander("⚖️ Constraints", expanded=False):
     """)
     st.latex(r"r_i \geq 0 \quad \forall i \in \text{teams}")
     st.latex(r"R_{\text{min}} \leq r_{\text{fcs}} \leq R_{\text{max}}")
-
-with st.expander("🔢 Decision Variables", expanded=False):
-    st.markdown("""
-    **Sets**
-    - $\mathcal{T}$: set of all FBS teams
-    - $\mathcal{G}$: set of all games $(i,j,k)$ where team $i$ played team $j$ in their $k$th matchup
-    - $\mathcal{F}$: set of FBS teams that lost to FCS opponents
-
-    **Variables**
-    - $r_i \in \mathbb{R}_+$ : rating for team $i$, $\\forall i \in \mathcal{T}$
-    - $r_{\\text{fcs}} \in \mathbb{R}_+$ : rating for the dummy FCS team
-    - $z_{i,j,k} \in \mathbb{R}_+$ : ranking violation slack for game $(i,j,k)$, $\\forall (i,j,k) \in \mathcal{G}$
-    - $z_{\\text{fcs},i} \in \mathbb{R}_+$ : FCS loss slack for team $i$, $\\forall i \in \mathcal{F}$
-    """)
-
-with st.expander("🎛️ Parameters", expanded=False):
-    st.markdown("""
-    | Parameter | Description | Default Value |
-    |:---------:|:------------|:-------------:|
-    | $\\lambda$ | Prior regularization weight | $(7 - \\text{week}) / 700$ before week 7, 0 after |
-    | $\\beta$ | FCS loss slack weight | 2.0 |
-    | $\\gamma$ | Small margin penalty | 1.0 |
-    | $\\nu$ | Loss slack scaling | 500 |
-    | $M$ | Big-M constant | 200 |
-    | $R_{\\text{min}}$ | FCS rating lower bound | 5 |
-    | $R_{\\text{max}}$ | FCS rating upper bound | 15 |
-    """)
 
 with st.expander("📝 Implementation Notes", expanded=False):
     st.markdown("""
