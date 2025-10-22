@@ -324,8 +324,6 @@ table_style = """
 html_table = table_style + disp_df.to_html(escape=False, index=False)
 st.markdown(html_table, unsafe_allow_html=True)
 
-st.markdown(f"**Last updated:** Season {selected_season}, Week {selected_week}")
-
 # ---------------------------
 # Model Documentation
 # ---------------------------
