@@ -373,9 +373,9 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
       0 & \\text{if } w \\geq 7
       \\end{cases}$
       where $w$ is the week number
-    - $\\gamma_{\\text{margin}} = 0.1$ : Small margin penalty coefficient
+    - $\\gamma_{\\text{margin}} = 0.05$ : Small margin penalty coefficient
     - $\\gamma_{\\text{loss}} = 0.5$ : FBS Loss penalty coefficient
-    - $\\gamma_{\\text{fcs}} = 2.0$ : FCS Loss penalty coefficient
+    - $\\gamma_{\\text{fcs}} = 5.0$ : FCS Loss penalty coefficient
     - $r_{\\text{min}} = 0$ : Lower bound for FBS team rating
     - $r_{\\text{max}} = 100$ : Upper bound for FBS team rating
     - $r_{\\text{fcs-min}} = 5$ : Lower bound for FCS team rating
