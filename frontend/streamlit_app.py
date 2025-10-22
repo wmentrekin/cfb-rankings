@@ -396,7 +396,7 @@ with st.expander("📐 Objective Function", expanded=False):
     \\text{minimize} \\quad & \\sum_{(i,j,k) \\in \\mathcal{G}} \\nu \\cdot \\text{margin}_{i,j,k} \\cdot \\alpha_{i,j,k} \\cdot z_{i,j,k} & [\\text{Slack penalty}] \\\\
     & + \\sum_{(i,j,k) \\in \\mathcal{G}} \\gamma \\cdot [\\max(0, r_{\\text{loser}} + \\text{margin}_{i,j,k} - r_{\\text{winner}})]^2 & [\\text{Soft margin penalty}] \\\\
     & + \\sum_{i \\in \\mathcal{F}} \\beta \\cdot z_{\\text{fcs},i} & [\\text{FCS loss penalty}] \\\\
-    & + \\lambda \\sum_{i \\in \\mathcal{T}} (r_i - \\text{prior}_i)^2 & [\\text{Prior regularization}]
+    & + \\sum_{i \\in \\mathcal{T}} \\lambda \\cdot (r_i - \\text{prior}_i)^2 & [\\text{Prior regularization}]
     \\end{aligned}
     $$
     """)
@@ -410,7 +410,7 @@ with st.expander("⚖️ Constraints", expanded=False):
     
     **Loss slack constraints:**
     $$
-    r_i + z_{i,j,k} \\leq r_j + M \\quad \\forall (i,j,k) \\in \\mathcal{G}
+    r_loser + z_{i,j,k} \\leq r_winner + M \\quad \\forall (i,j,k) \\in \\mathcal{G}
     $$
 
     **FCS loss constraints:**
