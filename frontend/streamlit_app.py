@@ -10,12 +10,12 @@ from typing import List, Optional
 # Streamlit app configuration
 # ---------------------------
 st.set_page_config(
-    page_title="CFB Rankings",
+    page_title="CFB Rankings - Entrekin Quadratic Index",
     page_icon="🏈",
     layout="wide"
 )
 
-st.title("🏈 College Football Rankings")
+st.title("🏈 Entrekin Quadratic Index")
 st.caption("A convex quadratic program to optimally rank college football teams based on game outcomes")
 st.caption("Developed by Wyatt Entrekin")
 
