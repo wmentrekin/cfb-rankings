@@ -52,7 +52,7 @@ def get_ratings(year, week = None):
     r_max = 100 # maximum team rating
     r_fcs_min = 5 # mininum FCS rating
     r_fcs_max = 15 # maximum FCS rating
-    gamma_margin = 0.01 # small regularization constant
+    gamma_margin = 0.1 # small regularization constant
     gamma_loss = 1 # regularitzation constant for loss rate
     gamma_fcs = 2 # regularization constant for FCS loss
 
@@ -134,9 +134,9 @@ def get_ratings(year, week = None):
                 violations.append(((i, j, k), r_w, r_l))
         print("Num strict violations (winner below loser):", len(violations))
         print("Prior term:", prior_term.value)
-        print("Soft margin penalty:", soft_margin_penalty.value)
+        print("Margin penalty:", soft_margin_penalty.value)
+        print("FCS Margin penalty:", fcs_loss_penalty.value)
         print("Loss rate penalty:", loss_rate_penalty.value)
-        print("FCS slack penalty:", fcs_loss_penalty.value)
 
         return ratings, records
 
