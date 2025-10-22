@@ -362,7 +362,6 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     **Variables**
     - $r_i \in \mathbb{R}_+$ : rating for team $i$, $\\forall i \in \mathcal{T}$
     - $r_{\\text{fcs}} \in \mathbb{R}_+$ : rating for the dummy FCS team
-    - $z_{i,j,k} \in \mathbb{R}_+$ : ranking violation slack for game $(i,j,k)$, $\\forall (i,j,k) \in \mathcal{G}$
     - $z_{\\text{fcs},i} \in \mathbb{R}_+$ : FCS loss slack for team $i$, $\\forall i \in \mathcal{F}$
     """)
 
@@ -375,11 +374,12 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
       \\end{cases}$
       where $w$ is the week number
     - $\\beta = 2.0$ : FCS loss slack weight
-    - $\\gamma = 1.0$ : Small margin penalty coefficient
-    - $\\nu = 500$ : Loss slack scaling factor
-    - $M = 200$ : Big-M constant for constraint formulation
-    - $R_{\\text{min}} = 5$ : Lower bound for FCS team rating
-    - $R_{\\text{max}} = 15$ : Upper bound for FCS team rating
+    - $\\gamma_{\\text{margin}} = 0.01$ : Small margin penalty coefficient
+    - $\\gamma_{\\text{loss}} = 1.0$ : Loss penalty coefficient
+    - $r_{\\text{min}} = 0$ : Lower bound for FBS team rating
+    - $r_{\\text{max}} = 100$ : Upper bound for FBS team rating
+    - $r_{\\text{fcs_min}} = 5$ : Lower bound for FCS team rating
+    - $r_{\\text{fcs_max}} = 15$ : Upper bound for FCS team rating
     - $\\alpha = \\begin{cases}
       1.0 & \\text{neutral site} \\\\
       0.8 & \\text{home team win} \\\\
