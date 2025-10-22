@@ -314,16 +314,16 @@ table_style = """
     }
 
     /* Default column widths (mobile) */
-    th:nth-child(1), td:nth-child(1) { width: 8%; } /* Rank */
-    th:nth-child(2), td:nth-child(2) { width: 52%; } /* Team */
-    th:nth-child(3), td:nth-child(3) { width: 15%; } /* Record */
-    th:nth-child(4), td:nth-child(4) { width: 15%; } /* Rating */
-    th:nth-child(5), td:nth-child(5) { width: 10%; } /* Delta */
+    th:nth-child(1), td:nth-child(1) { width: 12%; } /* Rank */
+    th:nth-child(2), td:nth-child(2) { width: 40%; } /* Team */
+    th:nth-child(3), td:nth-child(3) { width: 18%; } /* Record */
+    th:nth-child(4), td:nth-child(4) { width: 18%; } /* Rating */
+    th:nth-child(5), td:nth-child(5) { width: 12%; } /* Delta */
     
     /* Team column specific styling */
     td:nth-child(2) {
         padding-right: 8px;
-        min-width: 180px; /* Prevent too narrow on mobile */
+        min-width: 160px; /* Prevent too narrow on mobile */
     }
     td:nth-child(2) div {
         justify-content: flex-start;
@@ -334,15 +334,21 @@ table_style = """
     }
 
     /* Desktop adjustments */
-    @media (min-width: 600px) {
-        th:nth-child(1), td:nth-child(1) { width: 7%; } /* Rank */
-        th:nth-child(2), td:nth-child(2) { width: 35%; } /* Team */
-        th:nth-child(3), td:nth-child(3) { width: 12%; } /* Record */
-        th:nth-child(4), td:nth-child(4) { width: 12%; } /* Rating */
-        th:nth-child(5), td:nth-child(5) { width: 8%; } /* Delta */
+    @media (min-width: 768px) {
+        /* Center table on desktop */
+        table {
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        th:nth-child(1), td:nth-child(1) { width: 10%; } /* Rank */
+        th:nth-child(2), td:nth-child(2) { width: 30%; } /* Team */
+        th:nth-child(3), td:nth-child(3) { width: 15%; } /* Record */
+        th:nth-child(4), td:nth-child(4) { width: 15%; } /* Rating */
+        th:nth-child(5), td:nth-child(5) { width: 10%; } /* Delta */
         
         td:nth-child(2) {
-            max-width: 400px; /* Prevent too wide on desktop */
+            max-width: 300px; /* Prevent too wide on desktop */
         }
     }
 </style>
