@@ -185,7 +185,6 @@ def load_previous_rankings_for_week(season: int, week: int) -> pd.DataFrame:
 st.markdown("""
 <style>
     .filters {
-        padding: 1rem;
         border-radius: 0.5rem;
         margin-bottom: 1rem;
     }
