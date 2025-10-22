@@ -1,4 +1,4 @@
-import requests # tye: ignore
+import requests # type: ignore
 import pandas as pd # type: ignore
 from dotenv import load_dotenv # type: ignore
 import os

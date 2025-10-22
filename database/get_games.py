@@ -2,7 +2,8 @@ import requests # type: ignore
 import pandas as pd # type: ignore
 from dotenv import load_dotenv # type: ignore
 import os
-from sqlalchemy import create_engine # type:ignore
+from sqlalchemy import create_engine, Table, MetaData # type:ignore
+from sqlalchemy.dialects.postgresql import insert # type:ignore
 
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
@@ -83,6 +84,8 @@ def get_games_by_year_week(year, week=None, season_type='regular'):
 def load_games_to_db(year, week=None, season_type='regular'):
     """
     Loads game data into the database for a given year and optional week.
+    Uses upsert (insert/update) to handle existing records.
+    
     Args:
         year (int): Year of the season
         week (int, optional): Week number. Defaults to None.
@@ -98,7 +101,22 @@ def load_games_to_db(year, week=None, season_type='regular'):
         "?sslmode=require"
     )
     engine = create_engine(db_url)
-    # Only use pandas to_sql for DB upload
-    games_df.to_sql("games", engine, if_exists="append", index=False)
+    
+    # Set up table metadata for upsert
+    metadata = MetaData()
+    table = Table('games', metadata, autoload_with=engine)
+    
+    # Perform upsert for each row
+    with engine.begin() as conn:
+        for _, row in games_df.iterrows():
+            stmt = insert(table).values(**row.to_dict())
+            # Update all columns except id, season, and week which form the unique key
+            update_dict = {c: getattr(stmt.excluded, c) for c in games_df.columns if c not in ['id', 'season', 'week']}
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['id', 'season', 'week'],
+                set_=update_dict
+            )
+            conn.execute(stmt)
+    
     engine.dispose()
-    print(f"Games for year {year} week {week} loaded into DB.")
+    print(f"Games for year {year} week {week} loaded into DB (upsert completed).")
