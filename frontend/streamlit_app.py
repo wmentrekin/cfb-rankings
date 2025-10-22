@@ -333,6 +333,13 @@ table_style = """
         text-overflow: ellipsis;
     }
 
+    /* Desktop adjustments for team column */
+    @media (min-width: 768px) {
+        td:nth-child(2) div {
+            justify-content: center;
+        }
+    }
+
     /* Desktop adjustments */
     @media (min-width: 768px) {
         /* Center table on desktop */
