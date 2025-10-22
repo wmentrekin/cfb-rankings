@@ -407,25 +407,15 @@ with st.expander("📐 Objective Function", expanded=False):
 with st.expander("⚖️ Constraints", expanded=False):
     st.markdown("""
     Subject to the following constraints:
-    
-    **Loss slack constraints:**
-    $$
-    r_{\\text{loser}} + z_{i,j,k} \\leq r_{\\text{winner}} + M \\quad \\forall (i,j,k) \\in \\mathcal{G}
-    $$
-
-    **FCS loss constraints:**
-    $$
-    r_i + z_{\\text{fcs},i} \\leq r_{\\text{fcs}} + M \\quad \\forall i \\in \\mathcal{F}
-    $$
                 
-    **Non-negativity constraints:**
+    **FBS rating bounds:**
     $$
-    r_i \\geq 0 \\quad \\forall i \\in \\mathcal{T}
+    r_{\\text{min}} \\leq r_i \\leq r_{\\text{max}} \\forall i \\in \\mathcal{T}
     $$          
 
     **FCS rating bounds:**
     $$
-    R_{\\text{min}} \\leq r_{\\text{fcs}} \\leq R_{\\text{max}}
+    r_{\\text{fcs-min}} \\leq r_{\\text{fcs}} \\leq r_{\\text{fcs-max}}
     $$
     """)
 
