@@ -26,6 +26,7 @@ st.markdown("""
 **Source Code:** [💻 GitHub Repository](https://github.com/wmentrekin/cfb-rankings/tree/main)  
 **Data Storage:** [🔐 Supabase](https://supabase.com/)  
 **Frontend:** [🚀 Streamlit](https://streamlit.io/)  
+**Automation:** [⚡ GitHub Actions](https://github.com/features/actions)  
 **Documentation:** [📘 Methodology](#methodology)  
 **Contact:**  
 - ✉️ wmentrekin@gmail.com
