@@ -285,7 +285,7 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     st.markdown("""
     **Sets**
     - $\mathcal{T}$: set of all FBS teams
-    - $\mathcal{G}$: set of all games $(i,j,k)$ where team $i$ played team $j$ in their $k$th matchup
+    - $\mathcal{G}$: set of all games $(i,j,k)$ where team $i \in \mathcal{T}$ played team $j \in \mathcal{T}$ in their $k$th matchup
     - $\mathcal{F}$: set of games where FBS teams lost to FCS opponents
 
     **Variables**
