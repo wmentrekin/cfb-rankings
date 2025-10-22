@@ -342,7 +342,7 @@ Thus, I was inspired to spend time developing a model that ranked teams solely b
 I chose to implement this using a constraint optimization approach, specifically a convex quadratic programming model, because I hadn't seen many existing models that took this approach in a transparent and mathematically rigorous way.
 At the core, this model is very simple, it tries to assign ratings to teams such that:
 - Teams that win games have higher ratings than the teams they beat relative to a factor of the margin of victory, adjusted for home/away/neutral site.
-- Teams that lose to FCS opponents are penalized severely
+- Teams that lose to FCS opponents are penalized severely.
 - In order to avoid arbitrary early-season rankings, teams' ratings are tied more closely to their prior-season performance earlier in the season, until enough games are played to connect enough teams through common opponents. Imagine a network graph where teams are nodes and games are edges; as more edges are added, the relative positions of nodes become clearer.
 - It minimizes total "ranking inconsistency" subject to logical constraints about game results.
 
