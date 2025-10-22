@@ -386,7 +386,7 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
       1.2 & \\text{away team win}
       \\end{cases}$
     - $\\text{margin}_{i,j,k}$ : point differential in game $(i,j,k)$
-    - $\\text{prior}_i$ : prior rating for team $i$ from previous season's final rankings (default 35 for new FBS teams)
+    - $\\text{prior}_i$ : prior rating for team $i$ from previous season's final rankings (default 35 for new FBS teams), model for prior is same as this model, but run on prior season's data
     """)
 
 with st.expander("📐 Objective Function", expanded=False):
