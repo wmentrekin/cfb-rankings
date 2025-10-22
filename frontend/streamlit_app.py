@@ -301,14 +301,9 @@ table_style = """
         font-weight: 600;
         text-align: center !important;
         padding: 12px 4px;
-        overflow: visible;
-        white-space: normal;
-        font-size: 0.9em;
-        line-height: 1.2;
-        min-height: 40px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
     td {
         text-align: center !important;
@@ -316,7 +311,6 @@ table_style = """
         vertical-align: middle;
         overflow: hidden;
         text-overflow: ellipsis;
-        white-space: nowrap;
     }
 
     /* Default column widths (mobile) */
