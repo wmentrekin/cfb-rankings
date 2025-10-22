@@ -202,25 +202,12 @@ st.markdown("""
         [data-testid="column"] {
             margin-bottom: 1rem;
         }
-        
-        /* Constrain width of select boxes */
-        .stSelectbox {
-            max-width: 160px;
-        }
     }
     
     @media (min-width: 501px) and (max-width: 767px) {
-        /* Landscape mode - add horizontal spacing and constraints */
-        .filters > div > [data-testid="column"] {
-            min-width: 160px !important;
-            width: auto !important;
-            flex: 0 0 auto !important;
-            margin-right: 2rem;
-        }
-        
-        /* Hide the empty spacer column in landscape */
-        .filters > div > [data-testid="column"]:last-child {
-            display: none;
+        /* Landscape mode - add horizontal spacing */
+        [data-testid="column"]:first-child {
+            margin-right: 1.5rem;
         }
     }
 </style>
