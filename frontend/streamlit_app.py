@@ -195,21 +195,6 @@ st.markdown("""
     .stSelectbox {
         min-width: 120px;
     }
-    
-    /* Filters spacing adjustments */
-    @media (max-width: 767px) {
-        /* Portrait mode - stack vertically */
-        [data-testid="column"] {
-            margin-bottom: 1rem;
-        }
-    }
-    
-    @media (min-width: 501px) and (max-width: 767px) {
-        /* Landscape mode - add horizontal spacing */
-        [data-testid="column"]:first-child {
-            margin-right: 1.5rem;
-        }
-    }
 </style>
 """, unsafe_allow_html=True)
 
