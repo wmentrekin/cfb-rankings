@@ -282,12 +282,14 @@ The inspiration for this ranking model came from a personal desire to objectivel
 Year after year, I find that college football discourse is filled with subjective opinions about which teams are "better" or "worse," often influenced by biases, media narratives, and historical prestige.
 I'm tired of hearing debates about hypothetical matchups when we are lucky enough as fans to witness so many real games each season.
 Thus, I was inspired to spend time developing a model that ranked teams solely based on game outcomes, without the influence of subjective factors such as recruiting rankings, preseason expectations, or traditional power ratings.
-I chose to implementt this using a constraint optimization approach, specifically a convex quadratic programming model, because I hadn't seen many existing models that took this approach in a transparent and mathematically rigorous way.
-At the core, this model is very simple: it tries to assign ratings to teams such that:
+I chose to implement this using a constraint optimization approach, specifically a convex quadratic programming model, because I hadn't seen many existing models that took this approach in a transparent and mathematically rigorous way.
+At the core, this model is very simple, it tries to assign ratings to teams such that:
 - Teams that win games have higher ratings than the teams they beat relative to a factor of the margin of victory, adjusted for home/away/neutral site.
 - Teams that lose to FCS opponents are penalized severely
 - In order to avoid arbitrary early-season rankings, teams' ratings are tied more closely to their prior-season performance earlier in the season, until enough games are played to connect enough teams through common opponents. Imagine a network graph where teams are nodes and games are edges; as more edges are added, the relative positions of nodes become clearer.
 - It minimizes total "ranking inconsistency" subject to logical constraints about game results.
+Additionally, this model has been a great exercise for me to apply my optimization and mathemtical modeling knowledge from my undergraduate background in industrial engineering and operations research, my cloud computing and automation experience from working professionally as a data engineer, and my passion for college football.
+I hope you find this model as interesting and useful as I have found building it!
 """)
 
 with st.expander("🔢 Decision Variables & Parameters", expanded=False):
