@@ -48,7 +48,7 @@ def get_ratings(year, week = None):
     else:
         _lambda.value = 0
 
-    M = 200 # Big M 200 > 138 = Number of FBS teams
+    M = 100 #
     beta = 2.0 # penalty multipler for FCS loss slack
     R_min = 5 # mininum FCS rating
     R_max = 15 # maximum FCS rating
@@ -127,6 +127,7 @@ def get_ratings(year, week = None):
         constraints.append(r[team] + z_fcs[team] <= r_fcs + M) # slack constraints for losses to FCS teams
     for (team) in teams:
         constraints.append(r[team] >= 0)
+        constraints.append(r[team] <= 100)
     constraints.append(r_fcs >= R_min)
     constraints.append(r_fcs <= R_max)
 
