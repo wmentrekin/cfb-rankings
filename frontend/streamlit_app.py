@@ -17,6 +17,7 @@ st.set_page_config(
 
 st.title("🏈 Entrekin Quadratic Index")
 st.caption("A convex quadratic program to optimally rank college football teams based on game outcomes")
+st.caption("Updated every Sunday morning at 3:15 AM ET during the college football season")
 st.caption("Developed by Wyatt Entrekin")
 
 st.markdown("""
