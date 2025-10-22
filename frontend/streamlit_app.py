@@ -278,13 +278,16 @@ st.markdown("---")
 st.header("Methodology")
 
 st.markdown("""
-The goal of this model is to minimize total "ranking inconsistency" subject to logical constraints about game results and prior-season expectations.
-I have implemented the solution using a convex quadratic programming model.
-In simpler terms, it tries to assign ratings to teams such that:
-- Teams that win games have higher ratings than the teams they beat
-- Teams that lose to FCS opponents are penalized appropriately
-- Earlier in the season, teams' ratings are tied more closely to their prior-season performance, until later in the season when enough games have been played so as to connect enough teams through common opponents. Imagine a network graph where teams are nodes and games are edges; as more edges are added, the relative positions of nodes become clearer.
-- It minimizes total "ranking inconsistency" subject to logical constraints about game results and prior-season expectations.
+The inspiration for this ranking model came from a personal desire to objectively rank college football teams solely based on game outcomes.
+Year after year, I find that college football discourse is filled with subjective opinions about which teams are "better" or "worse," often influenced by biases, media narratives, and historical prestige.
+I'm tired of hearing debates about hypothetical matchups when we are lucky enough as fans to witness so many real games each season.
+Thus, I was inspired to spend time developing a model that ranked teams solely based on game outcomes, without the influence of subjective factors such as recruiting rankings, preseason expectations, or traditional power ratings.
+I chose to implementt this using a constraint optimization approach, specifically a convex quadratic programming model, because I hadn't seen many existing models that took this approach in a transparent and mathematically rigorous way.
+At the core, this model is very simple: it tries to assign ratings to teams such that:
+- Teams that win games have higher ratings than the teams they beat relative to a factor of the margin of victory, adjusted for home/away/neutral site.
+- Teams that lose to FCS opponents are penalized severely
+- In order to avoid arbitrary early-season rankings, teams' ratings are tied more closely to their prior-season performance earlier in the season, until enough games are played to connect enough teams through common opponents. Imagine a network graph where teams are nodes and games are edges; as more edges are added, the relative positions of nodes become clearer.
+- It minimizes total "ranking inconsistency" subject to logical constraints about game results.
 """)
 
 with st.expander("🔢 Decision Variables & Parameters", expanded=False):
