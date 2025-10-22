@@ -136,7 +136,7 @@ def get_ratings(year, week = None):
         print("Prior term:", prior_term.value)
         print("Soft margin penalty:", soft_margin_penalty.value)
         print("Loss rate penalty:", loss_rate_penalty.value)
-        print("FCS slack penalty:", fcs_slack.value)
+        print("FCS slack penalty:", fcs_loss_penalty.value)
 
         return ratings, records
 
