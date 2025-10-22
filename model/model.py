@@ -53,7 +53,7 @@ def get_ratings(year, week = None):
     r_fcs_min = 5 # mininum FCS rating
     r_fcs_max = 15 # maximum FCS rating
     gamma_margin = 0.1 # small regularization constant
-    gamma_loss = 1 # regularitzation constant for loss rate
+    gamma_loss = 0.5 # regularitzation constant for loss rate
     gamma_fcs = 2 # regularization constant for FCS loss
 
     # Decision Variables
