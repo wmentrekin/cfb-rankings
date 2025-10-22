@@ -53,7 +53,7 @@ def get_ratings(year, week = None):
     R_min = 5 # mininum FCS rating
     R_max = 15 # maximum FCS rating
     gamma_margin = 0.01 # small regularization constant
-    gamma_loss = 0.2 # regularitzation constant for loss rate
+    gamma_loss = 1 # regularitzation constant for loss rate
     nu = 50000 # large regularization constant
 
     # Decision Variables
@@ -111,7 +111,7 @@ def get_ratings(year, week = None):
     loss_rate_penalty = cp.sum(loss_rate_terms)
 
     # Objective Function
-    objective = cp.Minimize(slack_penalty + soft_margin_penalty + loss_rate_penalty + fcs_slack + prior_term)
+    objective = cp.Minimize(soft_margin_penalty + loss_rate_penalty + fcs_slack + prior_term)
 
     # Constraints
     constraints = []
