@@ -178,7 +178,9 @@ def load_previous_rankings_for_week(season: int, week: int) -> pd.DataFrame:
     res = supabase.table("ratings").select("*").eq("season", season).eq("week", prev_week).execute()
     prev_df = pd.DataFrame(res.data)
     return prev_df
-
+st.markdown("""
+### Rankings
+            """)
 # ---------------------------
 # Layout - filters on top
 # ---------------------------
