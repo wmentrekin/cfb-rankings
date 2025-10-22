@@ -336,10 +336,10 @@ with st.expander("🔢 Decision Variables", expanded=False):
     - $\mathcal{F}$: set of FBS teams that lost to FCS opponents
 
     **Variables**
-    - $r_i \in \mathbb{R}_+$ : rating for team $i$, $\forall i \in \mathcal{T}$
+    - $r_i \in \mathbb{R}_+$ : rating for team $i$, $\\forall i \in \mathcal{T}$
     - $r_{\text{fcs}} \in \mathbb{R}_+$ : rating for the dummy FCS team
-    - $z_{i,j,k} \in \mathbb{R}_+$ : ranking violation slack for game $(i,j,k)$, $\forall (i,j,k) \in \mathcal{G}$
-    - $z_{\text{fcs},i} \in \mathbb{R}_+$ : FCS loss slack for team $i$, $\forall i \in \mathcal{F}$
+    - $z_{i,j,k} \in \mathbb{R}_+$ : ranking violation slack for game $(i,j,k)$, $\\forall (i,j,k) \in \mathcal{G}$
+    - $z_{\text{fcs},i} \in \mathbb{R}_+$ : FCS loss slack for team $i$, $\\forall i \in \mathcal{F}$
     """)
 
 with st.expander("🎛️ Parameters", expanded=False):
