@@ -1,0 +1,29 @@
+name: Daily Keepalive Commit
+
+on:
+  schedule:
+    # Runs every day at 4:00 AM Eastern (8:00 UTC)
+    - cron: '0 8 * * *'
+  workflow_dispatch:  # allows manual triggering if needed
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Git user
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create empty commit
+        run: |
+          git commit --allow-empty -m "chore: daily keepalive $(date -u +"%Y-%m-%d %H:%M:%S UTC")" || echo "No changes to commit"
+
+      - name: Push commit
+        run: git push
