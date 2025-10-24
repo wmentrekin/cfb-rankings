@@ -451,7 +451,7 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
       1.2 & \\text{away team win}
       \\end{cases}$
     - $\\text{margin}_{i,j,k}$ : point differential in game $(i,j,k)$
-    - $\\text{prior}_i$ : prior rating for team $i$ from previous season's final rankings (default 35 for new FBS teams), model for prior is same as this model, but run on prior season's data
+    - $\\text{prior}_i$ : prior rating for team $i$ from previous season's final rankings (default 15 for new FBS teams), model for prior is same as this model, but run on prior season's data
     """)
 
 with st.expander("📐 Objective Function", expanded=False):
@@ -487,7 +487,7 @@ with st.expander("⚖️ Constraints", expanded=False):
 
 with st.expander("📝 Implementation Notes", expanded=False):
     st.markdown("""
-    - **Prior ratings** are carried over from the previous season's final model output. New FBS teams receive a default prior rating of 35.
+    - **Prior ratings** are carried over from the previous season's final model output. New FBS teams receive a default prior rating of 15.
     - The $\\lambda$ parameter enforces prior-season influence, linearly dropping to 0 from Week 1 to Week 7, eventually to rely entirely on current season results.
     - **FCS losses** are handled via a dummy FCS team whose rating is constrained between $r_{\\text{fcs-min}}$ and $r_{\\text{fcs-max}}$. This allows the model to penalize FBS teams losing to FCS opponents without needing to explicitly rate every FCS team.
     - **Margin penalties** encourage appropriate rating separation based on game margins.

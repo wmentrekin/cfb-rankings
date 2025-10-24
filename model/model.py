@@ -37,7 +37,7 @@ def get_ratings(year, week = None):
     # Assign Prior Rating to New FBS Teams
     for team in teams:
         if team not in prior_ratings.keys():
-            prior_ratings[team] = 35
+            prior_ratings[team] = 15
 
     # Parameters
     _lambda = cp.Parameter(nonneg=True) # calculate term based on lambda_max and connectivity matrix
