@@ -1,9 +1,9 @@
-name: Daily Keepalive Commit
+name: Twice Daily Keep Alive Commit
 
 on:
   schedule:
-    # Runs every day at 4:00 AM Eastern (8:00 UTC)
-    - cron: '0 8 * * *'
+    # Runs every 12 hours, twice per day at 4:00 AM and 4:00 PM Eastern (8:00 UTC and 20:00 UTC)
+    - cron: '0 8,20 * * *'
   workflow_dispatch:  # allows manual triggering if needed
 
 jobs:
