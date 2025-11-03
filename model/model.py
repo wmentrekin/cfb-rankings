@@ -40,6 +40,15 @@ def get_ratings(year, week = None):
             prior_ratings[team] = 15
 
     # Parameters
+    r_min = 0.01 # minimum team rating
+    r_max = 100 # maximum team rating
+    r_fcs_min = 5 # mininum FCS rating
+    r_fcs_max = 15 # maximum FCS rating
+    gamma_loss = 0.5 # regularitzation constant for loss rate
+    gamma_fcs = 5 # regularization constant for FCS loss
+    gamma_margin = 0.05 # small margin penalty coefficient
+
+    # Prior Regularization Parameter
     _lambda = cp.Parameter(nonneg=True) # calculate term based on lambda_max and connectivity matrix
     if week < 7:
         print(f"Connectivity: {connectivity}")
@@ -48,13 +57,15 @@ def get_ratings(year, week = None):
     else:
         _lambda.value = 0
 
-    r_min = 0 # minimum team rating
-    r_max = 100 # maximum team rating
-    r_fcs_min = 5 # mininum FCS rating
-    r_fcs_max = 15 # maximum FCS rating
-    gamma_margin = 0.05 # small regularization constant
-    gamma_loss = 0.5 # regularitzation constant for loss rate
-    gamma_fcs = 5 # regularization constant for FCS loss
+    # Margin Regularization Parameters
+    TARGET_GAP_FOR_MEDIAN = 7.0        # rating points the median margin should represent
+    MAX_RATING_GAP_FROM_MARGIN = 20.0  # cap for maximum rating gap any margin can demand
+    margins = [abs(m) for (_, _, _, _, _, m, _, _) in games if m is not None and m >= 0]
+    if len(margins) == 0:
+        median_margin = 1.0
+    else:
+        median_margin = float(np.median(margins))
+    k_margin = TARGET_GAP_FOR_MEDIAN / max(np.sqrt(median_margin), 1e-6)
 
     # Decision Variables
     r = {team: cp.Variable(name = f"r_{team}") for team in teams} # team rating
@@ -72,13 +83,16 @@ def get_ratings(year, week = None):
     # Soft Margin Penalty Terms
     soft_margin_terms = []
     for (i, j, k, winner, margin, alpha, _, _) in games:
+        margin_val = max(0.0, float(margin))
+        margin_scaled = k_margin * np.sqrt(margin_val)
+        margin_used = min(margin_scaled, MAX_RATING_GAP_FROM_MARGIN)
         if winner == i:
             winner_team = i
             loser_team = j
         else:
             winner_team = j
             loser_team = i
-        soft_margin_terms.append(cp.pos(r[loser_team] + (margin * alpha) - r[winner_team])**2 * gamma_margin)
+        soft_margin_terms.append(cp.pos(r[loser_team] + (margin_used * alpha) - r[winner_team])**2 * gamma_margin)
     soft_margin_penalty = cp.sum(soft_margin_terms)
 
     # Loss Rate Penalty Terms
