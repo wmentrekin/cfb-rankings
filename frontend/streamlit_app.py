@@ -298,7 +298,7 @@ def make_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     disp["Team"] = df.apply(team_html, axis=1)
     disp["<span class='desktop-only'>Record</span><span class='mobile-only'>W-L</span>"] = df["record"]
-    disp["<span class='desktop-only'>Rating</span><span class='mobile-only'>RTG</span>"] = df["rating"].map(lambda x: f"{x:.2f}")
+    disp["<span class='desktop-only'>Rating</span><span class='mobile-only'>RTG</span>"] = df["rating"].map(lambda x: f"{x:.3f}")
     disp["Δ"] = df["delta"].map(format_delta_cell)
     return disp
 
