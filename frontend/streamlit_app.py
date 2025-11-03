@@ -10,7 +10,7 @@ from typing import List, Optional
 # Streamlit app configuration
 # ---------------------------
 st.set_page_config(
-    page_title="CFB Rankings - Entrekin Quadratic Index",
+    page_title="CFB Rankings - Entrekin Quadratic Index - Test",
     page_icon="🏈",
     layout="wide"
 )
@@ -116,7 +116,7 @@ def get_available_seasons() -> List[int]:
     Note:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
-    res = supabase.table("ratings").select("season", count="exact").execute()
+    res = supabase.table("ratings_test").select("season", count="exact").execute()
     seasons = sorted({row["season"] for row in res.data}, reverse=True)
     return seasons
 
@@ -131,7 +131,7 @@ def get_weeks_for_season(season: int) -> List[int]:
     Note:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
-    res = supabase.table("ratings").select("week").eq("season", season).execute()
+    res = supabase.table("ratings_test").select("week").eq("season", season).execute()
     weeks = sorted({row["week"] for row in res.data})
     return weeks
 
@@ -142,7 +142,7 @@ def load_rankings_from_db(season: int, week: int) -> pd.DataFrame:
     Expected columns: team, season, week, wins, losses, rating, logos (from teams join if needed)
     We'll try to fetch logos from the 'teams' table by joining in Python if not present.
     """
-    res = supabase.table("ratings").select("*").eq("season", season).eq("week", week).execute()
+    res = supabase.table("ratings_test").select("*").eq("season", season).eq("week", week).execute()
     df = pd.DataFrame(res.data)
     if df.empty:
         return df
@@ -177,7 +177,7 @@ def load_previous_rankings_for_week(season: int, week: int) -> pd.DataFrame:
     if week <= 0:
         return pd.DataFrame()
     prev_week = week - 1
-    res = supabase.table("ratings").select("*").eq("season", season).eq("week", prev_week).execute()
+    res = supabase.table("ratings_test").select("*").eq("season", season).eq("week", prev_week).execute()
     prev_df = pd.DataFrame(res.data)
     return prev_df
 st.markdown("""

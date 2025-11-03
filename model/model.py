@@ -40,7 +40,7 @@ def get_ratings(year, week = None):
             prior_ratings[team] = 15
 
     # Parameters
-    r_min = 1e-3 # minimum team rating
+    r_min = 0.01 # minimum team rating
     r_max = 100 # maximum team rating
     r_fcs_min = 5 # mininum FCS rating
     r_fcs_max = 15 # maximum FCS rating
