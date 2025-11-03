@@ -441,10 +441,14 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     - $\\gamma_{\\text{margin}} = 0.05$ : Small margin penalty coefficient
     - $\\gamma_{\\text{loss}} = 0.5$ : FBS Loss penalty coefficient
     - $\\gamma_{\\text{fcs}} = 5.0$ : FCS Loss penalty coefficient
-    - $r_{\\text{min}} = 0$ : Lower bound for FBS team rating
+    - $r_{\\text{min}} = 0.01$ : Lower bound for FBS team rating
     - $r_{\\text{max}} = 100$ : Upper bound for FBS team rating
     - $r_{\\text{fcs-min}} = 5$ : Lower bound for FCS team rating
     - $r_{\\text{fcs-max}} = 15$ : Upper bound for FCS team rating
+    - Margin scaling parameters:
+      - $\\text{TARGET\\_GAP\\_FOR\\_MEDIAN} = 7.0$ : Rating points that the median margin should represent
+      - $\\text{MAX\\_RATING\\_GAP} = 20.0$ : Maximum rating gap any margin can demand
+      - $k_{\\text{margin}} = \\frac{\\text{TARGET\\_GAP\\_FOR\\_MEDIAN}}{\\max(\\sqrt{\\text{median\\_margin}}, 10^{-6})}$ : Scaling factor for margins
     - $\\alpha = \\begin{cases}
       1.0 & \\text{neutral site} \\\\
       0.8 & \\text{home team win} \\\\
