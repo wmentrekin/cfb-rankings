@@ -38,6 +38,16 @@ def get_prior_ratings(year):
     gamma_loss = 0.5 # regularization constant for loss rate
     gamma_fcs = 5 # regularization constant for FCS loss
 
+    # Margin Regularization Parameters
+    TARGET_GAP_FOR_MEDIAN = 7.0        # rating points the median margin should represent
+    MAX_RATING_GAP_FROM_MARGIN = 20.0  # cap for maximum rating gap any margin can demand
+    margins = [abs(m) for (_, _, _, _, _, m, _, _) in games if m is not None and m >= 0]
+    if len(margins) == 0:
+        median_margin = 1.0
+    else:
+        median_margin = float(np.median(margins))
+    k_margin = TARGET_GAP_FOR_MEDIAN / max(np.sqrt(median_margin), 1e-6)
+
     # Decision Variables
     r = {team: cp.Variable(name = f"r_{team}") for team in teams} # team rating
     r_fcs = cp.Variable(name = "r_fcs") # rating for dummy FCS team
@@ -51,13 +61,16 @@ def get_prior_ratings(year):
     # Soft Margin Penalty Terms
     soft_margin_terms = []
     for (i, j, k, winner, margin, alpha, _, _) in games:
+        margin_val = max(0.0, float(margin))
+        margin_scaled = k_margin * np.sqrt(margin_val)
+        margin_used = min(margin_scaled, MAX_RATING_GAP_FROM_MARGIN)
         if winner == i:
             winner_team = i
             loser_team = j
         else:
             winner_team = j
             loser_team = i
-        soft_margin_terms.append(cp.pos(r[loser_team] + (margin * alpha) - r[winner_team])**2 * gamma_margin)
+        soft_margin_terms.append(cp.pos(r[loser_team] + (margin_used * alpha) - r[winner_team])**2 * gamma_margin)
     soft_margin_penalty = cp.sum(soft_margin_terms)
 
     # Loss Rate Penalty Terms
