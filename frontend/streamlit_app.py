@@ -448,12 +448,13 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
       - $\\text{TARGET\\_GAP\\_FOR\\_MEDIAN} = 7.0$ : Rating points that the median margin should represent
       - $\\text{MAX\\_RATING\\_GAP} = 20.0$ : Maximum rating gap any margin can demand
       - $k_{\\text{margin}} = \\frac{\\text{TARGET\\_GAP\\_FOR\\_MEDIAN}}{\\max(\\sqrt{\\text{median\\_margin}}, 10^{-6})}$ : Scaling factor for margins
+      - $\\text{margin}_{i,j,k}$ : point differential in game $(i,j,k)$
+      - $m_{i,j,k} = \\min(k_{\\text{margin}} \\cdot \\sqrt{\\max(0, \\text{margin}_{i,j,k})}, \\text{MAX\\_RATING\\_GAP})$
     - $\\alpha = \\begin{cases}
       1.0 & \\text{neutral site} \\\\
       0.8 & \\text{home team win} \\\\
       1.2 & \\text{away team win}
       \\end{cases}$
-    - $\\text{margin}_{i,j,k}$ : point differential in game $(i,j,k)$
     - $\\text{prior}_i$ : prior rating for team $i$ from previous season's final rankings (default 15 for new FBS teams), model for prior is same as this model, but run on prior season's data
     """)
 
@@ -467,9 +468,6 @@ with st.expander("📐 Objective Function", expanded=False):
     & + \\sum_{i \\in \\mathcal{T}} \\lambda \\cdot (r_i - \\text{prior}_i)^2 & [\\text{Prior regularization}]
     \\end{aligned}
     $$
-
-    where $m_{i,j,k} = \\min(k_{\\text{margin}} \\cdot \\sqrt{\\max(0, \\text{margin}_{i,j,k})}, \\text{MAX\\_RATING\\_GAP})$
-    
     """)
     
     st.markdown("""
