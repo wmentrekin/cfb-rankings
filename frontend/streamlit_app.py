@@ -298,7 +298,7 @@ def make_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     disp["Team"] = df.apply(team_html, axis=1)
     disp["<span class='desktop-only'>Record</span><span class='mobile-only'>W-L</span>"] = df["record"]
-    disp["<span class='desktop-only'>Rating</span><span class='mobile-only'>RTG</span>"] = df["rating"].map(lambda x: f"{x:.3f}")
+    disp["<span class='desktop-only'>Rating</span><span class='mobile-only'>RTG</span>"] = df["rating"].map(lambda x: f"{x:.2f}")
     disp["Δ"] = df["delta"].map(format_delta_cell)
     return disp
 
@@ -330,9 +330,9 @@ table_style = """
     }
 
     /* Default column widths (mobile) */
-    th:nth-child(1), td:nth-child(1) { width: 12%; } /* Rank */
+    th:nth-child(1), td:nth-child(1) { width: 15%; } /* Rank */
     th:nth-child(2), td:nth-child(2) { width: 40%; } /* Team */
-    th:nth-child(3), td:nth-child(3) { width: 18%; } /* Record */
+    th:nth-child(3), td:nth-child(3) { width: 15%; } /* Record */
     th:nth-child(4), td:nth-child(4) { width: 18%; } /* Rating */
     th:nth-child(5), td:nth-child(5) { width: 12%; } /* Delta */
     
