@@ -30,7 +30,7 @@ def get_prior_ratings(year):
     fcs_losses = fcs_losses  # List of tuples: (team, margin, location_multiplier, week, season)
 
     # Parameters
-    r_min = 0 # minimum team rating
+    r_min = 1e-3 # minimum team rating
     r_max = 100 # maximum team rating
     r_fcs_min = 5 # mininum FCS rating
     r_fcs_max = 15 # maximum FCS rating
