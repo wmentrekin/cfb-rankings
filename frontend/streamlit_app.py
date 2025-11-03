@@ -389,7 +389,6 @@ html_table = table_style + disp_df.to_html(escape=False, index=False)
 st.markdown(html_table, unsafe_allow_html=True)
 
 st.caption(f"Rankings for Season {selected_season} Week {selected_week}")
-st.caption("Note: Ratings of 0.0 are not actually zero, but represent very low ratings rounded to two decimal places.")
 
 # ---------------------------
 # Model Documentation
@@ -462,16 +461,23 @@ with st.expander("📐 Objective Function", expanded=False):
     st.markdown("""
     $$
     \\begin{aligned}
-    \\text{minimize} \\quad & \\sum_{(i,j,k) \\in \\mathcal{G}} \\gamma_{\\text{margin}} \\cdot [\\max(0, r_{\\text{loser}} + (\\text{margin}_{i,j,k} \\cdot \\alpha_{i,j,k}) - r_{\\text{winner}})]^2 & [\\text{Margin Penalty}] \\\\
-    & + \\sum_{(i,j,k) \\in \\mathcal{F}} \\gamma_{\\text{fcs}} \\cdot [\\max(0, r_{\\text{i}} + (\\text{margin}_{i,j,k} \\cdot \\alpha_{i,j,k}) - r_{\\text{fcs}})]^2 & [\\text{FCS Margin Penalty}] \\\\
+    \\text{minimize} \\quad & \\sum_{(i,j,k) \\in \\mathcal{G}} \\gamma_{\\text{margin}} \\cdot [\\max(0, r_{\\text{loser}} + (m_{i,j,k} \\cdot \\alpha_{i,j,k}) - r_{\\text{winner}})]^2 & [\\text{Margin Penalty}] \\\\
+    & + \\sum_{(i,j,k) \\in \\mathcal{F}} \\gamma_{\\text{fcs}} \\cdot [\\max(0, r_{\\text{i}} + (m_{i,j,k} \\cdot \\alpha_{i,j,k}) - r_{\\text{fcs}})]^2 & [\\text{FCS Margin Penalty}] \\\\
     & + \\sum_{i \\in \\mathcal{T}} \\gamma_{\\text{loss}} \\cdot (r_i \\cdot \\frac{\\text{losses}_i}{\\text{wins}_i + \\text{losses}_i})^2 & [\\text{Loss Rate Penalty}] \\\\
     & + \\sum_{i \\in \\mathcal{T}} \\lambda \\cdot (r_i - \\text{prior}_i)^2 & [\\text{Prior regularization}]
     \\end{aligned}
     $$
+
+    where $m_{i,j,k} = \\min(k_{\\text{margin}} \\cdot \\sqrt{\\max(0, \\text{margin}_{i,j,k})}, \\text{MAX\\_RATING\\_GAP})$
+    
     """)
     
     st.markdown("""
-    - Margin penalties give a quadratic penalty for any game where the rating difference does not sufficiently explain the margin of victory, adjusted for home/away/neutral site.
+    - Margin penalties give a quadratic penalty for any game where the rating difference does not sufficiently explain the margin of victory. The margin is:
+      1. Scaled by the square root to reduce the impact of extreme margins
+      2. Multiplied by $k_{\\text{margin}}$ to normalize around the median margin
+      3. Capped at $\\text{MAX\\_RATING\\_GAP}$ to prevent blowouts from dominating
+      4. Finally adjusted by $\\alpha_{i,j,k}$ for home/away/neutral site effects
     - Loss rate penalties discourage teams with poor win-loss records from having high ratings.
     - Prior regularization ties team ratings to their prior season's ratings early in the season when data is sparse.
     """)
