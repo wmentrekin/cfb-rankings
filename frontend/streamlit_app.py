@@ -120,7 +120,7 @@ def get_available_seasons() -> List[int]:
     seasons = sorted({row["season"] for row in res.data}, reverse=True)
     return seasons
 
-@st.cache_data(ttl=3600)
+# @st.cache_data(ttl=3600)
 def get_weeks_for_season(season: int) -> List[int]:
     """
     Retrieve all available weeks for a specific season from the rankings database.
