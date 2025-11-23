@@ -229,7 +229,10 @@ with st.container():
                 st.stop()
             selected_week = st.selectbox("📊 Week", weeks, index=len(weeks)-1)
         with col_c:
-            st.write("")
+            # Temporary refresh button to clear Streamlit cache and reload data
+            if st.button("⟳ Refresh Data", key="refresh_desktop"):
+                st.cache_data.clear()
+                st.experimental_rerun()
     else:
         # Stack filters vertically on mobile
         selected_season = st.selectbox("📅 Season", seasons, index=0)
@@ -238,6 +241,10 @@ with st.container():
             st.warning("No weeks found for the selected season.")
             st.stop()
         selected_week = st.selectbox("📊 Week", weeks, index=len(weeks)-1)
+        # Mobile refresh button (separate key to avoid collisions)
+        if st.button("⟳ Refresh Data", key="refresh_mobile"):
+            st.cache_data.clear()
+            st.experimental_rerun()
     
     st.markdown('</div>', unsafe_allow_html=True)
 
