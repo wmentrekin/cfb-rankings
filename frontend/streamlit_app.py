@@ -120,7 +120,7 @@ def get_available_seasons() -> List[int]:
     seasons = sorted({row["season"] for row in res.data}, reverse=True)
     return seasons
 
-# @st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def get_weeks_for_season(season: int) -> List[int]:
     """
     Retrieve all available weeks for a specific season from the rankings database.
@@ -131,8 +131,10 @@ def get_weeks_for_season(season: int) -> List[int]:
     Note:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
+    st.cache_data.clear()
     res = supabase.table("ratings").select("week").eq("season", season).execute()
     weeks = sorted({row["week"] for row in res.data})
+    print(weeks)
     return weeks
 
 @st.cache_data(ttl=3600)
