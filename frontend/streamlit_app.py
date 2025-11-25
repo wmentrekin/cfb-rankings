@@ -129,13 +129,13 @@ def get_weeks_for_season(season: int) -> List[int]:
     Args:
         season (int): The year of the season to query
     Returns:
-        List[int]: List of week numbers in descending order
+        List[int]: List of week numbers in ascending order
     Note:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
     res = supabase.rpc("get_distinct_weeks", {"p_season": season}).execute()
     weeks = [int(row.get("week")) for row in res.data if row.get("week") is not None]
-    # weeks = sorted(weeks, reverse=True)
+    weeks = sorted(weeks)
     return weeks
     
 @st.cache_data(ttl=3600)
@@ -229,7 +229,7 @@ with st.container():
             if not weeks:
                 st.warning("No weeks found for the selected season.")
                 st.stop()
-            selected_week = st.selectbox("📊 Week", weeks, index=len(weeks)-1)
+            selected_week = st.selectbox("📊 Week", weeks, index=0)
         with col_c:
             st.write("")
     else:
@@ -239,7 +239,7 @@ with st.container():
         if not weeks:
             st.warning("No weeks found for the selected season.")
             st.stop()
-        selected_week = st.selectbox("📊 Week", weeks, index=len(weeks)-1)
+        selected_week = st.selectbox("📊 Week", weeks, index=0)
     
     st.markdown('</div>', unsafe_allow_html=True)
 
