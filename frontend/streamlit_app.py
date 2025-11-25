@@ -131,7 +131,7 @@ def get_weeks_for_season(season: int) -> List[int]:
     Note:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
-    res = supabase.table("ratings").select("week", {"distinct": "week"}).eq("season", season).order("week", {"ascending": True}).execute()
+    res = supabase.table("ratings").select("week", {"distinct": "week"}).eq("season", season).order("week").execute()
     # Check for errors first
     if getattr(res, "error", None):
         st.error(f"Database error fetching weeks for season {season}: {res.error}")
