@@ -131,18 +131,22 @@ def get_weeks_for_season(season: int) -> List[int]:
     Note:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
-    # Use raw SQL to get distinct weeks efficiently
+    # Fetch all week values and dedupe in Python
     try:
-        res = supabase.rpc("exec_sql", {"query": f"SELECT DISTINCT week FROM ratings WHERE season = {season} ORDER BY week DESC"}).execute()
+        # Use PostgREST to fetch all weeks, then dedupe
+        res = supabase.table("ratings").select("week").eq("season", season).execute()
+        
         # Check for errors first
         if getattr(res, "error", None):
             st.error(f"Database error fetching weeks for season {season}: {res.error}")
             return []
-        # Extract and coerce weeks to int, then sort
+        
+        # Extract and coerce weeks to int, then dedupe and sort descending (to match SQL ORDER BY DESC)
         if not res.data:
             return []
+        
         weeks_raw = [int(row.get("week")) for row in res.data if row.get("week") is not None]
-        weeks = sorted(weeks_raw)
+        weeks = sorted(set(weeks_raw), reverse=True)  # Sort descending like the SQL query
         return weeks
     except Exception as e:
         st.error(f"Error fetching weeks: {str(e)}")
