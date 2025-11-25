@@ -127,26 +127,24 @@ def get_weeks_for_season(season: int) -> List[int]:
     Args:
         season (int): The year of the season to query
     Returns:
-        List[int]: List of week numbers in ascending order
+        List[int]: List of week numbers in descending order
     Note:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
-    # Fetch all week values and dedupe in Python
     try:
-        # Use PostgREST to fetch all weeks, then dedupe
-        res = supabase.table("ratings").select("week").eq("season", season).execute()
+        # Use group_by to get one row per distinct week, avoiding pagination limits
+        res = supabase.table("ratings").select("week").eq("season", season).order("week", {"ascending": False}).group_by("week").execute()
         
         # Check for errors first
         if getattr(res, "error", None):
             st.error(f"Database error fetching weeks for season {season}: {res.error}")
             return []
         
-        # Extract and coerce weeks to int, then dedupe and sort descending (to match SQL ORDER BY DESC)
+        # Extract weeks (one row per week due to grouping)
         if not res.data:
             return []
         
-        weeks_raw = [int(row.get("week")) for row in res.data if row.get("week") is not None]
-        weeks = sorted(set(weeks_raw), reverse=True)  # Sort descending like the SQL query
+        weeks = [int(row.get("week")) for row in res.data if row.get("week") is not None]
         return weeks
     except Exception as e:
         st.error(f"Error fetching weeks: {str(e)}")
