@@ -132,18 +132,12 @@ def get_weeks_for_season(season: int) -> List[int]:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
     try:
-        # Use group_by to get one row per distinct week, avoiding pagination limits
-        res = supabase.table("ratings").select("week").eq("season", season).order("week", {"ascending": False}).group_by("week").execute()
-        
-        # Check for errors first
+        res = supabase.table("ratings").select("week").eq("season", season).group_by("week").order("week").execute()
         if getattr(res, "error", None):
             st.error(f"Database error fetching weeks for season {season}: {res.error}")
             return []
-        
-        # Extract weeks (one row per week due to grouping)
         if not res.data:
             return []
-        
         weeks = [int(row.get("week")) for row in res.data if row.get("week") is not None]
         return weeks
     except Exception as e:
