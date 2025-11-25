@@ -1,5 +1,7 @@
 import streamlit as st # type: ignore
 from supabase import create_client, Client # type: ignore
+from dotenv import load_dotenv # type: ignore
+from sqlalchemy import create_engine # type: ignore
 import pandas as pd
 import numpy as np
 import os
@@ -131,18 +133,30 @@ def get_weeks_for_season(season: int) -> List[int]:
     Note:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
-    try:
-        res = supabase.table("ratings").select("week").eq("season", season).group_by("week").order("week").execute()
-        if getattr(res, "error", None):
-            st.error(f"Database error fetching weeks for season {season}: {res.error}")
-            return []
-        if not res.data:
-            return []
-        weeks = [int(row.get("week")) for row in res.data if row.get("week") is not None]
-        return weeks
-    except Exception as e:
-        st.error(f"Error fetching weeks: {str(e)}")
-        return []
+    # try:
+    #     res = supabase.table("ratings").select("week").eq("season", season).group_by("week").order("week").execute()
+    #     if getattr(res, "error", None):
+    #         st.error(f"Database error fetching weeks for season {season}: {res.error}")
+    #         return []
+    #     if not res.data:
+    #         return []
+    #     weeks = [int(row.get("week")) for row in res.data if row.get("week") is not None]
+    #     return weeks
+    # except Exception as e:
+    #     st.error(f"Error fetching weeks: {str(e)}")
+    #     return []
+    
+    load_dotenv()
+    db_url = (
+        f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+        "?sslmode=require"
+    )
+    engine = create_engine(db_url)
+    query = f"SELECT DISTINCT week FROM ratings WHERE season = {season} ORDER BY week DESC;"
+    df = pd.read_sql_query(query, engine)
+    engine.dispose()
+    return df
 
 @st.cache_data(ttl=3600)
 def load_rankings_from_db(season: int, week: int) -> pd.DataFrame:
