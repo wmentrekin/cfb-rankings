@@ -463,7 +463,7 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
       - $g_{\\text{median}} = 7.0$ : Rating points that the median margin should represent
       - $g_{\\text{max}} = 20.0$ : Maximum rating gap any margin can demand
       - $h_{\\text{margin}} = \\frac{g_{\\text{median}}}{\\sqrt{\\text{median}(M)}}$ : Scaling factor for margins
-      - $m_{i,j,k} = \\alpha \\cdot \\min(h_{\\text{margin}} \\cdot \\sqrt{\\text{M}_{i,j,k}}, g_{\\text{max}})$: Adjusted margin of victory for game $(i,j,k)$
+      - $m_{i,j,k} = \\alpha_{i,j,k} \\cdot \\min(h_{\\text{margin}} \\cdot \\sqrt{\\text{M}_{i,j,k}}, g_{\\text{max}})$: Adjusted margin of victory for game $(i,j,k)$
     """)
 
 with st.expander("📐 Objective Function", expanded=False):
@@ -481,8 +481,8 @@ with st.expander("📐 Objective Function", expanded=False):
     st.markdown("""
     - Margin penalties give a quadratic penalty for any game where the rating difference does not sufficiently explain the margin of victory. The margin is:
       1. Scaled by the square root to reduce the impact of extreme margins
-      2. Multiplied by $k_{\\text{margin}}$ to normalize around the median margin
-      3. Capped at $\\text{MAX\\_RATING\\_GAP}$ to prevent blowouts from dominating
+      2. Multiplied by $h_{\\text{margin}}$ to normalize around the median margin
+      3. Capped at $g_{\\text{max}}$ to prevent blowouts from dominating
       4. Finally adjusted by $\\alpha_{i,j,k}$ for home/away/neutral site effects
     - Loss rate penalties discourage teams with poor win-loss records from having high ratings.
     - Prior regularization ties team ratings to their prior season's ratings early in the season when data is sparse.
