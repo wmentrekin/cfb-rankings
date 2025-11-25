@@ -457,7 +457,7 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
       - $g_{\\text{max}} = 20.0$ : Maximum rating gap any margin can demand
       - $k_{\\text{margin}} = \\frac{g_{\\text{median}}}{\\sqrt{\\text{median\\_margin}}}$ : Scaling factor for margins
       - $\\text{margin}_{i,j,k}$ : point differential in game $(i,j,k)$
-      - $m_{i,j,k} = \\min(k_{\\text{margin}} \\cdot \\sqrt{\\max(0, \\text{margin}_{i,j,k})}, g_{\\text{max}})$
+      - $m_{i,j,k} = \\min(k_{\\text{margin}} \\cdot \\sqrt{\\text{margin}_{i,j,k}}, g_{\\text{max}})$
     - $\\alpha = \\begin{cases}
       1.0 & \\text{neutral site} \\\\
       0.8 & \\text{home team win} \\\\
