@@ -456,11 +456,12 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
       - $g_{\\text{median}} = 7.0$ : Rating points that the median margin should represent
       - $g_{\\text{max}} = 20.0$ : Maximum rating gap any margin can demand
       - $h_{\\text{margin}} = \\frac{g_{\\text{median}}}{\\sqrt{\\text{median}(M)}}$ : Scaling factor for margins
-      - $\\alpha = \\begin{cases}
+      - $\\alpha$ :  Scaling factor for home/away/neutral site adjustments where:
+        $\\alpha = \\begin{cases}
       1.0 & \\text{neutral site} \\\\
       0.8 & \\text{home team win} \\\\
       1.2 & \\text{away team win}
-      \\end{cases}$: Scaling factor for home/away/neutral site adjustments
+      \\end{cases}$
       - $m_{i,j,k} = \\alpha \\cdot \\min(h_{\\text{margin}} \\cdot \\sqrt{\\text{M}_{i,j,k}}, g_{\\text{max}})$: Adjusted margin of victory for game $(i,j,k)$
     - $\\text{prior}_i$ : prior rating for team $i$ from previous season's final rankings (default 15 for new FBS teams), model for prior is same as this model, but run on prior season's data
     
