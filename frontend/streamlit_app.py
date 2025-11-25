@@ -448,18 +448,22 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     - $r_{\\text{max}} = 100$ : Upper bound for FBS team rating
     - $r_{\\text{fcs-min}} = 5$ : Lower bound for FCS team rating
     - $r_{\\text{fcs-max}} = 15$ : Upper bound for FCS team rating
-    - Margin scaling parameters:
-      - $\\text{TARGET\\_GAP\\_FOR\\_MEDIAN} = 7.0$ : Rating points that the median margin should represent
-      - $\\text{MAX\\_RATING\\_GAP} = 20.0$ : Maximum rating gap any margin can demand
-      - $k_{\\text{margin}} = \\frac{\\text{TARGET\\_GAP\\_FOR\\_MEDIAN}}{\\max(\\sqrt{\\text{median\\_margin}}, 10^{-6})}$ : Scaling factor for margins
+    """)
+
+    st.markdown("""
+    **Margin Scaling Parameters**
+      - $\\text{target\\_gap\\_for\\_median} = 7.0$ : Rating points that the median margin should represent
+      - $\\text{max\\_rating\\_gap} = 20.0$ : Maximum rating gap any margin can demand
+      - $k_{\\text{margin}} = \\frac{\\text{target\\_gap\\_for\\_median}}{\\max(\\sqrt{\\text{median\\_margin}}, 10^{-6})}$ : Scaling factor for margins
       - $\\text{margin}_{i,j,k}$ : point differential in game $(i,j,k)$
-      - $m_{i,j,k} = \\min(k_{\\text{margin}} \\cdot \\sqrt{\\max(0, \\text{margin}_{i,j,k})}, \\text{MAX\\_RATING\\_GAP})$
+      - $m_{i,j,k} = \\min(k_{\\text{margin}} \\cdot \\sqrt{\\max(0, \\text{margin}_{i,j,k})}, \\text{max\\_rating\\_gap})$
     - $\\alpha = \\begin{cases}
       1.0 & \\text{neutral site} \\\\
       0.8 & \\text{home team win} \\\\
       1.2 & \\text{away team win}
       \\end{cases}$
     - $\\text{prior}_i$ : prior rating for team $i$ from previous season's final rankings (default 15 for new FBS teams), model for prior is same as this model, but run on prior season's data
+    
     """)
 
 with st.expander("📐 Objective Function", expanded=False):
