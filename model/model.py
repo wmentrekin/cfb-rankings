@@ -37,12 +37,12 @@ def get_ratings(year, week = None):
     # Assign Prior Rating to New FBS Teams
     for team in teams:
         if team not in prior_ratings.keys():
-            prior_ratings[team] = 15
+            prior_ratings[team] = 1
 
     # Parameters
     r_min = 0.01 # minimum team rating
     r_max = 100 # maximum team rating
-    r_fcs_min = 5 # mininum FCS rating
+    r_fcs_min = 0.01 # mininum FCS rating
     r_fcs_max = 15 # maximum FCS rating
     gamma_loss = 0.5 # regularitzation constant for loss rate
     gamma_fcs = 5 # regularization constant for FCS loss

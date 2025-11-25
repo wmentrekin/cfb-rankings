@@ -32,7 +32,7 @@ def get_prior_ratings(year):
     # Parameters
     r_min = 0.01 # minimum team rating
     r_max = 100 # maximum team rating
-    r_fcs_min = 5 # mininum FCS rating
+    r_fcs_min = 0.01 # mininum FCS rating
     r_fcs_max = 15 # maximum FCS rating
     gamma_margin = 0.05 # small margin penalty coefficient
     gamma_loss = 0.5 # regularization constant for loss rate

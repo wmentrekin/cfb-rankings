@@ -135,7 +135,7 @@ def get_weeks_for_season(season: int) -> List[int]:
     """
     res = supabase.rpc("get_distinct_weeks", {"p_season": season}).execute()
     weeks = [int(row.get("week")) for row in res.data if row.get("week") is not None]
-    weeks = sorted(weeks, reverse=True)
+    weeks = sorted(weeks, reverse=False)
     return weeks
     
 @st.cache_data(ttl=3600)
@@ -447,9 +447,9 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     - $\\gamma_{\\text{fcs}} = 5.0$ : FCS Loss penalty coefficient
     - $r_{\\text{min}} = 0.01$ : Lower bound for FBS team rating
     - $r_{\\text{max}} = 100$ : Upper bound for FBS team rating
-    - $r_{\\text{fcs-min}} = 5$ : Lower bound for FCS team rating
+    - $r_{\\text{fcs-min}} = 0.01$ : Lower bound for FCS team rating
     - $r_{\\text{fcs-max}} = 15$ : Upper bound for FCS team rating
-    - $\\text{prior}_i$ : prior rating for team $i$ from previous season's final rankings (default 15 for new FBS teams), model for prior is same as this model, but run on prior season's data
+    - $\\text{prior}_i$ : prior rating for team $i$ from previous season's final rankings (default 1 for new FBS teams), model for prior is same as this model, but run on prior season's data
     """)
 
     st.markdown("""
