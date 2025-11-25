@@ -455,8 +455,8 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     **Margin Scaling Parameters**
       - $g_{\\text{median}} = 7.0$ : Rating points that the median margin should represent
       - $g_{\\text{max}} = 20.0$ : Maximum rating gap any margin can demand
-      - $k_{\\text{margin}} = \\frac{g_{\\text{median}}}{\\sqrt{\\text{median}(M)}}$ : Scaling factor for margins
-      - $m_{i,j,k} = \\min(k_{\\text{margin}} \\cdot \\sqrt{\\text{M}_{i,j,k}}, g_{\\text{max}})$
+      - $h_{\\text{margin}} = \\frac{g_{\\text{median}}}{\\sqrt{\\text{median}(M)}}$ : Scaling factor for margins
+      - $m_{i,j,k} = \\min(h_{\\text{margin}} \\cdot \\sqrt{\\text{M}_{i,j,k}}, g_{\\text{max}})$
     - $\\alpha = \\begin{cases}
       1.0 & \\text{neutral site} \\\\
       0.8 & \\text{home team win} \\\\
