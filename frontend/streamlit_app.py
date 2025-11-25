@@ -134,13 +134,19 @@ def get_weeks_for_season(season: int) -> List[int]:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
     try:
-        res = supabase.table("ratings").select("week", {'distinct': True}).eq("season", season).order("week").limit(5000).execute()
+        # Fetch all rows for the season with a large limit, then dedupe in Python
+        res = supabase.table("ratings").select("week", count="exact").eq("season", season).limit(50000).execute()
+        
+        # Check for errors first
         if getattr(res, "error", None):
             st.error(f"Database error fetching weeks for season {season}: {res.error}")
             return []
+        
+        # Dedupe weeks and sort descending
         if not res.data:
             return []
-        weeks = [int(row.get("week")) for row in res.data if row.get("week") is not None]
+        
+        weeks = sorted({int(row.get("week")) for row in res.data if row.get("week") is not None}, reverse=True)
         return weeks
     except Exception as e:
         st.error(f"Error fetching weeks: {str(e)}")
