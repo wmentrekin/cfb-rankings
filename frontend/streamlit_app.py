@@ -454,7 +454,7 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     **Margin Scaling Parameters**
       - $x_{\\text{median}} = 7.0$ : Rating points that the median margin should represent
       - $x_{\\text{max}} = 20.0$ : Maximum rating gap any margin can demand
-      - $k_{\\text{margin}} = \\frac{x_{\\text{median}}}{\\max(\\sqrt{\\text{median\\_margin}}, 10^{-6})}$ : Scaling factor for margins
+      - $k_{\\text{margin}} = \\frac{x_{\\text{median}}}{\\text{median\\_margin}}$ : Scaling factor for margins
       - $\\text{margin}_{i,j,k}$ : point differential in game $(i,j,k)$
       - $m_{i,j,k} = \\min(k_{\\text{margin}} \\cdot \\sqrt{\\max(0, \\text{margin}_{i,j,k})}, x_{\\text{max}})$
     - $\\alpha = \\begin{cases}
