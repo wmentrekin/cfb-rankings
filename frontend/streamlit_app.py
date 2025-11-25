@@ -133,16 +133,16 @@ def get_weeks_for_season(season: int) -> List[int]:
     """
     # Use raw SQL to get distinct weeks efficiently
     try:
-        res = supabase.postgrest.from_("ratings").select("week").eq("season", season).execute()
+        res = supabase.rpc("exec_sql", {"query": f"SELECT DISTINCT week FROM ratings WHERE season = {season} ORDER BY week DESC"}).execute()
         # Check for errors first
         if getattr(res, "error", None):
             st.error(f"Database error fetching weeks for season {season}: {res.error}")
             return []
-        # Extract and coerce weeks to int, then dedupe
+        # Extract and coerce weeks to int, then sort
         if not res.data:
             return []
         weeks_raw = [int(row.get("week")) for row in res.data if row.get("week") is not None]
-        weeks = sorted(set(weeks_raw))
+        weeks = sorted(weeks_raw)
         return weeks
     except Exception as e:
         st.error(f"Error fetching weeks: {str(e)}")
