@@ -135,7 +135,7 @@ def get_weeks_for_season(season: int) -> List[int]:
     """
     res = supabase.rpc("get_distinct_weeks", {"p_season": season}).execute()
     weeks = [int(row.get("week")) for row in res.data if row.get("week") is not None]
-    weeks = sorted(weeks, reverse=False)
+    weeks = sorted(weeks, reverse=True)
     return weeks
     
 @st.cache_data(ttl=3600)
