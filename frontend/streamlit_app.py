@@ -473,7 +473,7 @@ with st.expander("📐 Objective Function", expanded=False):
     \\text{minimize} \\quad & \\sum_{(i,j,k) \\in \\mathcal{G}} \\gamma_{\\text{margin}} \\cdot [\\max(0, r_{\\text{loser}} + m_{i,j,k} - r_{\\text{winner}})]^2 & [\\text{Margin Penalty}] \\\\
     & + \\sum_{(i,j,k) \\in \\mathcal{F}} \\gamma_{\\text{fcs}} \\cdot [\\max(0, r_{\\text{i}} + m_{i,j,k} - r_{\\text{fcs}})]^2 & [\\text{FCS Margin Penalty}] \\\\
     & + \\sum_{i \\in \\mathcal{T}} \\gamma_{\\text{loss}} \\cdot (r_i \\cdot \\frac{\\text{losses}_i}{\\text{wins}_i + \\text{losses}_i})^2 & [\\text{Loss Rate Penalty}] \\\\
-    & + \\sum_{i \\in \\mathcal{T}} \\lambda \\cdot (r_i - \\text{prior}_i)^2 & [\\text{Prior regularization}]
+    & + \\sum_{i \\in \\mathcal{T}} \\lambda \\cdot (r_i - \\text{prior}_i)^2 & [\\text{Prior Regularization}]
     \\end{aligned}
     $$
     """)
