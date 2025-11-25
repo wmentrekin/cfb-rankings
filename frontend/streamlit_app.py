@@ -452,11 +452,11 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
 
     st.markdown("""
     **Margin Scaling Parameters**
-      - $\\text{target\\_gap\\_for\\_median} = 7.0$ : Rating points that the median margin should represent
-      - $\\text{max\\_rating\\_gap} = 20.0$ : Maximum rating gap any margin can demand
-      - $k_{\\text{margin}} = \\frac{\\text{target\\_gap\\_for\\_median}}{\\max(\\sqrt{\\text{median\\_margin}}, 10^{-6})}$ : Scaling factor for margins
+      - $x_{\\text{median}} = 7.0$ : Rating points that the median margin should represent
+      - $x_{\\text{max}} = 20.0$ : Maximum rating gap any margin can demand
+      - $k_{\\text{margin}} = \\frac{x_{\\text{median}}}{\\max(\\sqrt{\\text{median\\_margin}}, 10^{-6})}$ : Scaling factor for margins
       - $\\text{margin}_{i,j,k}$ : point differential in game $(i,j,k)$
-      - $m_{i,j,k} = \\min(k_{\\text{margin}} \\cdot \\sqrt{\\max(0, \\text{margin}_{i,j,k})}, \\text{max\\_rating\\_gap})$
+      - $m_{i,j,k} = \\min(k_{\\text{margin}} \\cdot \\sqrt{\\max(0, \\text{margin}_{i,j,k})}, x_{\\text{max}})$
     - $\\alpha = \\begin{cases}
       1.0 & \\text{neutral site} \\\\
       0.8 & \\text{home team win} \\\\
