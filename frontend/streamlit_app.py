@@ -156,7 +156,8 @@ def get_weeks_for_season(season: int) -> List[int]:
     query = f"SELECT DISTINCT week FROM ratings WHERE season = {season} ORDER BY week DESC;"
     df = pd.read_sql_query(query, engine)
     engine.dispose()
-    return df
+    weeks = [int(row.get("week")) for row in df if row.get("week") is not None]
+    return weeks
 
 @st.cache_data(ttl=3600)
 def load_rankings_from_db(season: int, week: int) -> pd.DataFrame:
