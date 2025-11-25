@@ -131,9 +131,16 @@ def get_weeks_for_season(season: int) -> List[int]:
     Note:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
-    st.cache_data.clear()
-    res = supabase.table("ratings").select("week").eq("season", season).execute()
-    weeks = sorted({row["week"] for row in res.data})
+    res = supabase.table("ratings").select("week", {"distinct": "week"}).eq("season", season).order("week", {"ascending": True}).execute()
+    # Check for errors first
+    if getattr(res, "error", None):
+        st.error(f"Database error fetching weeks for season {season}: {res.error}")
+        return []
+    # Extract and coerce weeks to int, then sort
+    if not res.data:
+        return []
+    weeks_raw = [row.get("week") for row in res.data if row.get("week") is not None]
+    weeks = sorted({int(w) for w in weeks_raw})
     return weeks
 
 @st.cache_data(ttl=3600)
@@ -181,6 +188,7 @@ def load_previous_rankings_for_week(season: int, week: int) -> pd.DataFrame:
     res = supabase.table("ratings").select("*").eq("season", season).eq("week", prev_week).execute()
     prev_df = pd.DataFrame(res.data)
     return prev_df
+
 st.markdown("""
 ### Rankings
             """)
