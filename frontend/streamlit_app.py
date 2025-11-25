@@ -449,6 +449,7 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     - $r_{\\text{max}} = 100$ : Upper bound for FBS team rating
     - $r_{\\text{fcs-min}} = 5$ : Lower bound for FCS team rating
     - $r_{\\text{fcs-max}} = 15$ : Upper bound for FCS team rating
+    - $\\text{prior}_i$ : prior rating for team $i$ from previous season's final rankings (default 15 for new FBS teams), model for prior is same as this model, but run on prior season's data
     """)
 
     st.markdown("""
@@ -463,8 +464,6 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
       - $g_{\\text{max}} = 20.0$ : Maximum rating gap any margin can demand
       - $h_{\\text{margin}} = \\frac{g_{\\text{median}}}{\\sqrt{\\text{median}(M)}}$ : Scaling factor for margins
       - $m_{i,j,k} = \\alpha \\cdot \\min(h_{\\text{margin}} \\cdot \\sqrt{\\text{M}_{i,j,k}}, g_{\\text{max}})$: Adjusted margin of victory for game $(i,j,k)$
-    - $\\text{prior}_i$ : prior rating for team $i$ from previous season's final rankings (default 15 for new FBS teams), model for prior is same as this model, but run on prior season's data
-    
     """)
 
 with st.expander("📐 Objective Function", expanded=False):
