@@ -36,7 +36,7 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_PORT: ${{ secrets.DB_PORT }}
         run: |
-          echo "Running main.py with year=${{ github.event.inputs.year }}, week=${{ github.event.inputs.week }}, staging"
+          echo "Running main.py with year=${{ github.event.inputs.year }}, week=${{ github.event.inputs.week }}"
           python main.py --year ${{ github.event.inputs.year }} --week ${{ github.event.inputs.week }} > output.log 2>&1 || true
 
       - name: Upload output log
