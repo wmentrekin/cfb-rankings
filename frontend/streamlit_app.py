@@ -460,8 +460,8 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
       1.0 & \\text{neutral site} \\\\
       0.8 & \\text{home team win} \\\\
       1.2 & \\text{away team win}
-      \\end{cases}$
-      - $m_{i,j,k} = \\alpha \\cdot \\min(h_{\\text{margin}} \\cdot \\sqrt{\\text{M}_{i,j,k}}, g_{\\text{max}})$
+      \\end{cases}$: Scaling factor for home/away/neutral site adjustments
+      - $m_{i,j,k} = \\alpha \\cdot \\min(h_{\\text{margin}} \\cdot \\sqrt{\\text{M}_{i,j,k}}, g_{\\text{max}})$: Adjusted margin of victory for game $(i,j,k)$
     - $\\text{prior}_i$ : prior rating for team $i$ from previous season's final rankings (default 15 for new FBS teams), model for prior is same as this model, but run on prior season's data
     
     """)
