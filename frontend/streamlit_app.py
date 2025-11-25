@@ -427,7 +427,7 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     - $\mathcal{T}$: set of all FBS teams
     - $\mathcal{G}$: set of all games $(i,j,k)$ where team $i \in \mathcal{T}$ played team $j \in \mathcal{T}$ in their $k$th matchup
     - $\mathcal{F}$: set of FBS teams that lost to FCS opponents
-    - $\mathcal{M}$: set of all margins of victory from games \in $\mathcal{G}$
+    - $\mathcal{M}$: set of margins of victory $\\forall games (i,j,k) \in $\mathcal{G}$
 
     **Variables**
     - $r_i \in \mathbb{R}_+$ : rating for team $i$, $\\forall i \in \\mathcal{T}$
