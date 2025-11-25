@@ -133,31 +133,18 @@ def get_weeks_for_season(season: int) -> List[int]:
     Note:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
-    # try:
-    #     res = supabase.table("ratings").select("week").eq("season", season).group_by("week").order("week").execute()
-    #     if getattr(res, "error", None):
-    #         st.error(f"Database error fetching weeks for season {season}: {res.error}")
-    #         return []
-    #     if not res.data:
-    #         return []
-    #     weeks = [int(row.get("week")) for row in res.data if row.get("week") is not None]
-    #     return weeks
-    # except Exception as e:
-    #     st.error(f"Error fetching weeks: {str(e)}")
-    #     return []
-    
-    load_dotenv()
-    db_url = (
-        f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
-        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
-        "?sslmode=require"
-    )
-    engine = create_engine(db_url)
-    query = f"SELECT DISTINCT week FROM ratings WHERE season = {season} ORDER BY week DESC;"
-    df = pd.read_sql_query(query, engine)
-    engine.dispose()
-    weeks = [int(row.get("week")) for row in df if row.get("week") is not None]
-    return weeks
+    try:
+        res = supabase.table("ratings").select("week").eq("season", season).order("week").limit(5000).execute()
+        if getattr(res, "error", None):
+            st.error(f"Database error fetching weeks for season {season}: {res.error}")
+            return []
+        if not res.data:
+            return []
+        weeks = [int(row.get("week")) for row in res.data if row.get("week") is not None]
+        return weeks
+    except Exception as e:
+        st.error(f"Error fetching weeks: {str(e)}")
+        return []
 
 @st.cache_data(ttl=3600)
 def load_rankings_from_db(season: int, week: int) -> pd.DataFrame:
