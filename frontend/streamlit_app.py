@@ -131,17 +131,22 @@ def get_weeks_for_season(season: int) -> List[int]:
     Note:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
-    res = supabase.table("ratings").select("week", {"distinct": "week"}).eq("season", season).order("week").execute()
-    # Check for errors first
-    if getattr(res, "error", None):
-        st.error(f"Database error fetching weeks for season {season}: {res.error}")
+    # Use raw SQL to get distinct weeks efficiently
+    try:
+        res = supabase.postgrest.from_("ratings").select("week").eq("season", season).execute()
+        # Check for errors first
+        if getattr(res, "error", None):
+            st.error(f"Database error fetching weeks for season {season}: {res.error}")
+            return []
+        # Extract and coerce weeks to int, then dedupe
+        if not res.data:
+            return []
+        weeks_raw = [int(row.get("week")) for row in res.data if row.get("week") is not None]
+        weeks = sorted(set(weeks_raw))
+        return weeks
+    except Exception as e:
+        st.error(f"Error fetching weeks: {str(e)}")
         return []
-    # Extract and coerce weeks to int, then sort
-    if not res.data:
-        return []
-    weeks_raw = [row.get("week") for row in res.data if row.get("week") is not None]
-    weeks = sorted({int(w) for w in weeks_raw})
-    return weeks
 
 @st.cache_data(ttl=3600)
 def load_rankings_from_db(season: int, week: int) -> pd.DataFrame:
