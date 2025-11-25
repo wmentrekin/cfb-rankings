@@ -133,37 +133,16 @@ def get_weeks_for_season(season: int) -> List[int]:
     Note:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
-    try:
-        # Use raw SQL query via Supabase's PostgREST SQL endpoint
-        query = f"SELECT DISTINCT week FROM ratings WHERE season = {season} ORDER BY week DESC"
-        res = supabase.postgrest.rpc("sql", {"query": query}).execute()
-        
-        # Check for errors first
-        if getattr(res, "error", None):
-            st.error(f"Database error fetching weeks for season {season}: {res.error}")
-            return []
-        
-        # Extract weeks from result
-        if not res.data:
-            return []
-        
-        weeks = [int(row.get("week")) for row in res.data if row.get("week") is not None]
-        return weeks
-    except Exception as e:
-        # Fallback to client-side fetch and dedupe if SQL fails
-        try:
-            res = supabase.table("ratings").select("week").eq("season", season).limit(100000).execute()
-            if getattr(res, "error", None):
-                st.error(f"Database error fetching weeks for season {season}: {res.error}")
-                return []
-            if not res.data:
-                return []
-            weeks = sorted({int(row.get("week")) for row in res.data if row.get("week") is not None}, reverse=True)
-            return weeks
-        except Exception as e2:
-            st.error(f"Error fetching weeks: {str(e2)}")
-            return []
-
+    query = f"SELECT DISTINCT week FROM ratings WHERE season = {season} ORDER BY week DESC"
+    res = supabase.postgrest.rpc("sql", {"query": query}).execute()
+    if getattr(res, "error", None):
+        st.error(f"Database error fetching weeks for season {season}: {res.error}")
+        return []
+    if not res.data:
+        return []
+    weeks = [int(row.get("week")) for row in res.data if row.get("week") is not None]
+    return weeks
+    
 @st.cache_data(ttl=3600)
 def load_rankings_from_db(season: int, week: int) -> pd.DataFrame:
     """
