@@ -335,8 +335,8 @@ table_style = """
 
     /* Default column widths (mobile) */
     th:nth-child(1), td:nth-child(1) { width: 15%; } /* Rank */
-    th:nth-child(2), td:nth-child(2) { width: 40%; } /* Team */
-    th:nth-child(3), td:nth-child(3) { width: 15%; } /* Record */
+    th:nth-child(2), td:nth-child(2) { width: 37%; } /* Team */
+    th:nth-child(3), td:nth-child(3) { width: 18%; } /* Record */
     th:nth-child(4), td:nth-child(4) { width: 18%; } /* Rating */
     th:nth-child(5), td:nth-child(5) { width: 12%; } /* Delta */
     
