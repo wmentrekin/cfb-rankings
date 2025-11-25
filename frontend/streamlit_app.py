@@ -133,13 +133,7 @@ def get_weeks_for_season(season: int) -> List[int]:
     Note:
         Results are cached for 1 hour (3600 seconds) using Streamlit's caching
     """
-    query = f"SELECT DISTINCT week FROM ratings WHERE season = {season} ORDER BY week DESC"
-    res = supabase.postgrest.rpc("sql", {"query": query}).execute()
-    if getattr(res, "error", None):
-        st.error(f"Database error fetching weeks for season {season}: {res.error}")
-        return []
-    if not res.data:
-        return []
+    res = supabase.rpc("get_distinct_weeks", {"p_season": season}).execute()
     weeks = [int(row.get("week")) for row in res.data if row.get("week") is not None]
     return weeks
     
@@ -416,7 +410,7 @@ I chose to implement this using a constraint optimization approach, specifically
 At the core, this model is very simple, it tries to assign ratings to teams such that:
 - Teams that win games have higher ratings than the teams they beat relative to a factor of the margin of victory, adjusted for home/away/neutral site.
 - Teams that lose to FCS opponents are penalized severely.
-- In order to avoid arbitrary early-season rankings, teams' ratings are tied more closely to their prior-season performance earlier in the season, until enough games are played to connect enough teams through common opponents. Imagine a network graph where teams are nodes and games are edges; as more edges are added, the relative positions of nodes become clearer.
+- In order to avoid arbitrary early-season rankings, teams' ratings are tied more closely to their prior-season performance early in the season, until enough games are played to connect enough teams through common opponents. Imagine a network graph where teams are nodes and games are edges; as more edges are added, the relative positions of nodes become clearer.
 - It minimizes total "ranking inconsistency" subject to logical constraints about game results.
 
 Additionally, this model has been a great exercise for me to apply my optimization and mathematical modeling knowledge from my undergraduate background in industrial engineering and operations research, my cloud computing and automation experience from working professionally as a data engineer, and my passion for college football.
@@ -434,7 +428,7 @@ with st.expander("🔢 Decision Variables & Parameters", expanded=False):
     - $\mathcal{F}$: set of FBS teams that lost to FCS opponents
 
     **Variables**
-    - $r_i \in \mathbb{R}_+$ : rating for team $i$, $\\forall i \in \mathcal{T}$
+    - $r_i \in \mathbb{R}_+$ : rating for team $i$, $\\forall i \in \\mathcal{T}$
     - $r_{\\text{fcs}} \in \mathbb{R}_+$ : rating for the dummy FCS team
     """)
 
