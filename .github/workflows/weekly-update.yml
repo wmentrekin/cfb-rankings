@@ -1,9 +1,10 @@
 name: Weekly Rankings - Auto Update
 
+#### PAUSED DURING OFFSEASON ####
 on:
-  schedule:
-    # Every Sunday at 07:00 UTC = 03:00 ET
-    - cron: '0 7 * * 0'
+  # schedule:
+  #   # Every Sunday at 07:00 UTC = 03:00 ET
+  #   - cron: '0 7 * * 0'
   workflow_dispatch:
 
 concurrency:
