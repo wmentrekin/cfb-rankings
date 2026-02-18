@@ -22,10 +22,13 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: uv sync --frozen
 
       - name: Run model for inputs
         env:
@@ -37,7 +40,7 @@ jobs:
           DB_PORT: ${{ secrets.DB_PORT }}
         run: |
           echo "Running main.py with year=${{ github.event.inputs.year }}, week=${{ github.event.inputs.week }}"
-          python main.py --year ${{ github.event.inputs.year }} --week ${{ github.event.inputs.week }} > output.log 2>&1 || true
+          uv run python main.py --year ${{ github.event.inputs.year }} --week ${{ github.event.inputs.week }} > output.log 2>&1 || true
       - name: Upload output log
         uses: actions/upload-artifact@v4
         with:

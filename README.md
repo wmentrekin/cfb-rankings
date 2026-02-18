@@ -22,7 +22,7 @@ The model is designed to:
 | **Database** | Stores team, game, and model results tables | **[Supabase](https://supabase.com/) PostgreSQL** |
 | **Data Processing** | Loads teams/games and prepares features | `process_data.py`, `get_games.py`, `get_teams.py` |
 | **Model** | Solves convex QP for team ratings | `cvxpy`, `numpy`, `pandas` |
-| **Automation** | Weekly GitHub Action scheduled via cron (Sundays 3AM ET) | `.github/workflows/weekly_update.yml` |
+| **Automation** | Weekly GitHub Action scheduled via cron (Sundays 3AM ET) | `.github/workflows/weekly-update.yml` |
 | **Frontend** | Public rankings display | **[Streamlit](https://cfb-rankings-wmentrekin.streamlit.app/)** |
 
 **Data Flow Summary:**
@@ -33,3 +33,18 @@ The model is designed to:
 5. Logs are saved for diagnostics.
 
 ---
+
+## **Local Setup (uv + Python 3.12)**
+
+This repo now uses `uv` for dependency and environment management.
+
+```bash
+uv sync
+uv run python main.py
+```
+
+For custom runs:
+
+```bash
+uv run python main.py --year 2025 --week 1
+```
