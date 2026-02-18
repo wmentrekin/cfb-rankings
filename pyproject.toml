@@ -1,0 +1,20 @@
+[project]
+name = "cfb-rankings"
+version = "0.1.0"
+description = "College football team ranking optimization pipeline"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "cvxpy",
+    "networkx",
+    "numpy",
+    "pandas",
+    "plotly",
+    "psycopg2-binary",
+    "python-dotenv",
+    "requests",
+    "sqlalchemy",
+    "streamlit",
+    "supabase",
+]
+
