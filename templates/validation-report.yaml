@@ -1,0 +1,26 @@
+# Contract: final readiness decision from /validate
+
+artifact: validation_report
+feature: "<feature-slug>"
+status: draft
+owner_skill: validate
+based_on:
+  requirements: "docs/<feature>/requirements.yaml"
+  plan: "docs/<feature>/plan.yaml"
+  implementation: "docs/<feature>/implementation-report.yaml"
+
+final_status: NOT_READY
+
+acceptance_criteria_status:
+  satisfied: []
+  unsatisfied: []
+  unverified: []
+
+evidence:
+  review_status: ""
+  test_status: ""
+  pre_commit_checks: []
+
+remaining_caveats: []
+
+next_actions: []

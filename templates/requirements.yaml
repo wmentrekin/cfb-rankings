@@ -1,0 +1,39 @@
+# Contract: requirements handoff from /discover to /plan and /refine
+
+artifact: requirements
+feature: "<feature-slug>"
+status: draft
+owner_skill: discover
+
+summary:
+  problem: ""
+  motivation: ""
+  requested_outcome: ""
+
+goals: []
+
+non_goals: []
+
+constraints:
+  technical: []
+  product: []
+  process: []
+
+assumptions: []
+
+repo_context:
+  relevant_paths: []
+  systems_in_scope: []
+  prior_artifacts: []
+
+research:
+  repo_findings: []
+  platform_findings: []
+
+acceptance_criteria: []
+
+open_questions: []
+
+freeze:
+  ready_for_plan: false
+  blockers: []
