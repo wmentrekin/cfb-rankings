@@ -1,0 +1,41 @@
+# Contract: plan handoff from /plan and /refine to /implement, /review, /test, and /validate
+
+artifact: plan
+feature: "<feature-slug>"
+status: draft
+owner_skill: plan
+based_on: "docs/<feature>/requirements.yaml"
+
+summary:
+  objective: ""
+  design_overview: ""
+
+decisions: []
+
+contracts:
+  interfaces: []
+  schemas: []
+  config_changes: []
+
+tasks:
+  - id: "T1"
+    title: ""
+    objective: ""
+    owned_scope: []
+    forbidden_scope: []
+    dependencies: []
+    parallelizable: false
+    expected_validation: []
+
+execution:
+  order: []
+  notes: []
+
+risks: []
+
+open_questions: []
+
+approval:
+  refine_status: pending
+  review_cycles: 0
+  approved_for_implementation: false

@@ -1,0 +1,28 @@
+# Contract: task handoff from /implement to developer agents
+
+artifact: task_handoff
+feature: "<feature-slug>"
+task_id: ""
+owner_skill: implement
+
+objective: ""
+why_this_matters: ""
+
+inputs:
+  requirements: "docs/<feature>/requirements.yaml"
+  plan: "docs/<feature>/plan.yaml"
+  relevant_paths: []
+
+scope:
+  owned: []
+  forbidden: []
+
+implementation_notes: []
+
+validation_expected: []
+
+escalate_if:
+  - missing_context
+  - conflicting_artifacts
+  - product_or_architecture_guess_required
+  - scope_expansion_required

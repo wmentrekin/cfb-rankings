@@ -1,0 +1,26 @@
+# Contract: implementation handoff from /implement to /review, /test, and /validate
+
+artifact: implementation_report
+feature: "<feature-slug>"
+status: draft
+owner_skill: implement
+based_on: "docs/<feature>/plan.yaml"
+
+tasks_attempted: []
+tasks_completed: []
+
+changes:
+  files: []
+  modules: []
+  docs_updated: []
+
+local_validation:
+  checks_run: []
+  failures: []
+  skipped: []
+
+known_issues: []
+
+blockers: []
+
+recommended_next_step: review
