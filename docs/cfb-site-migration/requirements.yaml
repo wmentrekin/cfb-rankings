@@ -1,0 +1,104 @@
+# Contract: requirements handoff from /discover to /plan and /refine
+
+artifact: requirements
+feature: "cfb-site-migration"
+status: draft
+owner_skill: discover
+
+summary:
+  problem: "The current public rankings experience depends on an unstable Streamlit deployment that is not the desired long-term public surface for the project."
+  motivation: "Move the flagship public rankings experience onto the personal website while preserving historical browsing, improving reliability, and keeping the pipeline and presentation layers cleanly separated."
+  requested_outcome: "Define and implement a migration path where `cfb-rankings` remains the pipeline/model repo, publishes stable ranking artifacts, and `personal-site` becomes the long-term public rankings and methodology surface."
+
+goals:
+  - "Migrate the public rankings page away from the current Streamlit app to `personal-site`."
+  - "Preserve historical rankings browsing by season and week, matching the current Streamlit capability."
+  - "Use artifacts as the primary output consumed by the public site."
+  - "Continue using the existing Supabase database where helpful, but avoid making the public page depend on live database reads."
+  - "Improve deployment and publication reliability for in-season rankings updates."
+  - "Clean up GitHub Actions so the pipeline and publishing flow are easier to understand and maintain."
+  - "Keep the methodology and public-facing design aligned with the stronger UX direction already evolving in `personal-site`."
+
+non_goals:
+  - "Move model logic or heavy pipeline code into `personal-site`."
+  - "Redesign the entire ranking methodology as part of the initial migration."
+  - "Require the public website to query the operational database at request time."
+  - "Turn this repo into the long-term frontend home for the public rankings experience."
+
+constraints:
+  technical:
+    - "`cfb-rankings` must remain the source of truth for data ingestion, model execution, and ranking generation."
+    - "The public site must support historical season/week browsing, not only the latest snapshot."
+    - "Artifacts should be the primary website input even if Supabase remains part of the backend or operational data model."
+    - "The target deployment environment for the website is Cloudflare Pages."
+    - "Cloudflare-hosted storage or equivalent static delivery may be used if it fits the artifact strategy."
+  product:
+    - "The public rankings experience should be more stable than the current Streamlit deployment."
+    - "The rankings page should remain rankings-first, with methodology and project context secondary."
+    - "The site should preserve the repo boundary where `personal-site` is presentation and `cfb-rankings` is implementation."
+  process:
+    - "Migration work should follow the local phased workflow in `.agents/`."
+    - "Requirements, plan, and implementation outputs should be captured as durable artifacts under `docs/<feature>/`."
+    - "Changes should be incremental rather than a broad one-shot rewrite."
+
+assumptions:
+  - "The existing Supabase database remains available and acceptable to keep using during and after migration."
+  - "Cloudflare Pages is the intended long-term public deployment target for `personal-site`."
+  - "Cloudflare storage options are acceptable to evaluate as part of the artifact publishing path."
+  - "The current Streamlit app is a transitional surface and can eventually be deprecated once the website replacement is ready."
+  - "`personal-site` already contains relevant CFB routes and context that should shape the migration design."
+
+repo_context:
+  relevant_paths:
+    - "AGENTS.md"
+    - "README.md"
+    - "main.py"
+    - "model/"
+    - "database/"
+    - "frontend/streamlit_app.py"
+    - ".github/workflows/"
+    - ".agents/"
+    - "../personal-site/AGENTS.md"
+    - "../personal-site/agent-context/project-repos.md"
+    - "../personal-site/agent-context/pages/cfb-rankings.md"
+    - "../personal-site/agent-context/pages/cfb-methodology.md"
+    - "../personal-site/src/components/RankingsTable.astro"
+  systems_in_scope:
+    - "CFBD ingestion pipeline"
+    - "ranking model execution"
+    - "Supabase storage"
+    - "artifact generation and publication"
+    - "GitHub Actions automation"
+    - "personal-site public rankings presentation"
+  prior_artifacts:
+    - "None in `docs/` yet for this feature."
+
+research:
+  repo_findings:
+    - "The current pipeline entrypoint is `main.py`, which loads games into the database, runs the model, and upserts ranking results."
+    - "The current public frontend is the Streamlit app in `frontend/streamlit_app.py`, which reads rankings from Supabase."
+    - "Workflow automation currently exists in `.github/workflows/weekly-update.yml`, `.github/workflows/test-week-run.yml`, and `.github/workflows/daily-keep-alive.yml`."
+    - "`personal-site` already treats CFB Rankings as the flagship project and already documents a desired artifact-driven public surface."
+    - "`personal-site/agent-context/pages/cfb-rankings.md` states that rankings are intended to come from a static artifact at `public/data/cfb/latest-rankings.json`."
+    - "`personal-site` already contains a `RankingsTable.astro` component and route-specific CFB context that can support the migration."
+  platform_findings:
+    - "No external platform research was required for this discovery artifact beyond the user-provided deployment direction."
+
+acceptance_criteria:
+  - "A migration plan exists that preserves historical rankings browsing by season and week on `personal-site`."
+  - "The plan defines an artifact format and publication flow that the website can consume without live database reads."
+  - "The plan specifies the ongoing role of Supabase after migration."
+  - "The plan specifies how GitHub Actions should produce and publish artifacts."
+  - "The plan preserves a clean repo boundary between `cfb-rankings` and `personal-site`."
+  - "The plan identifies the initial replacement scope for the Streamlit rankings page and any phased follow-up work."
+
+open_questions:
+  - "What exact artifact schema should be published for rankings pages: latest-only plus historical index, or full per-season/per-week files, and what metadata should each include?"
+  - "Should artifacts be published directly into `personal-site`, to a shared storage bucket, or both?"
+  - "Should Supabase remain the system of record for rankings history, or become a secondary operational sink behind artifact publication?"
+  - "What minimum historical UX is required at launch on `personal-site`: dropdown selectors, route-based archives, or both?"
+  - "How should freshness metadata and failed-run visibility be surfaced to end users?"
+
+freeze:
+  ready_for_plan: true
+  blockers: []
