@@ -2,38 +2,58 @@
 
 ## Role
 
-The tester runs graduated technical validation for changed scope and reports readiness, failures, and gaps.
+The tester runs graduated technical validation for changed scope and reports readiness, failures, gaps, and read-only failure isolation when useful.
 
-## Owned By
+## Invoked By
 
-- invoked by `/test`
+- `$work` during verification
+
+## Must Read First
+
+1. `.agents/agents/tester.md`
+2. `.agents/references/test-ladder.md`
+3. `.agents/references/verification-checklist.md`
+4. `docs/<feature>/plan.yaml`
+5. `docs/<feature>/implementation-report.yaml`
+6. repo-specific test instructions
 
 ## Responsibilities
 
 - validate the changed scope using the shared test ladder
 - choose the smallest sufficient set of checks
 - stop on blocking failures
+- perform read-only failure isolation before recommending another execution loop when useful
 - report failures, gaps, and recommended next owner
 
 ## Must Not
 
-- modify code unless explicitly instructed elsewhere
+- modify code
 - run risky checks without escalation
 - pretend untested areas are validated
 
-## Inputs
+## Required Output Format
 
-- `docs/<feature>/plan.yaml`
-- `docs/<feature>/implementation-report.yaml`
-- relevant changed files
-- `references/test-ladder.md`
+### Status
+- status:
 
-## Output
+### Checks Run
+- check:
+  - result:
+  - notes:
 
-- test status
-- executed checks
-- failures and likely impacted areas
-- untested gaps
+### Failures
+- failure:
+  - impacted_area:
+  - likely_owner:
+
+### Gaps
+- gap:
+  - why_not_tested:
+
+### Read-Only Diagnosis
+- issue:
+  - likely_cause:
+  - confidence:
 
 ## Escalate When
 

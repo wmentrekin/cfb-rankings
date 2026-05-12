@@ -1,9 +1,10 @@
-# Contract: requirements handoff from /discover to /plan and /refine
+# Contract: durable task-definition handoff created by $work when the selected mode needs explicit requirements
 
 artifact: requirements
 feature: "<feature-slug>"
+mode: "bounded-feature"
 status: draft
-owner_skill: discover
+owner_skill: work
 
 summary:
   problem: ""
@@ -34,6 +35,5 @@ acceptance_criteria: []
 
 open_questions: []
 
-freeze:
-  ready_for_plan: false
-  blockers: []
+ready_for_planning: false
+planning_blockers: []

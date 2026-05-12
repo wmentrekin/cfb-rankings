@@ -1,41 +1,47 @@
-# Contract: plan handoff from /plan and /refine to /implement, /review, /test, and /validate
+# Contract: durable execution plan created by $work when the selected mode needs explicit planning
 
 artifact: plan
 feature: "<feature-slug>"
+mode: "bounded-feature"
 status: draft
-owner_skill: plan
+owner_skill: work
 based_on: "docs/<feature>/requirements.yaml"
 
-summary:
-  objective: ""
-  design_overview: ""
+objective: ""
 
-decisions: []
+approach:
+  summary: ""
+  key_decisions: []
 
 contracts:
   interfaces: []
   schemas: []
   config_changes: []
 
-tasks:
-  - id: "T1"
-    title: ""
-    objective: ""
-    owned_scope: []
-    forbidden_scope: []
-    dependencies: []
-    parallelizable: false
-    expected_validation: []
+execution_batches:
+  - id: "B1"
+    goal: ""
+    tasks:
+      - id: "T1"
+        title: ""
+        objective: ""
+        owned_scope: []
+        forbidden_scope: []
+        dependencies: []
+        parallelizable: false
+        expected_validation: []
 
-execution:
-  order: []
-  notes: []
+ordering_notes: []
 
 risks: []
 
 open_questions: []
 
-approval:
-  refine_status: pending
-  review_cycles: 0
-  approved_for_implementation: false
+review:
+  status: draft
+  loop_count: 0
+  notes: []
+
+checkpoint:
+  required_before_execution: true
+  status: pending
