@@ -1,0 +1,53 @@
+# Contract: live coordination artifact maintained by $work
+
+artifact: status
+feature: "<feature-slug>"
+mode: "quick-fix"
+stage: "discovery"
+owner_skill: work
+
+objective: ""
+
+summary:
+  current_focus: ""
+  last_completed: ""
+  current_blocker: ""
+
+artifacts:
+  requirements: null
+  plan: null
+  implementation_report: null
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    model_guidance: "xhigh"
+    status: "active"
+    stage: "discovery"
+    task: ""
+    last_update: ""
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: pending
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+decisions: []
+
+next_action: ""
+next_recommended_command: "$work"
+user_input_needed: false

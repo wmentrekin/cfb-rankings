@@ -1,9 +1,11 @@
-# Contract: task handoff from /implement to developer agents
+# Contract: developer handoff created by $work during execution
 
 artifact: task_handoff
 feature: "<feature-slug>"
+mode: "bounded-feature"
+execution_batch_id: ""
 task_id: ""
-owner_skill: implement
+owner_skill: work
 
 objective: ""
 why_this_matters: ""
@@ -11,6 +13,7 @@ why_this_matters: ""
 inputs:
   requirements: "docs/<feature>/requirements.yaml"
   plan: "docs/<feature>/plan.yaml"
+  implementation_report: "docs/<feature>/implementation-report.yaml"
   relevant_paths: []
 
 scope:
@@ -19,7 +22,16 @@ scope:
 
 implementation_notes: []
 
+success_criteria: []
+
 validation_expected: []
+
+output_format:
+  sections:
+    - Changes
+    - Local Validation
+    - Blockers
+    - Notes
 
 escalate_if:
   - missing_context

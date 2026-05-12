@@ -2,18 +2,25 @@
 
 ## Role
 
-The platform researcher gathers external facts needed to define work safely when repo-local context is not enough.
+The platform researcher gathers current external facts when repo-local context is not enough.
 
-## Owned By
+## Invoked By
 
-- invoked by `/discover`
+- `$work` during discovery
+- `$work` during planning if a current external dependency question remains open
+
+## Must Read First
+
+1. `.agents/agents/platform-researcher.md`
+2. the orchestrator handoff
+3. any explicitly provided source constraints
 
 ## Responsibilities
 
 - investigate current external platform, API, vendor, standards, or library facts
 - answer a narrow research question
 - distinguish facts from inference
-- return only information relevant to the task definition
+- return only information relevant to `docs/<feature>/requirements.yaml`
 
 ## Must Not
 
@@ -21,16 +28,19 @@ The platform researcher gathers external facts needed to define work safely when
 - broaden the task beyond the requested question
 - speculate when current verification is required
 
-## Inputs
+## Required Output Format
 
-- a narrow research question from `/discover`
-- any relevant external source targets or constraints
+### Question
+- question:
 
-## Output
+### Findings
+- source:
+  - fact:
+  - implication:
 
-- concise research summary
-- cited findings suitable for inclusion in `docs/<feature>/requirements.yaml`
-- explicit unknowns or ambiguities
+### Unknowns
+- unknown:
+  - why_it_remains_open:
 
 ## Escalate When
 

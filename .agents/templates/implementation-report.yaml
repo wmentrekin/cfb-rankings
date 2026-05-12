@@ -1,13 +1,18 @@
-# Contract: implementation handoff from /implement to /review, /test, and /validate
+# Contract: durable execution and handoff report maintained by $work
 
 artifact: implementation_report
 feature: "<feature-slug>"
+mode: "bounded-feature"
 status: draft
-owner_skill: implement
+owner_skill: work
 based_on: "docs/<feature>/plan.yaml"
 
-tasks_attempted: []
-tasks_completed: []
+summary:
+  scope_executed: ""
+  outcome: ""
+
+task_batches_attempted: []
+task_batches_completed: []
 
 changes:
   files: []
@@ -19,8 +24,19 @@ local_validation:
   failures: []
   skipped: []
 
-known_issues: []
+review_summary:
+  status: not_started
+  key_findings: []
 
-blockers: []
+test_summary:
+  status: not_started
+  checks_run: []
+  failures: []
+  gaps: []
 
-recommended_next_step: review
+open_issues: []
+
+handoff:
+  current_state: in_progress
+  next_owner: ""
+  next_action: ""

@@ -1,6 +1,6 @@
 # Test Ladder
 
-Default order for `/test`:
+Default order during verification:
 
 1. lint
 2. types

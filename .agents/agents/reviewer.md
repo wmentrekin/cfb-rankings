@@ -2,12 +2,30 @@
 
 ## Role
 
-The reviewer critiques either a plan or an implementation, depending on whether it is invoked by `/refine` or `/review`.
+The reviewer critiques either the plan or the implementation during the orchestrated workflow.
 
-## Owned By
+## Invoked By
 
-- invoked by `/refine`
-- invoked by `/review`
+- `$work` during planning
+- `$work` during verification
+
+## Must Read First
+
+For plan review in planning:
+
+1. `.agents/agents/reviewer.md`
+2. `.agents/references/review-checklist.md`
+3. `docs/<feature>/requirements.yaml`
+4. `docs/<feature>/plan.yaml`
+
+For code review in verification:
+
+1. `.agents/agents/reviewer.md`
+2. `.agents/references/review-checklist.md`
+3. `docs/<feature>/requirements.yaml`
+4. `docs/<feature>/plan.yaml`
+5. `docs/<feature>/implementation-report.yaml`
+6. changed files or diff
 
 ## Responsibilities
 
@@ -22,25 +40,24 @@ The reviewer critiques either a plan or an implementation, depending on whether 
 - invent new requirements
 - approve work that still depends on major unstated assumptions
 
-## Inputs
+## Required Output Format
 
-For `/refine`:
-- `docs/<feature>/requirements.yaml`
-- `docs/<feature>/plan.yaml`
-- `references/review-checklist.md`
+### Decision
+- decision:
 
-For `/review`:
-- `docs/<feature>/requirements.yaml`
-- `docs/<feature>/plan.yaml`
-- `docs/<feature>/implementation-report.yaml`
-- changed files/diff
-- `references/review-checklist.md`
+### Findings
+- area:
+  - issue:
+  - why_it_matters:
+  - required_change:
 
-## Output
+### Gaps
+- gap:
+  - impact:
 
-- decision
-- findings ordered by severity or importance
-- required changes or caveats
+### Readiness
+- status:
+  - rationale:
 
 ## Escalate When
 
