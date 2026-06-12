@@ -89,33 +89,38 @@ name = "cfb-rankings"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "cvxpy" },
-    { name = "networkx" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "plotly" },
-    { name = "psycopg2-binary" },
     { name = "python-dotenv" },
-    { name = "requests" },
     { name = "sqlalchemy" },
     { name = "streamlit" },
     { name = "supabase" },
 ]
 
-[package.metadata]
-requires-dist = [
+[package.optional-dependencies]
+pipeline = [
     { name = "cvxpy" },
     { name = "networkx" },
+    { name = "psycopg2-binary" },
+    { name = "requests" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cvxpy", marker = "extra == 'pipeline'" },
+    { name = "networkx", marker = "extra == 'pipeline'" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "plotly" },
-    { name = "psycopg2-binary" },
+    { name = "psycopg2-binary", marker = "extra == 'pipeline'" },
     { name = "python-dotenv" },
-    { name = "requests" },
+    { name = "requests", marker = "extra == 'pipeline'" },
     { name = "sqlalchemy" },
     { name = "streamlit" },
     { name = "supabase" },
 ]
+provides-extras = ["pipeline"]
 
 [[package]]
 name = "cffi"

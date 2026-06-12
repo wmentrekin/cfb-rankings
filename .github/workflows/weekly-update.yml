@@ -30,7 +30,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --frozen
+          uv sync --frozen --extra pipeline
 
       - name: Run weekly model (production)
         env:
