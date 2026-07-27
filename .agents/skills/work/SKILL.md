@@ -13,10 +13,11 @@ It owns the conversation with the user and coordinates all internal workflow sta
 
 1. `.agents/AGENTS.md`
 2. `.agents/skills/work/SKILL.md`
-3. `.agents/agents/orchestrator.md`
+3. `.agents/agents/orchestrator/agent.md`
 4. `.agents/references/workflow-architecture.md`
 5. `.agents/references/chat-and-board-format.md`
-6. the mode-relevant templates in `.agents/templates/`
+6. `.agents/references/branch-and-pr-workflow.md`
+7. the mode-relevant templates in `.agents/templates/`
 
 # Must Spawn
 
@@ -44,7 +45,7 @@ Mode-dependent durable artifacts:
 - `docs/<feature>/plan.yaml` using `.agents/templates/plan.yaml`
 - `docs/<feature>/implementation-report.yaml` using `.agents/templates/implementation-report.yaml`
 
-Developer handoffs use:
+Execution agent handoffs use:
 - `.agents/templates/task-handoff.yaml`
 
 # User Updates
@@ -82,20 +83,33 @@ The board should make it obvious:
 
 Use these agents by default:
 
-- `.agents/agents/repo-researcher.md`
+- `.agents/agents/repo-researcher/agent.md`
   Use for repo-local investigation in discovery, planning, or verification.
 
-- `.agents/agents/platform-researcher.md`
+- `.agents/agents/platform-researcher/agent.md`
   Use only when current external facts are needed.
 
-- `.agents/agents/reviewer.md`
+- `.agents/agents/reviewer/agent.md`
   Use for plan critique and code review.
 
-- `.agents/agents/developer.md`
-  Use for bounded execution work only.
-
-- `.agents/agents/tester.md`
+- `.agents/agents/tester/agent.md`
   Use for verification, test running, and read-only failure isolation during verification.
+
+## Execution Domain Routing
+
+During execution, route each task to the domain agent named in its `assigned_domain` field in
+`docs/<feature>/plan.yaml`, not to a single generic developer:
+
+- `.agents/agents/data-engineer/agent.md` — ingestion, pipelines, schema, data quality
+- `.agents/agents/analytics-engineer/agent.md` — transformation/semantic layer (dbt-style)
+- `.agents/agents/data-scientist/agent.md` — analysis, modeling, experimentation
+- `.agents/agents/mlops-engineer/agent.md` — training pipelines, model registry/deployment, monitoring
+- `.agents/agents/platform-engineer/agent.md` — cloud infra (IaC, provisioning) and CI/CD delivery
+- `.agents/agents/frontend-engineer/agent.md` — UI/UX implementation
+- `.agents/agents/generalist-developer/agent.md` — fallback when no domain fits
+
+When planning, assign each task's `assigned_domain` based on which files/components it touches.
+For tasks with no clear domain fit, assign `generalist-developer`.
 
 # Mode Selection
 
@@ -128,10 +142,13 @@ Treat these as internal states, not separate user-facing commands.
 4. create `requirements.yaml` if the mode requires it
 5. create `plan.yaml` if the mode requires it
 6. stop for the required pre-execution checkpoint
-7. spawn developer agents for bounded execution
-8. update `implementation-report.yaml`
-9. run verification with reviewer and tester agents
-10. either complete, loop back once or twice, or stop and ask the user for direction
+7. create the feature branch (and worktrees, if the plan calls for parallel domains) per
+   `.agents/references/branch-and-pr-workflow.md`
+8. spawn the routed domain (or generalist) agents for bounded execution
+9. update `implementation-report.yaml`
+10. open the PR per `.agents/references/branch-and-pr-workflow.md`
+11. run verification with reviewer and tester agents, posting findings to the PR
+12. either complete, loop back once or twice, or stop and ask the user for direction
 
 # Loop Cap
 
@@ -170,6 +187,7 @@ Escalate when:
 - the current mode is still correct
 - the live status board is current
 - durable artifacts are sufficient for handoff
+- for any mode that reached execution, a PR exists and is reported ready for the user's review
 - the user has clear visibility into what happened, what remains, and what the next step is
 
 # Next Recommended Command

@@ -18,6 +18,11 @@ artifacts:
   plan: null
   implementation_report: null
 
+pr:
+  number: null
+  url: null
+  status: "not_opened"
+
 agents:
   - id: "orchestrator"
     role: "orchestrator"

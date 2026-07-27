@@ -5,6 +5,8 @@ feature: "<feature-slug>"
 mode: "bounded-feature"
 execution_batch_id: ""
 task_id: ""
+assigned_domain: ""
+branch: ""
 owner_skill: work
 
 objective: ""

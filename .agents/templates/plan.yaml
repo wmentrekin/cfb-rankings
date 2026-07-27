@@ -18,6 +18,11 @@ contracts:
   schemas: []
   config_changes: []
 
+branching:
+  strategy: "single-branch"
+  branch_name: ""
+  worktrees: []
+
 execution_batches:
   - id: "B1"
     goal: ""
@@ -25,6 +30,7 @@ execution_batches:
       - id: "T1"
         title: ""
         objective: ""
+        assigned_domain: ""
         owned_scope: []
         forbidden_scope: []
         dependencies: []
