@@ -108,15 +108,14 @@ Current bias:
 
 ## Suggested Workflow
 
-For substantial migration work, prefer the phased local workflow in `.agents/`:
-
-`/discover -> /plan -> /refine -> /implement -> /test + /review -> /validate`
+For substantial migration work, prefer the shared workflow in `.agents/` (git subtree). Read
+`.agents/AGENTS.md` first, then invoke it with `/work` — a single orchestrator that handles
+discovery, planning, execution, and verification internally, not separate phase commands.
 
 Durable planning artifacts should live under:
 
 - `docs/<feature>/requirements.yaml`
 - `docs/<feature>/plan.yaml`
 - `docs/<feature>/implementation-report.yaml`
-- `docs/<feature>/validation-report.yaml`
 
 Use this file for stable repo-level direction, not for detailed feature plans.
