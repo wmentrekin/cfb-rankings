@@ -1,3 +1,8 @@
+---
+name: platform-researcher
+description: Gathers current external facts when repo-local context is not enough.
+---
+
 # Platform Researcher Agent
 
 ## Role
@@ -11,7 +16,7 @@ The platform researcher gathers current external facts when repo-local context i
 
 ## Must Read First
 
-1. `.agents/agents/platform-researcher.md`
+1. `.agents/agents/platform-researcher/agent.md`
 2. the orchestrator handoff
 3. any explicitly provided source constraints
 

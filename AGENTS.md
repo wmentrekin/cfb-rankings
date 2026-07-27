@@ -4,9 +4,30 @@ Use this file as the entry point when these workflow assets are imported into a 
 
 ## Command Convention
 
-In Codex, invoke the workflow with `$work`.
+This workflow is invoked as `/work` in all three supported tools:
+
+- Claude Code: `/work`, discovered via `.claude/skills/work`
+- Codex: `/work` (or `$work` mention), discovered via `.codex/skills/work`
+- Antigravity: `/work`, discovered natively from `.agents/workflows/work.md`
+
+See "Tool Compatibility" below for how each of these paths is populated.
 
 Do not route the user across multiple top-level phase commands.
+
+## Tool Compatibility
+
+These assets are written to work natively across Claude Code, Codex, and Antigravity:
+
+| Concept | Claude Code | Codex | Antigravity |
+|---|---|---|---|
+| Invokable skill | `.claude/skills/work/SKILL.md` | `.codex/skills/work/SKILL.md` | `.agents/workflows/work.md` |
+| Persona/subagent | n/a (role-played via prompt) | n/a (role-played via prompt) | `.agents/agents/<name>/agent.md` |
+
+`.agents/skills/work/SKILL.md` is the single canonical source. Antigravity reads `.agents/`
+directly, so `.agents/workflows/work.md` and `.agents/agents/*/agent.md` work with no setup.
+Claude Code and Codex look outside `.agents/`, so run `.agents/scripts/link-tools.sh` once
+after import (and again after `git subtree pull` if skills are added or removed) to symlink
+`.claude/skills/work` and `.codex/skills/work` back to the canonical source.
 
 ## First Read Order
 
@@ -55,14 +76,28 @@ These are internal states, not separate user-facing commands.
 
 - `.agents/skills/work/SKILL.md`
 
+## Workflows
+
+- `.agents/workflows/work.md` (Antigravity-native entry point; points back at the skill above)
+
 ## Agents
 
-- `.agents/agents/orchestrator.md`
-- `.agents/agents/developer.md`
-- `.agents/agents/platform-researcher.md`
-- `.agents/agents/repo-researcher.md`
-- `.agents/agents/reviewer.md`
-- `.agents/agents/tester.md`
+- `.agents/agents/orchestrator/agent.md`
+- `.agents/agents/platform-researcher/agent.md`
+- `.agents/agents/repo-researcher/agent.md`
+- `.agents/agents/reviewer/agent.md`
+- `.agents/agents/tester/agent.md`
+
+Execution roles, routed per-task by domain (see `.agents/skills/work/SKILL.md`'s "Execution
+Domain Routing"):
+
+- `.agents/agents/data-engineer/agent.md`
+- `.agents/agents/analytics-engineer/agent.md`
+- `.agents/agents/data-scientist/agent.md`
+- `.agents/agents/mlops-engineer/agent.md`
+- `.agents/agents/platform-engineer/agent.md`
+- `.agents/agents/frontend-engineer/agent.md`
+- `.agents/agents/generalist-developer/agent.md` (fallback when no domain fits)
 
 ## Templates
 
@@ -88,6 +123,8 @@ Expected project-local outputs:
 - `.agents/references/review-checklist.md`
 - `.agents/references/test-ladder.md`
 - `.agents/references/verification-checklist.md`
+- `.agents/references/engineering-standards.md`
+- `.agents/references/branch-and-pr-workflow.md`
 
 ## Core Rules
 
@@ -159,7 +196,9 @@ Every subagent handoff should be explicit about:
 Recommended defaults:
 
 - orchestrator: highest reasoning
-- developer: medium to high reasoning based on task size
+- execution roles (data-engineer, analytics-engineer, data-scientist, mlops-engineer,
+  platform-engineer, frontend-engineer, generalist-developer): medium to high reasoning based on
+  task size
 - repo-researcher: medium reasoning
 - platform-researcher: medium or high reasoning based on ambiguity
 - reviewer: medium reasoning

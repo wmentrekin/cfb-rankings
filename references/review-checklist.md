@@ -22,4 +22,5 @@ Use this checklist during planning and verification inside `$work`.
 - [ ] Integration risks were considered
 - [ ] Documentation impact was considered
 - [ ] Local validation was adequate
+- [ ] Engineering standards followed (see `engineering-standards.md`)
 - [ ] Findings are concrete and actionable

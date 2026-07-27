@@ -101,11 +101,21 @@ Default agents:
 ### Execution
 
 Owns:
+- creating the feature branch (and worktrees, if the plan calls for parallel domains)
 - bounded implementation work
 - keeping implementation handoff context current
+- opening the PR once implementation is complete
 
-Default agents:
-- developer
+Default agents, chosen per task via `assigned_domain` in `plan.yaml`:
+- data-engineer
+- analytics-engineer
+- data-scientist
+- mlops-engineer
+- platform-engineer
+- frontend-engineer
+- generalist-developer as the fallback when no domain fits
+
+See `.agents/references/branch-and-pr-workflow.md` for branch/worktree/PR mechanics.
 
 ### Verification
 
@@ -119,6 +129,9 @@ Default agents:
 - reviewer
 - tester
 - repo-researcher if repo-local failure evidence is needed
+
+When a PR exists, reviewer and tester also post their findings as PR review comments, not only
+in chat — see `.agents/references/branch-and-pr-workflow.md`.
 
 ## Loop Policy
 

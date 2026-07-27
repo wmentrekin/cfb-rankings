@@ -1,3 +1,8 @@
+---
+name: repo-researcher
+description: Investigates the local repo to identify relevant files, existing patterns, constraints, assets, and integration points.
+---
+
 # Repo Researcher Agent
 
 ## Role
@@ -12,7 +17,7 @@ The repo researcher investigates the local repo to identify relevant files, exis
 
 ## Must Read First
 
-1. `.agents/agents/repo-researcher.md`
+1. `.agents/agents/repo-researcher/agent.md`
 2. the orchestrator handoff
 3. `.agents/AGENTS.md`
 4. the exact repo paths named in the handoff when available

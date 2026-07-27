@@ -1,3 +1,8 @@
+---
+name: tester
+description: Runs graduated technical validation for changed scope and reports readiness, failures, gaps, and read-only failure isolation when useful.
+---
+
 # Tester Agent
 
 ## Role
@@ -10,7 +15,7 @@ The tester runs graduated technical validation for changed scope and reports rea
 
 ## Must Read First
 
-1. `.agents/agents/tester.md`
+1. `.agents/agents/tester/agent.md`
 2. `.agents/references/test-ladder.md`
 3. `.agents/references/verification-checklist.md`
 4. `docs/<feature>/plan.yaml`

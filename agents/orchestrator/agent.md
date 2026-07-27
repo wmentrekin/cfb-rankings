@@ -1,3 +1,8 @@
+---
+name: orchestrator
+description: Outward-facing agent that owns the user conversation while coordinating all other agents.
+---
+
 # Orchestrator Agent
 
 ## Role
