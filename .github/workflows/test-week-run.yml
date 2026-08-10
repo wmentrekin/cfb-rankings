@@ -6,7 +6,7 @@ on:
       year:
         description: 'Season year'
         required: true
-        default: '2025'
+        default: '2026'
       week:
         description: 'CFB week number'
         required: true
