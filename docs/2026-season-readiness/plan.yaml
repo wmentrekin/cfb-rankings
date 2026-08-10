@@ -76,8 +76,29 @@ execution_batches:
         expected_validation:
           - "Diff shows the cron trigger active and the paused-banner comment updated; workflow YAML remains valid."
 
+  - id: "B3"
+    goal: "Fix a pre-existing crash blocking any real pipeline run, surfaced during T1's live validation"
+    tasks:
+      - id: "T4"
+        title: "Fix AttributeError when fcs_loss_terms is empty in model/model.py"
+        objective: "model/model.py:152 calls fcs_loss_penalty.value, but fcs_loss_penalty = cp.sum(fcs_loss_terms) (line 81) falls back to the plain Python int 0 when fcs_loss_terms is an empty list (no FBS-over-FCS-loss games in the ingested window -- common in early weeks). This crashes get_ratings() after ratings are already computed (lines 127-136) but before it returns (line 155), so the whole pipeline fails end-to-end. Make fcs_loss_penalty always a CVXPY expression (e.g. cp.Constant(0.0) when fcs_loss_terms is empty) so line 152's .value access always succeeds, without changing the objective function's actual math/behavior when fcs_loss_terms is non-empty."
+        assigned_domain: "data-scientist"
+        owned_scope:
+          - "model/model.py"
+        forbidden_scope:
+          - "model/process_data.py"
+          - "model/prior_model.py"
+          - "model/connectivity.py"
+          - "database/"
+        dependencies: []
+        parallelizable: false
+        expected_validation:
+          - "Re-run `uv run python main.py --year 2026 --week 1 --staging` end to end and confirm it now completes without the AttributeError and reaches the ratings-insert step, writing to ratings_test."
+          - "Confirm the fix does not change ratings output when fcs_loss_terms IS non-empty (e.g. run a week/year combination from existing 2025 data that has FCS-loss games, before and after the fix, and confirm identical ratings)."
+
 ordering_notes:
   - "T1, T2, T3 touch non-overlapping files and have no dependencies on each other -- they can be implemented in any order within the single shared branch."
+  - "T4 was added after user confirmation, following B1/B2 execution, once T1's live validation surfaced the crash. It depends on nothing else in this plan but blocks a true end-to-end validation of T1's own acceptance criteria."
 
 risks:
   - "The CollegeFootballData API may not yet reflect finalized 2026 FBS conference realignment/membership if run very early -- not independently verifiable now; if load_teams_to_db(2026) returns an implausible team count (e.g. far from the ~130-136 FBS range), that should surface as a validation finding, not be silently accepted."
@@ -92,4 +113,4 @@ review:
 
 checkpoint:
   required_before_execution: true
-  status: pending
+  status: accepted

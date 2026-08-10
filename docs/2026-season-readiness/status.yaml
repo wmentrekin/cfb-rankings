@@ -1,7 +1,7 @@
 artifact: status
 feature: "2026-season-readiness"
 mode: "bounded-feature"
-stage: "planning"
+stage: "execution"
 owner_skill: work
 
 objective: "Get the cfb-rankings pipeline (ingest -> transform -> DB -> model -> output) ready for the 2026 season before resuming the Streamlit-to-personal-site migration work in docs/cfb-site-migration/."
@@ -54,6 +54,22 @@ agents:
     task: "confirm actual 2026 CFB season structure (start date, regular season weeks, 12-team CFP postseason weeks) against utils.py's hardcoded heuristic"
     last_update: "2026-08-10"
     blocker: ""
+  - id: "data-engineer-1"
+    role: "data-engineer"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "execution"
+    task: "T1 -- add idempotent team-roster guard to main.py"
+    last_update: "2026-08-10"
+    blocker: "surfaced an unrelated pre-existing crash in model/model.py:152 -- see blockers below"
+  - id: "platform-engineer-1"
+    role: "platform-engineer"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "execution"
+    task: "T2+T3 -- bump test-week-run.yml year default to 2026, re-enable weekly-update.yml cron"
+    last_update: "2026-08-10"
+    blocker: ""
 
 loops:
   planning_review:
@@ -65,14 +81,15 @@ loops:
 
 checkpoint:
   pre_execution_required: true
-  pre_execution_status: awaiting_user
+  pre_execution_status: accepted
   options:
     - proceed
     - revise_plan
     - narrow_scope
     - stop
 
-blockers: []
+blockers:
+  - "OUT-OF-SCOPE BUG FOUND DURING T1 VALIDATION: model/model.py:152 crashes with AttributeError('int' object has no attribute 'value') whenever fcs_losses is empty for the requested year/week window. cp.sum([]) on an empty fcs_loss_terms list returns the plain Python int 0 (not a cvxpy Expression), and the diagnostic print at line 152 then calls .value on it. This happens AFTER ratings are already computed (line 127-136) but BEFORE the function returns (line 155) -- so the crash prevents get_ratings() from ever returning, blocking the entire pipeline for any week with zero FCS-loss games in the ingested window. Confirmed live: --year 2026 --week 1 --staging crashed here on both live validation runs. Root cause is unrelated to any of T1/T2/T3's changes (confirmed via git diff --stat -- model/ showing zero changes). Given week 1 (and other early weeks) commonly have no FCS games yet, this is a real, likely-recurring crash risk for the 2026 season, not just a one-off from testing with incomplete week-1 data. Fix is small: make fcs_loss_penalty always a cvxpy Expression (e.g. cp.Constant(0.0) when fcs_loss_terms is empty) instead of relying on cp.sum([])'s int fallback. Escalating to user for a scope decision before proceeding."
 decisions:
   - "Classified as bounded-feature: spans multiple files/systems (pipeline, workflows, config) and needs requirements + plan + execution + verification, but is scoped and not multi-batch enough for large-initiative."
   - "Season-readiness treated as a separate feature from docs/cfb-site-migration/ (that doc only covers the Streamlit->personal-site migration); artifact-output work and the migration will follow as a second feature once this one ships."
@@ -82,6 +99,6 @@ decisions:
   - "USER CLARIFICATION (resolves prior open question): postseason exclusion is intentional by design, not a bug -- user does not want bowl games or CFP included in rankings (bowl opt-outs distort results, playoff is a different competitive level). Rankings are purely regular season (12-13 games) + conference championship games. This means: (a) the 'never ingests postseason' finding is NOT in scope to fix, (b) the week-clamp [0,16] concern is also resolved -- conference championship week lands at pipeline week ~14-15 per both platform research (Dec 5, 2026 champ weekend) and live 2025 data (ratings capped at week 15, full 136-team coverage), comfortably inside the existing clamp of 16. No clamp change needed."
   - "Revised scope after clarification: season-readiness work is now narrowly (1) make 2026 team-roster ingestion automatic/idempotent instead of manual-only, (2) bump test-week-run.yml's year default from 2025 to 2026, (3) re-enable weekly-update.yml's cron ahead of season start. Moving to requirements.yaml synthesis."
 
-next_action: "Awaiting user checkpoint decision on plan.yaml: proceed / revise_plan / narrow_scope / stop"
+next_action: "Spawn data-engineer and platform-engineer for execution batches B1/B2, then open PR"
 next_recommended_command: "$work"
-user_input_needed: true
+user_input_needed: false
