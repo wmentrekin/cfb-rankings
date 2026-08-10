@@ -1,0 +1,95 @@
+artifact: plan
+feature: "2026-season-readiness"
+mode: "bounded-feature"
+status: draft
+owner_skill: work
+based_on: "docs/2026-season-readiness/requirements.yaml"
+
+objective: "Remove the manual/dormant season-transition steps blocking a clean start to the 2026 season: automate team-roster ingestion, correct the manual test workflow's default year, and resume the weekly production cron."
+
+approach:
+  summary: "Three small, independent changes on a single shared branch. No architecture change -- main.py gains an idempotent guard-and-load step for team rosters ahead of game ingestion; the two GitHub Actions workflow files get their season-transition config corrected."
+  key_decisions:
+    - "Team ingestion becomes an automatic guard in main.py (check teams table for the target season; if empty, call database.get_teams.load_teams_to_db(year) before database.get_games.load_games_to_db) rather than a new standalone CLI command -- keeps main.py the single entrypoint and avoids adding undocumented manual steps back in."
+    - "Guard is a row-count check, not a season-boundary date check -- so it also self-heals if 2026 teams are ever partially loaded or the table is empty for any other reason, without needing new state-tracking."
+    - "Two domains touched (data-engineer for main.py, platform-engineer for the two workflow files) but kept on a single shared branch rather than parallel worktrees -- total diff is small enough (~3 files, no overlapping scope, no coordination risk) that worktree overhead isn't justified."
+
+contracts:
+  interfaces:
+    - "main.py's pipeline flow gains one new step before the existing load_games_to_db call: an idempotent team-roster check-and-load for args.year."
+  schemas: []
+  config_changes:
+    - "test-week-run.yml: workflow_dispatch input `year` default changes from '2025' to '2026'."
+    - "weekly-update.yml: `on.schedule` cron block is uncommented (re-enabled); the '#### PAUSED DURING OFFSEASON ####' banner is removed or updated to reflect the active state."
+
+branching:
+  strategy: "single-branch"
+  branch_name: "work/2026-season-readiness"
+  worktrees: []
+
+execution_batches:
+  - id: "B1"
+    goal: "Automate team-roster ingestion for a new season"
+    tasks:
+      - id: "T1"
+        title: "Add idempotent team-roster guard to main.py"
+        objective: "Before main.py calls load_games_to_db, check whether the `teams` table has any rows for args.year; if not, call database.get_teams.load_teams_to_db(args.year) first. Log the outcome via the existing setup_logging pattern. Must be safe to run every invocation (idempotent) without re-fetching/re-upserting when teams already exist for that season."
+        assigned_domain: "data-engineer"
+        owned_scope:
+          - "main.py"
+        forbidden_scope:
+          - "database/get_teams.py internals (already correct/idempotent -- call it, don't rewrite it, unless a genuine bug is found, in which case escalate rather than silently expand scope)"
+          - "model/"
+          - "database/get_games.py"
+        dependencies: []
+        parallelizable: true
+        expected_validation:
+          - "Run `uv run python main.py --year 2026 --week 1 --staging` (or equivalent dry/staging invocation) against a season with no existing 2026 teams rows and confirm teams get loaded automatically before game ingestion proceeds, with no errors."
+          - "Run it a second time and confirm no duplicate rows / no unnecessary re-fetch of teams that already exist for that season."
+  - id: "B2"
+    goal: "Correct season-transition config in GitHub Actions workflows"
+    tasks:
+      - id: "T2"
+        title: "Bump test-week-run.yml default year to 2026"
+        objective: "Change the workflow_dispatch `year` input's default from '2025' to '2026'."
+        assigned_domain: "platform-engineer"
+        owned_scope:
+          - ".github/workflows/test-week-run.yml"
+        forbidden_scope:
+          - "weekly-update.yml"
+          - "daily-keep-alive.yml"
+        dependencies: []
+        parallelizable: true
+        expected_validation:
+          - "Diff shows only the default-value change; workflow YAML remains valid."
+      - id: "T3"
+        title: "Re-enable weekly-update.yml's scheduled cron"
+        objective: "Uncomment the `schedule:` cron trigger (currently paused under a '#### PAUSED DURING OFFSEASON ####' banner) so the production weekly job resumes automatically. Update or remove the banner comment to reflect the active state."
+        assigned_domain: "platform-engineer"
+        owned_scope:
+          - ".github/workflows/weekly-update.yml"
+        forbidden_scope:
+          - "test-week-run.yml"
+          - "daily-keep-alive.yml"
+        dependencies: []
+        parallelizable: true
+        expected_validation:
+          - "Diff shows the cron trigger active and the paused-banner comment updated; workflow YAML remains valid."
+
+ordering_notes:
+  - "T1, T2, T3 touch non-overlapping files and have no dependencies on each other -- they can be implemented in any order within the single shared branch."
+
+risks:
+  - "The CollegeFootballData API may not yet reflect finalized 2026 FBS conference realignment/membership if run very early -- not independently verifiable now; if load_teams_to_db(2026) returns an implausible team count (e.g. far from the ~130-136 FBS range), that should surface as a validation finding, not be silently accepted."
+  - "Re-enabling the cron now means it will run weekly during the remaining offseason weeks before kickoff, producing near-empty rankings for a season with no games yet -- expected to be harmless given the existing upsert pattern, but worth confirming during verification rather than assuming."
+
+open_questions: []
+
+review:
+  status: draft
+  loop_count: 0
+  notes: []
+
+checkpoint:
+  required_before_execution: true
+  status: pending

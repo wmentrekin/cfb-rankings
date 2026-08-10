@@ -1,0 +1,87 @@
+artifact: status
+feature: "2026-season-readiness"
+mode: "bounded-feature"
+stage: "planning"
+owner_skill: work
+
+objective: "Get the cfb-rankings pipeline (ingest -> transform -> DB -> model -> output) ready for the 2026 season before resuming the Streamlit-to-personal-site migration work in docs/cfb-site-migration/."
+
+summary:
+  current_focus: "Discovery: verifying the 6 season-readiness gaps found in prior repo exploration and checking live data completeness for the 2025 prior-season chain."
+  last_completed: "Repo exploration of cfb-rankings and personal-site (prior turn); identified candidate gaps."
+  current_blocker: ""
+
+artifacts:
+  requirements: "docs/2026-season-readiness/requirements.yaml"
+  plan: "docs/2026-season-readiness/plan.yaml"
+  implementation_report: null
+
+pr:
+  number: null
+  url: null
+  status: "not_opened"
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    model_guidance: "xhigh"
+    status: "active"
+    stage: "discovery"
+    task: "coordinating discovery agents"
+    last_update: "2026-08-10"
+    blocker: ""
+  - id: "repo-researcher-1"
+    role: "repo-researcher"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "discovery"
+    task: "map season/year/week hardcoding and automation gaps across the codebase"
+    last_update: "2026-08-10"
+    blocker: ""
+  - id: "repo-researcher-2"
+    role: "repo-researcher"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "discovery"
+    task: "read-only check of live Supabase data completeness for 2025 season (games + teams tables)"
+    last_update: "2026-08-10"
+    blocker: ""
+  - id: "platform-researcher-1"
+    role: "platform-researcher"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "discovery"
+    task: "confirm actual 2026 CFB season structure (start date, regular season weeks, 12-team CFP postseason weeks) against utils.py's hardcoded heuristic"
+    last_update: "2026-08-10"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: awaiting_user
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+decisions:
+  - "Classified as bounded-feature: spans multiple files/systems (pipeline, workflows, config) and needs requirements + plan + execution + verification, but is scoped and not multi-batch enough for large-initiative."
+  - "Season-readiness treated as a separate feature from docs/cfb-site-migration/ (that doc only covers the Streamlit->personal-site migration); artifact-output work and the migration will follow as a second feature once this one ships."
+  - "repo-researcher-1 finding: main.py's automated pipeline only ever ingests season_type='regular' games (database/get_games.py default, no --season-type CLI flag exists) -- postseason/bowl/CFP games are never ingested by the normal weekly run. This is a materially bigger finding than the original 'team ingestion is manual' gap and needs to be confirmed against live DB state (repo-researcher-2) before scoping the fix."
+  - "platform-researcher-1 finding: 2026-27 CFP dates are officially announced (source: NCAA.com, CFP official site). National championship is Jan 25, 2027 -- roughly week-index 21-22 counting Saturdays from the Aug 29, 2026 Week 0 kickoff. utils.py's week clamp of 16 cuts ratings off right around the CFP first round (~week 16) and entirely misses quarterfinals/semifinals/championship. Clamp needs to extend to at least ~22-24. The Aug-24-anchor heuristic itself is roughly accurate (lands within ~1 day of actual Week 0) and not a priority fix."
+  - "repo-researcher-2 finding: confirmed via live read-only DB query -- postseason games have NEVER been loaded for ANY season (2014-2025), it's a systemic/original gap, not something that regressed for 2025. 2025 regular season IS fully complete (887 games, 136 teams, ratings weeks 1-15 all 136 rows). teams table for 2025 has 136 rows despite get_teams.py having no automated call path -- confirms it WAS run manually/ad hoc at some point for 2025, and the same manual step will be needed for 2026. No 2026 rows exist yet in games/teams (expected). Noted but out of scope: 2022-2024 games row counts are 3-4x higher with up to 708 distinct team names vs 2025's 230 -- looks like a data-provenance/methodology inconsistency across historical years, flagged as a non-blocking curiosity."
+  - "USER CLARIFICATION (resolves prior open question): postseason exclusion is intentional by design, not a bug -- user does not want bowl games or CFP included in rankings (bowl opt-outs distort results, playoff is a different competitive level). Rankings are purely regular season (12-13 games) + conference championship games. This means: (a) the 'never ingests postseason' finding is NOT in scope to fix, (b) the week-clamp [0,16] concern is also resolved -- conference championship week lands at pipeline week ~14-15 per both platform research (Dec 5, 2026 champ weekend) and live 2025 data (ratings capped at week 15, full 136-team coverage), comfortably inside the existing clamp of 16. No clamp change needed."
+  - "Revised scope after clarification: season-readiness work is now narrowly (1) make 2026 team-roster ingestion automatic/idempotent instead of manual-only, (2) bump test-week-run.yml's year default from 2025 to 2026, (3) re-enable weekly-update.yml's cron ahead of season start. Moving to requirements.yaml synthesis."
+
+next_action: "Awaiting user checkpoint decision on plan.yaml: proceed / revise_plan / narrow_scope / stop"
+next_recommended_command: "$work"
+user_input_needed: true

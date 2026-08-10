@@ -1,0 +1,78 @@
+artifact: requirements
+feature: "2026-season-readiness"
+mode: "bounded-feature"
+status: draft
+owner_skill: work
+
+summary:
+  problem: "The cfb-rankings pipeline has run for one season (2025) with several season-transition steps handled manually or left dormant, and the 2026 season starts within a month."
+  motivation: "Avoid a manual/ad hoc scramble at kickoff by fixing the concrete gaps discovery found: team-roster ingestion for a new season has no automated call path, the manual test workflow still targets 2025, and the production weekly cron has sat paused since the offseason began."
+  requested_outcome: "The pipeline can be run for the 2026 season without any undocumented manual pre-step, the manual test workflow defaults to the correct year, and the weekly production job resumes automatically once the season starts."
+
+goals:
+  - "Make 2026 (and future seasons') FBS team-roster ingestion happen automatically as part of the normal pipeline run, removing the undocumented manual step."
+  - "Update .github/workflows/test-week-run.yml's default year input from 2025 to 2026."
+  - "Re-enable .github/workflows/weekly-update.yml's scheduled cron trigger ahead of the 2026 season start."
+
+non_goals:
+  - "Ingesting or ranking postseason/bowl/CFP games -- confirmed intentional by the user: bowl opt-outs and the different competitive level of the playoff would distort a regular-season-based ranking. Rankings remain regular season (12-13 games) + conference championship games only."
+  - "Changing utils.py's week clamp of [0,16] -- confirmed not needed. Conference championship week lands at pipeline week ~14-15 (platform research: Dec 5, 2026 championship weekend; live 2025 data: ratings capped at week 15 with full 136-team coverage), well inside the existing clamp."
+  - "Reconciling the requirements.txt vs pyproject.toml dependency drift -- requirements.txt appears to intentionally serve a frontend-only (Streamlit Cloud) deploy that doesn't need pipeline-only deps (cvxpy, networkx, psycopg2-binary, requests); both GitHub Actions workflows already install via `uv sync --extra pipeline` and are unaffected. Not season-blocking."
+  - "Fixing the aug25 variable-name/value cosmetic mismatch in utils.py (constructs date(year, 8, 24) into a variable named aug25) -- cosmetic only, not a behavior bug."
+  - "Reconciling the 2022-2024 vs 2025 games-table row-count/provenance inconsistency found during discovery (708 vs 230 distinct team names) -- flagged as a non-blocking historical data-quality curiosity, out of scope here."
+  - "The artifact-output pipeline step, retroactive 2025 artifact generation, and the Streamlit-to-personal-site migration -- deferred to a follow-up feature per the user's explicit sequencing (season readiness first)."
+
+constraints:
+  technical:
+    - "database/get_teams.py::load_teams_to_db already upserts on conflict, so calling it again for a season that's already loaded is safe/idempotent -- the fix should lean on that rather than adding new state-tracking machinery."
+    - "Team data must exist in the `teams` table before database/get_games.py's FBS filter (get_games.py:74) can match any games for that season -- ordering matters: team ingestion must run before game ingestion in main.py's flow."
+    - "main.py already defaults --year to datetime.now().year, so no code change is needed there for the year itself."
+  product:
+    - "Rankings scope stays regular season + conference championship games only, per explicit user direction."
+  process:
+    - "Follow the .agents/ phased workflow: this requirements doc, then plan.yaml, then a user checkpoint before execution."
+
+assumptions:
+  - "The CollegeFootballData API will return correct 2026 FBS team/conference membership by the time the pipeline first runs for 2026 (not independently verified live -- the API is already relied on as source of truth for teams data in the existing 2025 flow)."
+  - "Re-enabling the weekly cron before the season's first game is safe -- early runs would simply upsert zero/near-zero games for the computed week, which is harmless given the upsert pattern already in use."
+
+repo_context:
+  relevant_paths:
+    - "main.py"
+    - "database/get_teams.py"
+    - "database/get_games.py"
+    - "model/prior_model.py"
+    - "model/process_data.py"
+    - "utils.py"
+    - ".github/workflows/weekly-update.yml"
+    - ".github/workflows/test-week-run.yml"
+    - "README.md"
+  systems_in_scope:
+    - "CFBD team/game ingestion"
+    - "GitHub Actions automation (weekly-update.yml, test-week-run.yml)"
+  prior_artifacts:
+    - "docs/2026-season-readiness/status.yaml"
+
+research:
+  repo_findings:
+    - "main.py's call graph never imports database/get_teams.py -- team ingestion has no automated call path and get_teams.py has no __main__/CLI entrypoint of its own (repo-researcher-1)."
+    - "README.md lists get_teams.py as a component but documents no season-setup step anywhere (repo-researcher-1)."
+    - ".github/workflows/test-week-run.yml defaults year to '2025' (line 9) (repo-researcher-1)."
+    - ".github/workflows/weekly-update.yml's schedule trigger is commented out under a '#### PAUSED DURING OFFSEASON ####' banner; only workflow_dispatch is active (repo-researcher-1)."
+    - "Live DB check confirms 2025 regular-season data is fully complete: games=887 rows, teams=136 rows, ratings weeks 1-15 all with full 136-team coverage (repo-researcher-2)."
+    - "teams table already has 136 rows for season=2025 despite no automated call path -- confirms load_teams_to_db was run manually/ad hoc at some point; the same manual step is needed again for 2026 unless automated (repo-researcher-2)."
+    - "No 2026 rows exist yet in games or teams, as expected (repo-researcher-2)."
+  platform_findings:
+    - "2026 FBS Week 0 kickoff is Saturday, August 29, 2026; conference championship weekend is December 4-5, 2026 (platform-researcher-1, NCAA.com/conference sources)."
+    - "2026-27 CFP dates are officially announced: first round Dec 18-19, 2026 through national championship Jan 25, 2027 -- confirms conference-championship week (not CFP) is the correct natural stopping point for a regular-season-based ranking, consistent with the user's product direction (platform-researcher-1)."
+
+acceptance_criteria:
+  - "Running the pipeline for a season with no existing teams rows automatically loads that season's FBS teams before attempting game ingestion, with no manual pre-step required."
+  - "Running the pipeline again for a season that already has teams rows does not error or duplicate data (idempotent)."
+  - ".github/workflows/test-week-run.yml's default year input is 2026."
+  - ".github/workflows/weekly-update.yml's schedule trigger is active (uncommented) so the production job resumes automatically once the season starts."
+
+open_questions: []
+
+ready_for_planning: true
+planning_blockers: []
