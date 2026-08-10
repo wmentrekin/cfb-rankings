@@ -2,9 +2,32 @@ import argparse
 from model.model import get_ratings
 from database.model_to_db import ratings_to_df, insert_model_results_to_db
 from database.get_games import load_games_to_db
+from database.get_teams import load_teams_to_db
 from utils import get_cfb_week, setup_logging
 import pandas as pd #type: ignore
 from datetime import datetime, date
+import os
+from dotenv import load_dotenv # type: ignore
+from sqlalchemy import create_engine # type: ignore
+
+def teams_exist_for_year(year):
+    """
+    Check whether the teams table already has any rows for the given season.
+    Args:
+        year (int): Season year to check.
+    Returns:
+        bool: True if at least one teams row exists for that season.
+    """
+    load_dotenv()
+    db_url = (
+        f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+        "?sslmode=require"
+    )
+    engine = create_engine(db_url)
+    count_df = pd.read_sql_query(f"SELECT COUNT(*) AS n FROM teams WHERE season = {year};", engine)
+    engine.dispose()
+    return int(count_df['n'].iloc[0]) > 0
 
 def main():
     """
@@ -51,6 +74,19 @@ def main():
     # SETUP LOGGING
     logger = setup_logging(args.year, args.week)
     logger.info("Starting model run: year=%s week=%s staging=%s", args.year, args.week, args.staging)
+
+    # ENSURE TEAMS LOADED
+    try:
+        if teams_exist_for_year(args.year):
+            logger.info("Teams already present in DB for year=%s; skipping team load.", args.year)
+        else:
+            logger.info("No teams found in DB for year=%s; loading FBS teams before game ingestion.", args.year)
+            load_teams_to_db(args.year)
+            logger.info("Teams for year=%s loaded into DB.", args.year)
+    except Exception as e:
+        logger.exception("Team loading check/load failed for year=%s: %s", args.year, e)
+        logger.error("Exiting: cannot proceed with game ingestion without a teams table for year=%s.", args.year)
+        return
 
     # PULL DATA
     try:
