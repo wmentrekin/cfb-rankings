@@ -1,0 +1,86 @@
+artifact: status
+feature: "rankings-artifact-output"
+mode: "bounded-feature"
+stage: "planning"
+owner_skill: work
+
+objective: "Add an additive artifact-publishing step to cfb-rankings: after the model writes to `ratings`, generate a JSON artifact per season/week from that data (joined with `teams` for conference, with rank/delta computed the way Streamlit already does it) and upload it to Cloudflare R2. Wire into the existing weekly-update.yml cron. Backfill 2025 (weeks 1-15). Do NOT touch personal-site or the Streamlit app in this pass."
+
+summary:
+  current_focus: "Discovery: repo patterns for a new artifact-generation module, Streamlit's existing rank/delta computation to replicate, personal-site's prior-art schema expectations (read-only, no changes there), and Cloudflare R2 integration mechanics (S3-compatible API, GH Actions auth pattern)."
+  last_completed: "docs/2026-season-readiness/ shipped and merged to main (team-ingestion automation, workflow year/cron fixes, model.py crash fix). User then chose Cloudflare R2 as artifact storage for this feature."
+  current_blocker: ""
+
+artifacts:
+  requirements: "docs/rankings-artifact-output/requirements.yaml"
+  plan: "docs/rankings-artifact-output/plan.yaml"
+  implementation_report: null
+
+pr:
+  number: null
+  url: null
+  status: "not_opened"
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    model_guidance: "xhigh"
+    status: "active"
+    stage: "discovery"
+    task: "coordinating discovery agents"
+    last_update: "2026-08-10"
+    blocker: ""
+  - id: "repo-researcher-1"
+    role: "repo-researcher"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "discovery"
+    task: "Streamlit's exact rank/delta computation logic to replicate; DB connection/module conventions for a new artifact-generation module; dependency management pattern"
+    last_update: "2026-08-10"
+    blocker: ""
+  - id: "repo-researcher-2"
+    role: "repo-researcher"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "discovery"
+    task: "personal-site's existing artifact-schema prior art (read-only investigation of the other repo, no changes) to inform forward-compatible schema design"
+    last_update: "2026-08-10"
+    blocker: ""
+  - id: "platform-researcher-1"
+    role: "platform-researcher"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "discovery"
+    task: "Cloudflare R2 integration mechanics: S3-compatible API details, Python upload pattern, GitHub Actions auth/secrets needed, current free-tier limits"
+    last_update: "2026-08-10"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: awaiting_user
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+decisions:
+  - "Classified as bounded-feature: new pipeline step + new module + CI wiring + backfill script + new cloud dependency, cohesive single unit of work."
+  - "Storage decided directly with user (not via discovery agent): Cloudflare R2. Bucket/API token provisioning is a manual step the user must do themselves (dashboard or wrangler login) -- not something an agent can do autonomously. Plan must separate 'code that assumes R2 credentials exist' from 'actually validating a live upload', with a checkpoint for the user to provision credentials before live validation."
+  - "Explicit non-goal for this pass: no changes to personal-site or frontend/streamlit_app.py. This is additive-only to cfb-rankings' own pipeline."
+  - "repo-researcher-2 finding: personal-site's stub schema is {season, week, generated_at_utc, rankings:[{rank, team, record, rating, delta}]} -- no conference field anywhere in code/props, only a single unstructured roadmap prose bullet mentions 'conference and postseason views' as aspirational, not a committed contract. RankingsTable.astro is generic (headers/rows props, no domain typing), so schema changes on the cfb-rankings side won't be blocked by that component. No historical-file naming convention exists yet in personal-site (only one latest-rankings.json). Since we are not touching personal-site this pass, this is purely informative -- conference can still be added to our artifact schema per the user's stated preference, personal-site just isn't the source of that requirement."
+  - "repo-researcher-1 finding: Streamlit's exact rank/delta logic confirmed -- rank = sort by rating desc, reset_index, rank = index+1 (no explicit tie-break, pandas stable sort on Supabase's return order). delta = prev_rank - current_rank (positive = moved UP). First appearance / missing prev week (incl. week-1 with no data) yields delta=0, not null. 'Previous week' is strictly week-1 in the same season, no fallback search for an earlier populated week. Two open design decisions the new artifact module must make explicitly since existing code has no real precedent: (1) tie-break for identical ratings -- add a deterministic secondary sort key (e.g. team name) instead of Streamlit's arbitrary DB-order tiebreak, for backfill reproducibility; (2) whether to preserve Streamlit's fragile strict-week-minus-1 previous-week lookup or improve it (e.g. most-recent-prior-populated-week)."
+  - "repo-researcher-1 finding: dominant DB pattern confirmed (load_dotenv -> postgresql+psycopg2 URL from DB_USER/DB_PASSWORD/DB_HOST/DB_PORT/DB_NAME env vars + sslmode=require -> sqlalchemy create_engine -> pd.read_sql_query for reads / Table+on_conflict_do_update for writes -> engine.dispose()). No existing code reads `ratings` back out via this pattern (only Streamlit reads ratings, via the separate Supabase-client pattern) -- new module needs its own read function, modeled on model/process_data.py's get_games_by_year_week style. New pipeline-only deps (e.g. boto3) must go in pyproject.toml's [project.optional-dependencies].pipeline extra (not base dependencies) to be picked up by `uv sync --frozen --extra pipeline` in CI. teams.conference column confirmed: lowercase `conference`, sourced directly from CFBD API's team.get('conference'), no rename. Re-confirmed: zero export/upload code (json.dump/to_json/to_csv/boto3/s3/r2) exists anywhere outside this feature's own planning docs. No existing top-level package for 'generate/publish artifact' concern -- would be a new module."
+
+next_action: "Awaiting user checkpoint decision on plan.yaml: proceed / revise_plan / narrow_scope / stop. R2 provisioning instructions given to user in parallel -- B1/B2 don't need it, B3 (backfill) does."
+next_recommended_command: "$work"
+user_input_needed: true

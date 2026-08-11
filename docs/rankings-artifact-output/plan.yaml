@@ -1,0 +1,117 @@
+artifact: plan
+feature: "rankings-artifact-output"
+mode: "bounded-feature"
+status: draft
+owner_skill: work
+based_on: "docs/rankings-artifact-output/requirements.yaml"
+
+objective: "Add a new, additive artifact-publishing step to cfb-rankings that reads final ratings back out of Postgres, computes rank/delta, joins in conference, and publishes a historical JSON artifact per season/week to Cloudflare R2 -- wired into the existing weekly cron, with a one-time backfill of the full 2025 season."
+
+approach:
+  summary: "New top-level `artifacts/` package (no existing precedent for this concern in the repo, per discovery) with two modules: one for the DB read/rank/delta/payload logic, one for the R2 upload. main.py calls it after the existing ratings insert, gated to non-staging runs, with defensive error handling so R2 problems can never break the core pipeline. A standalone backfill script reuses the same publish function to populate 2025 from already-complete `ratings` data, no model re-run needed."
+  key_decisions:
+    - "New package `artifacts/` (not `database/` or a new frontend concern) since this is neither 'fetch external data into DB' nor 'insert model output into DB' -- it's 'read DB, transform, publish externally', a genuinely new concern per repo-researcher-1's finding that no existing module fits."
+    - "Deterministic tie-break: sort by rating desc, then team name asc, for rank assignment -- improves on Streamlit's arbitrary DB-order tie-break (not a real contract worth replicating exactly) and makes the backfill reproducible."
+    - "Previous-week lookup for delta: 'most recent prior week in the same season that has ratings data', not Streamlit's strict week-1-only lookup -- strictly more robust (identical result when there's no gap, which is true for all of 2025 and expected for 2026) and avoids inheriting a known fragility."
+    - "R2 key layout: `rankings/{season}/week-{week:02d}.json` (immutable per-week snapshot) + `rankings/{season}/latest.json` (mirrors the most recent week within that season) + `rankings/latest.json` (mirrors the most recent season+week overall) -- supports historical browsing per the user's explicit backfill request, not just a latest-only pointer."
+    - "Publish step is skipped entirely for --staging runs (mirrors the existing ratings/ratings_test split) and is wrapped so any R2/credential failure logs a warning and returns, never raises -- the ratings DB write already succeeded before this step runs and must not be jeopardized by it."
+    - "R2 provisioning (bucket + Account API token, dashboard-only, no Wrangler needed) is a manual prerequisite for the user. Code for B1/B2 can be written and validated (including the 'R2 unconfigured -> graceful warning, no crash' acceptance criterion) without live credentials, since credentials are absent in this environment right now anyway. Only B3 (the real 2025 backfill) requires the user to have actually provisioned R2 first."
+
+contracts:
+  interfaces:
+    - "artifacts/rankings.py: get_ratings_with_conference(engine, year, week) -> DataFrame (ratings JOIN teams on team/school + season, includes conference); previous_week_with_data(engine, year, week) -> Optional[int]; compute_rank_and_delta(current_df, previous_df) -> DataFrame with rank/delta columns; build_payload(year, week, ranked_df) -> dict matching the artifact schema below."
+    - "artifacts/r2.py: get_r2_client() -> Optional[boto3 client] (returns None + logs warning if env vars missing, never raises); upload_json(client, bucket, key, payload) -> bool; publish_rankings_artifact(engine, year, week) -> None (orchestrates the above, fully defensive, called from main.py)."
+    - "main.py: one new call to artifacts.r2.publish_rankings_artifact(engine, args.year, args.week) after the existing insert_model_results_to_db call, only when not args.staging, itself wrapped in try/except as defense in depth."
+  schemas:
+    - "Artifact JSON: {season: int, week: int, generated_at_utc: str (ISO8601 UTC), rankings: [{rank: int, team: str, conference: str, record: str ('W-L'), rating: float, delta: int}]}. Additive vs personal-site's existing stub shape (adds `conference`), field names/types otherwise unchanged so a future consumer needs no field renaming."
+  config_changes:
+    - "pyproject.toml: add `boto3` to `[project.optional-dependencies].pipeline`."
+    - ".env: add R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME (user adds real values themselves once provisioned; local .env stays gitignored as today)."
+    - ".github/workflows/weekly-update.yml: add the same four R2_* vars to the run step's `env:` block, sourced from `secrets.*`, matching the existing DB_*/API_KEY pattern exactly. Requires the user to add the matching repo secrets in GitHub before this actually functions in CI -- workflow addition itself does not require secrets to exist yet."
+
+branching:
+  strategy: "single-branch"
+  branch_name: "work/rankings-artifact-output"
+  worktrees: []
+
+execution_batches:
+  - id: "B1"
+    goal: "Build the artifact generation + R2 publish module, wire into main.py -- fully executable and validatable without live R2 credentials"
+    tasks:
+      - id: "T1"
+        title: "Build artifacts/rankings.py (DB read, rank/delta, payload)"
+        objective: "New module with get_ratings_with_conference, previous_week_with_data, compute_rank_and_delta, build_payload as specified in contracts.interfaces above. Follow the repo's existing SQLAlchemy/pd.read_sql_query DB-access convention exactly (see model/process_data.py for the closest existing precedent)."
+        assigned_domain: "data-engineer"
+        owned_scope: ["artifacts/rankings.py", "artifacts/__init__.py"]
+        forbidden_scope: ["model/", "database/", "frontend/"]
+        dependencies: []
+        parallelizable: false
+        expected_validation:
+          - "Run against live 2025 data (read-only queries against `ratings`/`teams`, no writes) for at least 2 different weeks and print the resulting payload dict; confirm rank ordering, conference values, and delta signs match what Streamlit currently shows for the same season/week (spot-check 2-3 teams against the live Streamlit app or a direct Supabase query)."
+      - id: "T2"
+        title: "Build artifacts/r2.py (R2 client + safe upload + orchestration)"
+        objective: "New module with get_r2_client, upload_json, publish_rankings_artifact as specified in contracts.interfaces above. Must satisfy the acceptance criterion that missing/invalid R2 credentials produce a logged warning and a clean return, never an exception. Add boto3 to pyproject.toml's pipeline extra."
+        assigned_domain: "data-engineer"
+        owned_scope: ["artifacts/r2.py", "pyproject.toml"]
+        forbidden_scope: ["artifacts/rankings.py (T1's scope)", "model/", "database/"]
+        dependencies: ["T1"]
+        parallelizable: false
+        expected_validation:
+          - "With no R2_* env vars set (the current real state of this environment), call publish_rankings_artifact(engine, 2025, 3) and confirm it logs a clear warning and returns without raising, and does not affect any other pipeline state."
+          - "uv sync --frozen --extra pipeline succeeds with boto3 added."
+      - id: "T3"
+        title: "Wire publish step into main.py"
+        objective: "Add the single call to artifacts.r2.publish_rankings_artifact after the existing insert_model_results_to_db call, gated on `not args.staging`, wrapped in try/except as defense in depth (T2's own internal handling should already prevent crashes, but the call site should not assume that)."
+        assigned_domain: "data-engineer"
+        owned_scope: ["main.py"]
+        forbidden_scope: ["model/", "database/", "artifacts/ internals (call the public functions only)"]
+        dependencies: ["T1", "T2"]
+        parallelizable: false
+        expected_validation:
+          - "Run `uv run python main.py --year 2025 --week 3 --staging` and confirm the log shows the publish step is SKIPPED (staging=True)."
+          - "Run `uv run python main.py --year 2025 --week 3` (no --staging) with no R2 credentials configured and confirm the run still completes successfully end-to-end (ratings insert succeeds) with only a logged warning about R2, no crash. NOTE: confirm with the user before running any non-staging invocation, since this writes to the real production `ratings` table for that season/week -- prefer re-running an existing, already-correct week (idempotent upsert) rather than a new one if there's any doubt."
+  - id: "B2"
+    goal: "Wire R2 secrets into the production CI workflow"
+    tasks:
+      - id: "T4"
+        title: "Add R2 secrets to weekly-update.yml"
+        objective: "Add R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME to the existing run step's env: block, sourced from secrets.*, matching the exact existing pattern for DB_*/API_KEY. Does not require the secrets to actually exist in GitHub yet -- this just wires the reference."
+        assigned_domain: "platform-engineer"
+        owned_scope: [".github/workflows/weekly-update.yml"]
+        forbidden_scope: ["test-week-run.yml (out of scope -- manual test workflow, can be updated in a later pass if desired)", "daily-keep-alive.yml"]
+        dependencies: []
+        parallelizable: true
+        expected_validation:
+          - "YAML parses correctly; diff shows only the four new env: lines added, nothing else changed."
+  - id: "B3"
+    goal: "Backfill the 2025 season (weeks 1-15) -- requires the user to have provisioned the real R2 bucket + API token first"
+    tasks:
+      - id: "T5"
+        title: "Backfill script + real 2025 run"
+        objective: "New standalone script (e.g. scripts/backfill_rankings_artifacts.py --year 2025) that loops weeks 1-15 ascending and calls the same publish_rankings_artifact function per week, reusing already-complete `ratings` data (no model re-run). Must run AFTER the user confirms R2 is provisioned and .env has real R2_* values."
+        assigned_domain: "data-engineer"
+        owned_scope: ["scripts/backfill_rankings_artifacts.py"]
+        forbidden_scope: ["artifacts/ internals (call the public functions only)", "model/", "database/"]
+        dependencies: ["T1", "T2", "T3"]
+        parallelizable: false
+        expected_validation:
+          - "After running, list R2 bucket contents (or fetch each key) and confirm all 15 weekly files plus rankings/2025/latest.json and rankings/latest.json exist with correct content, ending on week 15 as the season's/global latest."
+
+ordering_notes:
+  - "B1 (T1->T2->T3, sequential due to real dependencies) and B2 (T4) can run in parallel -- non-overlapping files, no shared state. Not worth a worktree given the total size; single shared branch."
+  - "B3 (T5) is gated behind the user completing R2 provisioning (bucket + Account API token, dashboard-only, no Wrangler) and adding the real values to .env. B1/B2 do not need this and should proceed immediately once the plan is approved, in parallel with the user provisioning R2."
+
+risks:
+  - "boto3's put_object could silently succeed against the wrong bucket/path if R2_BUCKET_NAME or the account ID is mistyped -- T5's validation step explicitly re-fetches/lists what actually landed in R2 rather than trusting a 200 response alone."
+  - "Backfill (T5) writes to R2 under real 2025 keys; if run twice it will simply overwrite with identical content (idempotent, not a correctness risk), but should still only be run once deliberately rather than repeatedly to avoid burning through Class A write-op quota for no reason (still far under the free tier either way)."
+
+open_questions: []
+
+review:
+  status: draft
+  loop_count: 0
+  notes: []
+
+checkpoint:
+  required_before_execution: true
+  status: pending

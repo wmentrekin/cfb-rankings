@@ -1,0 +1,88 @@
+artifact: requirements
+feature: "rankings-artifact-output"
+mode: "bounded-feature"
+status: draft
+owner_skill: work
+
+summary:
+  problem: "The pipeline's only durable output is Postgres rows (`ratings`/`ratings_test`); every consumer (currently just Streamlit) must query the DB live, and rank/delta are computed ad hoc client-side. There is no static, versioned, historical artifact a future site can read cheaply."
+  motivation: "Publish a stable JSON artifact per season/week to Cloudflare R2 as an additive pipeline step, so a future consumer (personal-site, migrated in a later feature) never needs a live DB query. Backfill the full 2025 season now so history exists before any consumer is built."
+  requested_outcome: "After the model writes to `ratings`, a new step reads it back (joined with `teams` for conference), computes rank/delta, and publishes a JSON artifact to R2 -- both going forward (wired into the existing weekly cron) and retroactively for all of 2025."
+
+goals:
+  - "New module that reads `ratings` + `teams` for a given season/week, computes rank and delta, and builds a JSON artifact payload."
+  - "Upload that payload to Cloudflare R2 under a historical, per-week key layout (not just a single latest-only file), so season/week browsing is possible later without re-deriving history."
+  - "Wire the publish step into main.py so it runs automatically as part of every non-staging pipeline invocation, including the existing weekly-update.yml cron -- no new workflow needed."
+  - "Backfill R2 with artifacts for the full 2025 season (weeks 1-15) from data already in `ratings`, no model re-run required."
+  - "Keep the pipeline's core ratings computation/DB-write behavior unaffected if R2 is unreachable or unconfigured -- artifact publishing is additive and must not become a new way for the whole pipeline to fail."
+
+non_goals:
+  - "Any change to personal-site (schema consumption, new page code, etc.) -- deferred to the already-scoped migration feature."
+  - "Any change to frontend/streamlit_app.py -- it keeps reading Supabase live, unchanged, per the user's explicit request not to break it."
+  - "Making the R2 bucket/objects publicly readable in a production sense (custom domain, caching) -- out of scope until there's an actual consumer. The R2 Public Development URL may optionally be enabled as a low-stakes dashboard toggle for the user's own manual spot-checking, but production public access is deferred to the migration feature."
+  - "Postseason/CFP artifact generation -- rankings remain regular season + conference championships only, consistent with docs/2026-season-readiness/requirements.yaml's confirmed product decision."
+
+constraints:
+  technical:
+    - "New R2-only dependency (boto3) must go in pyproject.toml's `[project.optional-dependencies].pipeline` extra (not base `dependencies`), matching how cvxpy/networkx/psycopg2-binary/requests are already scoped -- CI installs via `uv sync --frozen --extra pipeline`."
+    - "Follow the repo's existing DB-access convention exactly: load_dotenv() -> postgresql+psycopg2 URL from DB_USER/DB_PASSWORD/DB_HOST/DB_PORT/DB_NAME env vars + sslmode=require -> sqlalchemy create_engine -> pd.read_sql_query for reads. No existing code reads `ratings` back out via this pattern yet -- this feature adds the first one."
+    - "boto3 R2 client construction: endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com', region_name='auto' (Cloudflare's own documented value), aws_access_key_id/aws_secret_access_key from env vars."
+    - "New env vars needed: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME -- added to .env locally and to weekly-update.yml's secrets/env block, following the exact pattern already used for DB_*/API_KEY."
+    - "Artifact publish step only runs when NOT --staging (mirrors the existing staging/production split for the ratings table itself -- staging test runs should not publish real public artifacts)."
+    - "If R2 credentials are missing/invalid or the upload fails, log a clear warning and return without raising -- must never crash the pipeline run or prevent the ratings DB write, which already succeeded before this step runs."
+  product:
+    - "Artifact schema stays additive/compatible with personal-site's existing stub shape ({season, week, generated_at_utc, rankings:[{rank, team, record, rating, delta}]}) plus a new `conference` field per team (joined from `teams.conference`), per the user's explicit request. personal-site's RankingsTable.astro is generic (headers/rows props) and won't be broken by this even once consumed later."
+    - "Historical browsing must be supported (not latest-only), per the user's explicit backfill request for all of 2025."
+  process:
+    - "R2 bucket + API token provisioning is a manual, one-time, dashboard-only step the user must do themselves (NOT something an agent can do autonomously) -- confirmed via platform research, no Wrangler CLI or login required. Code that assumes R2 credentials exist can be written and reviewed before this is done; only the live-upload validation and the real 2025 backfill require it to actually be done first."
+
+assumptions:
+  - "The user will provision the R2 bucket + Account API token (scoped to Object Read & Write on that bucket) via the Cloudflare dashboard before live validation/backfill execution, using the steps confirmed in discovery."
+  - "R2's free tier (10GB storage, 1M writes/mo, 10M reads/mo, unlimited egress) comfortably covers this workload indefinitely -- no cost risk."
+  - "2025's `ratings` table data (weeks 1-15, 136 teams/week, confirmed complete in docs/2026-season-readiness/status.yaml) is sufficient to backfill from directly -- no re-run of the model needed."
+
+repo_context:
+  relevant_paths:
+    - "main.py"
+    - "database/model_to_db.py"
+    - "model/process_data.py"
+    - "database/get_teams.py"
+    - "frontend/streamlit_app.py"
+    - "pyproject.toml"
+    - ".github/workflows/weekly-update.yml"
+    - ".env"
+  systems_in_scope:
+    - "Postgres `ratings` and `teams` tables (read-only for this feature)"
+    - "New artifact-generation module (location TBD in plan -- likely a new `artifacts/` package, no existing precedent for this concern per discovery)"
+    - "Cloudflare R2 (new)"
+    - "GitHub Actions (weekly-update.yml, new secrets)"
+  prior_artifacts:
+    - "docs/2026-season-readiness/ (prior shipped feature this builds on)"
+    - "docs/cfb-site-migration/requirements.yaml (frozen discovery doc for the larger migration this is a precursor to)"
+
+research:
+  repo_findings:
+    - "Streamlit's exact rank/delta logic (frontend/streamlit_app.py): rank = sort by rating desc + row position (no explicit tie-break, arbitrary DB-order for ties); delta = prev_rank - current_rank (positive = moved up); missing-previous-week (incl. any gap) defaults delta=0; 'previous week' is strictly week-1 in the same season with no fallback search."
+    - "No existing code reads `ratings` back out via the pipeline's SQLAlchemy pattern -- only Streamlit reads it, via a separate Supabase-client pattern. This feature adds the first SQLAlchemy-based `ratings` read."
+    - "teams.conference column confirmed: lowercase `conference`, sourced directly from CFBD API, no rename needed."
+    - "personal-site's current stub schema and consuming component (RankingsTable.astro, generic headers/rows props) confirmed compatible with an additive `conference` field -- informational only, not touched this pass."
+    - "Zero existing export/upload code (json.dump/to_json/to_csv/boto3/s3/r2) anywhere in the repo outside this feature's own docs."
+  platform_findings:
+    - "R2 bucket creation and Account API token generation are both dashboard-only flows (Cloudflare dashboard -> R2 Object Storage) -- no Wrangler CLI or interactive login required. Token should be scoped to 'Object Read & Write' on just the target bucket (least privilege)."
+    - "Free tier: 10GB-month storage, 1M Class A ops (writes)/month, 10M Class B ops (reads)/month, unlimited free egress -- far exceeds this workload (a few hundred small JSON files)."
+    - "boto3 (standard AWS SDK) works directly against R2 via endpoint_url override; this is Cloudflare's own documented, recommended approach -- no Cloudflare-specific SDK or the wrangler-action GitHub Action needed for a Python pipeline."
+    - "Public read access: R2's 'Public Development URL' (pub-<hash>.r2.dev) is a one-toggle dashboard option but explicitly documented by Cloudflare as rate-limited/not-cached/dev-only, not for production. A custom domain is Cloudflare's recommended production path -- deferred to the migration feature since there's no consumer yet."
+
+acceptance_criteria:
+  - "Running the pipeline non-staging for a season/week that has ratings data produces a JSON artifact in R2 matching the defined schema, including a `conference` field per team."
+  - "The historical key layout supports fetching any specific past season/week's artifact, not just the latest."
+  - "All 15 weeks of the 2025 season have a corresponding artifact in R2 after the backfill runs."
+  - "If R2 credentials are absent/invalid, the pipeline still completes its existing ratings computation/DB-write successfully and logs a clear warning -- it does not crash or block."
+  - "The weekly-update.yml cron requires no new manual trigger -- artifact publishing happens automatically as part of the same run that already produces ratings."
+
+open_questions:
+  - "Exact production public-access method (custom domain, caching strategy) is intentionally deferred to the migration feature -- not needed until personal-site actually consumes these artifacts."
+
+ready_for_planning: true
+planning_blockers:
+  - "R2 bucket + API token do not exist yet -- live upload validation and the real 2025 backfill cannot execute for real until the user provisions them. Code-writing and structural work can proceed in parallel; plan must sequence the live-validation/backfill task after this manual step."
