@@ -81,6 +81,7 @@ research:
     - "`personal-site` already treats CFB Rankings as the flagship project and already documents a desired artifact-driven public surface."
     - "`personal-site/agent-context/pages/cfb-rankings.md` states that rankings are intended to come from a static artifact at `public/data/cfb/latest-rankings.json`."
     - "`personal-site` already contains a `RankingsTable.astro` component and route-specific CFB context that can support the migration."
+    - "SHIPPED since this doc was frozen (see docs/rankings-artifact-output/): cfb-rankings now publishes a real artifact to Cloudflare R2 after every non-staging pipeline run, plus a full 2025 backfill (weeks 1-15). Schema: {season, week, generated_at_utc, rankings:[{rank, team, conference, record, rating, delta}]}. Key layout: rankings/{season}/week-{NN}.json (immutable per-week), rankings/{season}/latest.json, rankings/latest.json (global latest). This resolves 3 of the 5 open_questions below -- see updated open_questions list. personal-site's own consumption side is NOT yet built -- this doc's goals/acceptance_criteria are otherwise unchanged."
   platform_findings:
     - "No external platform research was required for this discovery artifact beyond the user-provided deployment direction."
 
@@ -93,11 +94,21 @@ acceptance_criteria:
   - "The plan identifies the initial replacement scope for the Streamlit rankings page and any phased follow-up work."
 
 open_questions:
-  - "What exact artifact schema should be published for rankings pages: latest-only plus historical index, or full per-season/per-week files, and what metadata should each include?"
-  - "Should artifacts be published directly into `personal-site`, to a shared storage bucket, or both?"
-  - "Should Supabase remain the system of record for rankings history, or become a secondary operational sink behind artifact publication?"
-  - "What minimum historical UX is required at launch on `personal-site`: dropdown selectors, route-based archives, or both?"
-  - "How should freshness metadata and failed-run visibility be surfaced to end users?"
+  - status: "RESOLVED"
+    question: "What exact artifact schema should be published for rankings pages: latest-only plus historical index, or full per-season/per-week files, and what metadata should each include?"
+    resolution: "Full per-season/per-week files, not latest-only. Schema and R2 key layout shipped -- see repo_findings above. One residual gap: there is no manifest/index object listing which season/week combinations actually exist in R2 -- personal-site would currently need to either know the range out-of-band (e.g. weeks 1-15 for 2025) or attempt fetches and handle 404s. Worth deciding during the design/build pass whether a small rankings/index.json (list of {season, available_weeks}) is worth adding -- cheap to add to the existing publish step whenever that's decided, not done yet since it's presentation-driven."
+  - status: "RESOLVED"
+    question: "Should artifacts be published directly into `personal-site`, to a shared storage bucket, or both?"
+    resolution: "Shared storage bucket (Cloudflare R2), not committed into personal-site. Preserves the clean repo boundary this doc's constraints call for."
+  - status: "RESOLVED"
+    question: "Should Supabase remain the system of record for rankings history, or become a secondary operational sink behind artifact publication?"
+    resolution: "Supabase remains cfb-rankings' internal operational DB (ingestion + model execution + the ratings table the artifact step reads from) -- personal-site should never need direct Supabase access. Streamlit keeps reading Supabase live, unchanged, until it's actually retired."
+  - status: "OPEN -- genuine product/UX decision, input for the design session"
+    question: "What minimum historical UX is required at launch on `personal-site`: dropdown selectors, route-based archives, or both?"
+    notes: "Astro is static-first (per personal-site's own AGENTS.md) and deploys to Cloudflare Pages -- route-based archives (e.g. a getStaticPaths-generated page per season/week) would fit that model well and are naturally shareable/linkable, at the cost of needing a build-time way to enumerate what exists in R2 (ties into the index.json question above). A single page with client-side dropdown selectors is simpler to build and closer to Streamlit's current UX. Both is possible but more work. No lean recorded here -- deferred to the user's design session."
+  - status: "OPEN -- genuine product/UX decision, input for the design session"
+    question: "How should freshness metadata and failed-run visibility be surfaced to end users?"
+    notes: "generated_at_utc is already in every artifact for free, so a simple 'as of {date}' display costs nothing extra. Staleness is implicitly detectable client-side (compare generated_at_utc to now) without cfb-rankings needing to publish anything new. An explicit run-status object (e.g. rankings/status.json with last_success/last_attempt/last_error) is possible but is new infrastructure cfb-rankings doesn't have yet -- only worth adding if the design session wants an explicit error/staleness banner rather than just an implicit timestamp."
 
 freeze:
   ready_for_plan: true
