@@ -16,6 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 pipeline = [
+    "boto3",
     "cvxpy",
     "networkx",
     "psycopg2-binary",

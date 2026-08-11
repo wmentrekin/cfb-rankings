@@ -3,6 +3,7 @@ from model.model import get_ratings
 from database.model_to_db import ratings_to_df, insert_model_results_to_db
 from database.get_games import load_games_to_db
 from database.get_teams import load_teams_to_db
+from artifacts.r2 import publish_rankings_artifact
 from utils import get_cfb_week, setup_logging
 import pandas as pd #type: ignore
 from datetime import datetime, date
@@ -130,6 +131,15 @@ def main():
     except Exception as ex:
         logger.exception("Insert failed: %s", ex)
         return
+
+    # PUBLISH RANKINGS ARTIFACT
+    if not args.staging:
+        try:
+            publish_rankings_artifact(args.year, args.week)
+        except Exception as ex:
+            logger.exception("Rankings artifact publish step failed unexpectedly: %s", ex)
+    else:
+        logger.info("Skipping rankings artifact publish because --staging was set.")
 
     logger.info("Run finished successfully for year=%s week=%s", args.year, args.week)
 
