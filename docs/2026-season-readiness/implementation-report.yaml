@@ -1,0 +1,60 @@
+artifact: implementation_report
+feature: "2026-season-readiness"
+mode: "bounded-feature"
+status: complete
+owner_skill: work
+based_on: "docs/2026-season-readiness/plan.yaml"
+
+summary:
+  scope_executed: "T1 (automatic idempotent team-roster ingestion in main.py), T2 (test-week-run.yml year default bumped to 2026), T3 (weekly-update.yml cron re-enabled), T4 (fixed a pre-existing crash in model/model.py:152 surfaced during T1's live validation, when a week has zero FCS-loss games)."
+  outcome: "All four tasks implemented, live-validated against the real Supabase DB and CFBD API, and pushed directly to main per explicit user direction (solo repo, no PR/review step used)."
+
+task_batches_attempted: ["B1", "B2", "B3"]
+task_batches_completed: ["B1", "B2", "B3"]
+
+domains_touched: ["data-engineer", "platform-engineer", "orchestrator (direct, for the trivial one-line T4 fix)"]
+
+pr:
+  number: null
+  url: null
+
+changes:
+  files:
+    - "main.py -- added teams_exist_for_year() guard + auto-call to database.get_teams.load_teams_to_db(year) before game ingestion"
+    - ".github/workflows/test-week-run.yml -- year input default '2025' -> '2026'"
+    - ".github/workflows/weekly-update.yml -- uncommented schedule/cron trigger, removed stale 'PAUSED DURING OFFSEASON' banner"
+    - "model/model.py -- fcs_loss_penalty now always a CVXPY expression (cp.Constant(0.0) fallback) instead of relying on cp.sum([])'s plain-int behavior"
+  modules: ["main.py", "model/model.py", ".github/workflows/"]
+  docs_updated: ["docs/2026-season-readiness/status.yaml", "docs/2026-season-readiness/requirements.yaml", "docs/2026-season-readiness/plan.yaml"]
+
+local_validation:
+  checks_run:
+    - "uv run python main.py --year 2026 --week 1 --staging (twice) -- confirmed teams auto-load on first run, skip on second run (idempotent), 138 teams loaded, 99 games loaded, no duplicate rows"
+    - "Same command, post-T4-fix -- confirmed full run completes end to end (previously crashed at model/model.py:152), FCS Margin penalty prints 0.0, ratings inserted into ratings_test"
+    - "uv run python main.py --year 2025 --week 3 --staging -- regression check on a week with real FCS-loss games (48/33/23 FCS-loss games in weeks 1-3 of 2025), confirms T4's fix does not alter behavior on the non-empty path"
+    - "yaml.safe_load on both edited workflow files -- confirmed valid YAML"
+    - "git diff review of every change before each commit"
+  failures: []
+  skipped:
+    - "No PR-based reviewer/tester verification pass was run -- user explicitly directed pushing straight to main without opening a PR, given this is a solo repo with no other reviewers."
+
+review_summary:
+  status: "skipped_by_user_directive"
+  key_findings: []
+
+test_summary:
+  status: "validated_via_live_runs"
+  checks_run:
+    - "Live pipeline runs against real Supabase DB and CFBD API for both 2026 (empty-FCS-loss case) and 2025 (non-empty-FCS-loss case), all via --staging so only ratings_test was written"
+  failures: []
+  gaps:
+    - "No automated test suite exists in this repo (confirmed during discovery) -- all validation here was manual/live-run based, consistent with existing repo conventions."
+
+open_issues:
+  - "Noted but explicitly out of scope per user direction: postseason/CFP games are intentionally never ingested (product decision, not a bug). requirements.txt vs pyproject.toml dependency drift, and a cosmetic aug25 variable-name mismatch in utils.py, were both flagged during discovery as non-blocking and left untouched."
+  - "Noted but out of scope: 2022-2024 games-table row counts and distinct-team-name counts look inconsistent with 2025's (looks like a historical data-provenance/methodology difference) -- flagged as a non-blocking curiosity for awareness, not addressed here."
+
+handoff:
+  current_state: complete
+  next_owner: "user"
+  next_action: "Season readiness is done and live on main. Next up per the user's stated sequencing: the artifact-output pipeline step, retroactive 2025 artifact generation, and the Streamlit-to-personal-site migration already scoped in docs/cfb-site-migration/requirements.yaml."
