@@ -78,7 +78,7 @@ def get_ratings(year, week = None):
     fcs_loss_terms = []
     for (team, margin, alpha, _, _) in fcs_losses:
         fcs_loss_terms.append(cp.pos(r[team] + (margin * alpha) - r_fcs)**2 * gamma_fcs)
-    fcs_loss_penalty = cp.sum(fcs_loss_terms)
+    fcs_loss_penalty = cp.sum(fcs_loss_terms) if fcs_loss_terms else cp.Constant(0.0)
 
     # Soft Margin Penalty Terms
     soft_margin_terms = []
