@@ -1,7 +1,7 @@
 artifact: status
 feature: "rankings-artifact-output"
 mode: "bounded-feature"
-stage: "planning"
+stage: "execution"
 owner_skill: work
 
 objective: "Add an additive artifact-publishing step to cfb-rankings: after the model writes to `ratings`, generate a JSON artifact per season/week from that data (joined with `teams` for conference, with rank/delta computed the way Streamlit already does it) and upload it to Cloudflare R2. Wire into the existing weekly-update.yml cron. Backfill 2025 (weeks 1-15). Do NOT touch personal-site or the Streamlit app in this pass."
@@ -54,6 +54,22 @@ agents:
     task: "Cloudflare R2 integration mechanics: S3-compatible API details, Python upload pattern, GitHub Actions auth/secrets needed, current free-tier limits"
     last_update: "2026-08-10"
     blocker: ""
+  - id: "data-engineer-1"
+    role: "data-engineer"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "execution"
+    task: "B1 -- T1+T2+T3: artifacts/rankings.py, artifacts/r2.py, main.py wiring"
+    last_update: "2026-08-10"
+    blocker: ""
+  - id: "platform-engineer-1"
+    role: "platform-engineer"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "execution"
+    task: "B2 -- T4: R2 secrets in weekly-update.yml"
+    last_update: "2026-08-10"
+    blocker: ""
 
 loops:
   planning_review:
@@ -65,7 +81,7 @@ loops:
 
 checkpoint:
   pre_execution_required: true
-  pre_execution_status: awaiting_user
+  pre_execution_status: accepted
   options:
     - proceed
     - revise_plan
@@ -73,6 +89,10 @@ checkpoint:
     - stop
 
 blockers: []
+decisions_execution:
+  - "R2 credentials appeared in .env mid-execution (user finished provisioning while data-engineer-1 was running). Its 'R2 unconfigured' validation call inadvertently became a real write: rankings/2025/week-03.json, rankings/2025/latest.json, rankings/latest.json (21181 bytes each, confirmed correct via read-only list_objects_v2 and a spot-check against raw DB data). Content is correct, not garbage -- left in place rather than reverted, since B3's backfill will naturally supersede the 'latest' pointers once it completes weeks 1-15 in order."
+  - "GitHub repo secrets R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET_NAME set on wmentrekin/cfb-rankings via gh CLI, values read directly from user's local .env, never printed to chat/logs."
+  - "personal-site's eventual read access to R2 (public bucket vs custom domain vs private+read-only-token) is explicitly deferred to the migration feature -- no changes made to personal-site or Cloudflare Pages config this pass."
 decisions:
   - "Classified as bounded-feature: new pipeline step + new module + CI wiring + backfill script + new cloud dependency, cohesive single unit of work."
   - "Storage decided directly with user (not via discovery agent): Cloudflare R2. Bucket/API token provisioning is a manual step the user must do themselves (dashboard or wrangler login) -- not something an agent can do autonomously. Plan must separate 'code that assumes R2 credentials exist' from 'actually validating a live upload', with a checkpoint for the user to provision credentials before live validation."
