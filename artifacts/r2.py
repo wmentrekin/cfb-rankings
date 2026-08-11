@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import re
+from datetime import datetime, timezone
 from typing import Optional
 
 import boto3  # type: ignore
@@ -76,6 +78,85 @@ def upload_json(client, bucket, key, payload) -> bool:
         return False
 
 
+_WEEK_KEY_RE = re.compile(r"^rankings/(\d+)/week-(\d+)\.json$")
+
+
+def build_index(client, bucket) -> Optional[dict]:
+    """
+    Derive the rankings index from the bucket's actual rankings/{season}/week-*.json keys,
+    rather than reading/merging a previous index -- keeps it self-healing if objects are ever
+    added or removed outside the normal publish flow.
+    Args:
+        client: boto3 S3-compatible client (as returned by get_r2_client).
+        bucket (str): R2 bucket name.
+    Returns:
+        Optional[dict]: {generated_at_utc, latest_season, latest_week, seasons: [{season, weeks}]}
+                         sorted with the most recent season first, weeks ascending within a
+                         season. None if the bucket has no week artifacts yet, or on any failure.
+    """
+    try:
+        seasons: dict = {}
+        paginator = client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket, Prefix="rankings/"):
+            for obj in page.get("Contents", []):
+                match = _WEEK_KEY_RE.match(obj["Key"])
+                if match:
+                    season = int(match.group(1))
+                    week = int(match.group(2))
+                    seasons.setdefault(season, set()).add(week)
+
+        if not seasons:
+            return None
+
+        latest_season = max(seasons)
+        latest_week = max(seasons[latest_season])
+
+        return {
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "latest_season": latest_season,
+            "latest_week": latest_week,
+            "seasons": [
+                {"season": season, "weeks": sorted(seasons[season])}
+                for season in sorted(seasons, reverse=True)
+            ],
+        }
+    except Exception as e:
+        logger.warning("Failed to build rankings index: %s", e)
+        return None
+
+
+def refresh_index() -> None:
+    """
+    Rebuild and publish rankings/index.json from the bucket's current contents.
+    Notes:
+        Fully exception-safe, same contract as publish_rankings_artifact -- never raises.
+    """
+    try:
+        load_dotenv()
+        client = get_r2_client()
+        if client is None:
+            logger.warning("R2 not configured, skipping index refresh")
+            return
+
+        bucket = os.getenv("R2_BUCKET_NAME")
+        if not bucket:
+            logger.warning("R2_BUCKET_NAME not configured, skipping index refresh")
+            return
+
+        index = build_index(client, bucket)
+        if index is None:
+            logger.warning("No rankings artifacts found in R2, skipping index publish")
+            return
+
+        if upload_json(client, bucket, "rankings/index.json", index):
+            logger.info("Published rankings index to R2 key rankings/index.json")
+        else:
+            logger.warning("Rankings index publish failed")
+    except Exception as e:
+        logger.exception("refresh_index failed unexpectedly: %s", e)
+        return
+
+
 def publish_rankings_artifact(year, week) -> None:
     """
     Read ratings back out of Postgres, compute rank/delta, and publish the rankings artifact
@@ -128,6 +209,8 @@ def publish_rankings_artifact(year, week) -> None:
                 logger.info("Published rankings artifact to R2 key %s", key)
             else:
                 logger.warning("Rankings artifact publish failed for R2 key %s", key)
+
+        refresh_index()
     except Exception as e:
         logger.exception("publish_rankings_artifact failed unexpectedly for year=%s week=%s: %s", year, week, e)
         return

@@ -1,0 +1,58 @@
+artifact: status
+feature: "rankings-artifact-index"
+mode: "quick-fix"
+stage: "complete"
+owner_skill: work
+
+objective: "Add rankings/index.json to R2 -- a small manifest of which season/week combos exist, derived by listing the bucket rather than hand-maintained state, so personal-site's confirmed dropdown-selector UX can populate itself. Additive to the already-shipped rankings-artifact-output feature."
+
+summary:
+  current_focus: "Implementing build_index/refresh_index in artifacts/r2.py, wiring into publish_rankings_artifact, backfilling the index for the 17 objects already in R2."
+  last_completed: "docs/rankings-artifact-output/ shipped (artifact publishing to R2, full 2025 backfill). User locked UX decision: single page, year+week dropdowns, timestamp-only freshness (no explicit status object)."
+  current_blocker: ""
+
+artifacts:
+  requirements: null
+  plan: null
+  implementation_report: null
+
+pr:
+  number: null
+  url: null
+  status: "not_opened -- pushing directly to main per established session precedent"
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    model_guidance: "xhigh"
+    status: "active"
+    stage: "execution"
+    task: "implementing directly given trivial scope (one new function, one call site, one backfill invocation)"
+    last_update: "2026-08-11"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: false
+  pre_execution_status: "not_required -- quick-fix mode, user directly requested build+backfill"
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+decisions:
+  - "quick-fix mode: single self-contained addition to an already-shipped feature, no separate requirements/plan docs needed."
+  - "Index is derived by listing rankings/{season}/week-*.json keys in the bucket each time, not read-modify-write against a prior index -- avoids drift if objects are ever manually added/removed."
+
+next_action: "Implement, validate, backfill against existing 17 objects, commit, push to main."
+next_recommended_command: "$work"
+user_input_needed: false
