@@ -1,0 +1,63 @@
+artifact: implementation_report
+feature: "rankings-artifact-output"
+mode: "bounded-feature"
+status: complete
+owner_skill: work
+based_on: "docs/rankings-artifact-output/plan.yaml"
+
+summary:
+  scope_executed: "New artifacts/ package (rankings.py: DB read + rank/delta computation; r2.py: R2 client + safe upload + orchestration; backfill_rankings_artifacts.py: standalone backfill entrypoint), main.py wiring (publish step after ratings insert, skipped on --staging), weekly-update.yml R2 secrets wiring, GitHub repo secrets set, and a full 2025 season backfill (weeks 1-15) run for real against live R2."
+  outcome: "All tasks complete, all pushed directly to main per user directive (no PR, matching docs/2026-season-readiness/'s precedent). R2 bucket confirmed to contain 17 correct objects: 15 weekly snapshots + rankings/2025/latest.json + rankings/latest.json, the latter two correctly resolving to season 2025 week 15."
+
+task_batches_attempted: ["B1", "B2", "B3"]
+task_batches_completed: ["B1", "B2", "B3"]
+
+domains_touched: ["data-engineer", "platform-engineer", "orchestrator (direct, for B3 given the underlying module was already built/validated)"]
+
+pr:
+  number: null
+  url: null
+
+changes:
+  files:
+    - "artifacts/__init__.py, artifacts/rankings.py, artifacts/r2.py -- new package: DB read (ratings JOIN teams for conference), deterministic rank (rating desc, team name tiebreak) + delta (vs most recent prior week with data) computation, JSON payload builder, R2 client + safe upload + orchestration (publish_rankings_artifact)"
+    - "artifacts/backfill_rankings_artifacts.py -- standalone CLI, loops weeks calling publish_rankings_artifact, no model re-run"
+    - "main.py -- one new call to publish_rankings_artifact after the existing ratings insert, gated on `not args.staging`, wrapped in try/except as defense in depth"
+    - "pyproject.toml, uv.lock -- added boto3 to the pipeline extra"
+    - ".github/workflows/weekly-update.yml -- four new R2_* secrets wired into the run step's env block"
+    - ".gitignore -- added logs/ (untracked local run-log clutter, unrelated cleanup requested mid-session)"
+  modules: ["artifacts/", "main.py", ".github/workflows/"]
+  docs_updated: ["docs/rankings-artifact-output/status.yaml", "docs/rankings-artifact-output/requirements.yaml", "docs/rankings-artifact-output/plan.yaml"]
+
+local_validation:
+  checks_run:
+    - "uv sync --frozen --extra pipeline -- boto3/botocore/jmespath/s3transfer installed cleanly after uv lock regeneration"
+    - "R2-unconfigured path (env vars blanked in-process): get_r2_client() returns None + logs warning; publish_rankings_artifact returns cleanly without raising"
+    - "Payload spot-check for 2025 week 3 against raw DB queries: rank/conference/record/rating/delta all verified correct, including a delta=+25 case (Oklahoma) and a delta=-9 case despite an unchanged rating (Penn State bye week, correctly reflects relative rank movement, not a bug)"
+    - "uv run python main.py --year 2025 --week 3 --staging -- confirmed publish step explicitly skipped, ratings insert unaffected"
+    - "Full 2025 backfill (weeks 1-15) run for real against live R2 -- all 15 INFO-level 'Published rankings artifact' log lines confirmed for all 3 keys per week, no WARNING/failure lines"
+    - "Post-backfill read-only verification: list_objects_v2 shows exactly 17 objects; rankings/latest.json content-checked and confirms season=2025, week=15, top team Indiana 13-0"
+  failures: []
+  skipped:
+    - "No PR-based reviewer/tester verification pass -- user directive to push straight to main, consistent with the prior feature."
+
+review_summary:
+  status: "skipped_by_user_directive"
+  key_findings: []
+
+test_summary:
+  status: "validated_via_live_runs"
+  checks_run:
+    - "Live DB reads/writes and live R2 writes for the actual 2025 backfill, plus a staging-mode run confirming the publish step is correctly skipped"
+  failures: []
+  gaps:
+    - "No automated test suite exists in this repo (consistent with prior features) -- validation was live-run based."
+
+open_issues:
+  - "INCIDENT (self-resolved, no action needed): mid-task, real R2 credentials appeared in .env while data-engineer-1 was mid-validation of the 'R2 unconfigured' path, causing one unintended real write (2025 week 3, 3 keys) before the agent noticed and switched to a safely-sandboxed unconfigured-env test for the remainder of its validation. Content was correct and has since been fully superseded by the complete 15-week backfill -- no cleanup needed, noted here for the record."
+  - "personal-site's read-side access to this data (public bucket vs custom domain vs private token via Cloudflare Pages env vars) is explicitly deferred to the already-scoped migration feature (docs/cfb-site-migration/requirements.yaml) -- no changes made to personal-site or Cloudflare Pages this pass."
+
+handoff:
+  current_state: complete
+  next_owner: "user"
+  next_action: "Going forward, the weekly-update.yml cron will publish a fresh artifact automatically every week once the 2026 season starts (R2 secrets already live in GitHub). Next body of work per the user's stated sequencing: the Streamlit-to-personal-site migration."

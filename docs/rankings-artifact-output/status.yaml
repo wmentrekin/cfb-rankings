@@ -1,7 +1,7 @@
 artifact: status
 feature: "rankings-artifact-output"
 mode: "bounded-feature"
-stage: "execution"
+stage: "complete"
 owner_skill: work
 
 objective: "Add an additive artifact-publishing step to cfb-rankings: after the model writes to `ratings`, generate a JSON artifact per season/week from that data (joined with `teams` for conference, with rank/delta computed the way Streamlit already does it) and upload it to Cloudflare R2. Wire into the existing weekly-update.yml cron. Backfill 2025 (weeks 1-15). Do NOT touch personal-site or the Streamlit app in this pass."
@@ -14,12 +14,12 @@ summary:
 artifacts:
   requirements: "docs/rankings-artifact-output/requirements.yaml"
   plan: "docs/rankings-artifact-output/plan.yaml"
-  implementation_report: null
+  implementation_report: "docs/rankings-artifact-output/implementation-report.yaml"
 
 pr:
   number: null
   url: null
-  status: "not_opened"
+  status: "skipped_by_user_directive -- pushed directly to main, matching docs/2026-season-readiness/'s precedent"
 
 agents:
   - id: "orchestrator"
@@ -70,6 +70,14 @@ agents:
     task: "B2 -- T4: R2 secrets in weekly-update.yml"
     last_update: "2026-08-10"
     blocker: ""
+  - id: "orchestrator-direct-2"
+    role: "orchestrator"
+    model_guidance: "xhigh"
+    status: "completed"
+    stage: "execution"
+    task: "B3 -- T5: backfill script (artifacts/backfill_rankings_artifacts.py) + real 2025 weeks 1-15 run, implemented directly given the underlying module was already built/validated by data-engineer-1. User redirected the script location mid-task: moved from a new top-level scripts/ dir into artifacts/ itself, invoked via `python -m artifacts.backfill_rankings_artifacts` to resolve the package-relative import cleanly."
+    last_update: "2026-08-10"
+    blocker: ""
 
 loops:
   planning_review:
@@ -101,6 +109,6 @@ decisions:
   - "repo-researcher-1 finding: Streamlit's exact rank/delta logic confirmed -- rank = sort by rating desc, reset_index, rank = index+1 (no explicit tie-break, pandas stable sort on Supabase's return order). delta = prev_rank - current_rank (positive = moved UP). First appearance / missing prev week (incl. week-1 with no data) yields delta=0, not null. 'Previous week' is strictly week-1 in the same season, no fallback search for an earlier populated week. Two open design decisions the new artifact module must make explicitly since existing code has no real precedent: (1) tie-break for identical ratings -- add a deterministic secondary sort key (e.g. team name) instead of Streamlit's arbitrary DB-order tiebreak, for backfill reproducibility; (2) whether to preserve Streamlit's fragile strict-week-minus-1 previous-week lookup or improve it (e.g. most-recent-prior-populated-week)."
   - "repo-researcher-1 finding: dominant DB pattern confirmed (load_dotenv -> postgresql+psycopg2 URL from DB_USER/DB_PASSWORD/DB_HOST/DB_PORT/DB_NAME env vars + sslmode=require -> sqlalchemy create_engine -> pd.read_sql_query for reads / Table+on_conflict_do_update for writes -> engine.dispose()). No existing code reads `ratings` back out via this pattern (only Streamlit reads ratings, via the separate Supabase-client pattern) -- new module needs its own read function, modeled on model/process_data.py's get_games_by_year_week style. New pipeline-only deps (e.g. boto3) must go in pyproject.toml's [project.optional-dependencies].pipeline extra (not base dependencies) to be picked up by `uv sync --frozen --extra pipeline` in CI. teams.conference column confirmed: lowercase `conference`, sourced directly from CFBD API's team.get('conference'), no rename. Re-confirmed: zero export/upload code (json.dump/to_json/to_csv/boto3/s3/r2) exists anywhere outside this feature's own planning docs. No existing top-level package for 'generate/publish artifact' concern -- would be a new module."
 
-next_action: "Awaiting user checkpoint decision on plan.yaml: proceed / revise_plan / narrow_scope / stop. R2 provisioning instructions given to user in parallel -- B1/B2 don't need it, B3 (backfill) does."
+next_action: "Feature complete. R2 has all 17 objects (15 weekly artifacts + 2 latest pointers) for 2025, confirmed via read-only list + content check (rankings/latest.json -> season 2025 week 15). Next up: personal-site consumption (the already-scoped migration in docs/cfb-site-migration/requirements.yaml)."
 next_recommended_command: "$work"
-user_input_needed: true
+user_input_needed: false
