@@ -1,7 +1,0 @@
-numpy
-pandas
-python-dotenv
-supabase
-sqlalchemy
-streamlit
-plotly

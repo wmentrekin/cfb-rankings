@@ -2,7 +2,7 @@
 
 This file is the high-level entry point for local agent context in `cfb-rankings`.
 
-It should help future work stay aligned with the repo's actual role, the relationship to `personal-site`, and the intended migration path away from the current Streamlit deployment.
+It should help future work stay aligned with the repo's actual role and the relationship to `personal-site`, which is now the live public presentation layer.
 
 ## Purpose
 
@@ -20,17 +20,17 @@ This repo is not intended to become the long-term public website surface.
 
 ## Current State
 
-- the current public-facing rankings experience lives in `frontend/streamlit_app.py`
-- rankings are currently read from Supabase in the Streamlit app
+- the Streamlit app has been retired: `frontend/streamlit_app.py` is deleted and the deployed Streamlit Cloud app has been taken down
+- the public-facing rankings experience now lives in `personal-site`, which reads published ranking artifacts from Cloudflare R2 (it does not query Supabase or this repo's database directly)
 - scheduled and manual GitHub Actions runs exist under `.github/workflows/`
-- the model and pipeline are already cleanly separated from the future website repo
-- the current Streamlit deployment is considered unstable and not the preferred long-term public surface
+- the model and pipeline are already cleanly separated from the website repo
+- Supabase remains this repo's internal operational database (ingestion + model execution); it is no longer read by any public-facing surface
 
 ## Long-Term Vision
 
 The primary long-term product direction is:
 
-- migrate the public rankings experience from the Streamlit app to `personal-site`
+- ~~migrate the public rankings experience from the Streamlit app to `personal-site`~~ -- **done**: the Streamlit app is retired and `personal-site` is live, reading real ranking artifacts from R2
 - keep `cfb-rankings` focused on pipeline, model, artifact generation, and publishing
 - let `personal-site` become the stable public presentation layer for rankings, methodology, and project context
 
@@ -65,6 +65,8 @@ Likely options to evaluate:
 - Supabase-backed artifact storage if that remains operationally simplest
 - Cloudflare-friendly artifact storage aligned with the eventual site deployment path
 
+**Resolved**: Cloudflare R2 was chosen. `artifacts/r2.py` publishes a JSON ranking artifact per season/week after each pipeline run, and `personal-site` consumes it directly -- Supabase is not in the public read path.
+
 Current bias:
 
 - prefer static artifact delivery for the website
@@ -73,10 +75,10 @@ Current bias:
 
 ## Near-Term Priorities
 
-1. define the migration architecture from Streamlit to `personal-site`
-2. decide the ranking artifact format and publishing location
+1. ~~define the migration architecture from Streamlit to `personal-site`~~ -- **done**
+2. ~~decide the ranking artifact format and publishing location~~ -- **done**: R2, see `artifacts/r2.py`
 3. simplify or restructure GitHub Actions around artifact production and publishing
-4. replace the current Streamlit-centric public experience with a stronger page in `personal-site`
+4. ~~replace the current Streamlit-centric public experience with a stronger page in `personal-site`~~ -- **done**: `personal-site` is live
 5. keep the methodology accurate as model behavior evolves
 
 ## Constraints And Preferences
@@ -90,21 +92,18 @@ Current bias:
 
 ## Known Open Questions
 
-- what exact artifact shape should be published for the site:
-  plain rankings only, or rankings plus metadata, deltas, records, and freshness timestamps
-- where should artifacts live long-term:
-  repo-managed files, Supabase storage, Cloudflare storage, or another static hosting path
-- should the pipeline still write to database tables once the site no longer depends on them
-- how much historical season/week browsing should the public site support at launch
-- whether GitHub Actions should publish directly into `personal-site`, to shared storage, or to both
+- ~~what exact artifact shape should be published for the site~~ -- **resolved**: `{season, week, generated_at_utc, rankings:[{rank, team, conference, record, rating, delta}]}`, see `artifacts/r2.py`
+- ~~where should artifacts live long-term~~ -- **resolved**: Cloudflare R2
+- should the pipeline still write to database tables once the site no longer depends on them -- still yes for now: Supabase remains the operational DB the pipeline/model run against; only the public read path moved off it
+- how much historical season/week browsing should the public site support at launch -- open, see `docs/cfb-site-migration/requirements.yaml`
+- ~~whether GitHub Actions should publish directly into `personal-site`, to shared storage, or to both~~ -- **resolved**: shared storage (R2), not committed into `personal-site`
 
 ## Guidance For Future Agents
 
-- treat Streamlit as the current implementation, not the destination
-- optimize for a future where the public rankings page is served from `personal-site`
+- the public rankings page is served from `personal-site`, reading published R2 artifacts -- this repo has no frontend of its own anymore
 - when making pipeline changes, consider whether they improve artifact publishing and operational clarity
-- when making frontend-facing decisions in this repo, prefer decisions that reduce coupling to the public site
-- if planning migration work, coordinate with the local context already defined in `../personal-site/AGENTS.md` and `../personal-site/agent-context/pages/cfb-rankings.md`
+- when making changes that affect published artifacts, prefer decisions that reduce coupling to the public site (schema changes are a cross-repo concern)
+- if planning further site-facing work, coordinate with the local context already defined in `../personal-site/AGENTS.md` and `../personal-site/agent-context/pages/cfb-rankings.md`
 
 ## Suggested Workflow
 

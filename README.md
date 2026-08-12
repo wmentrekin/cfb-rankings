@@ -1,6 +1,6 @@
 # **College Football Ranking Optimization**
 
-📊 **[View Rankings App](https://cfb-rankings-wmentrekin.streamlit.app/)**
+📊 The public rankings app now lives in the sibling [`personal-site`](../personal-site) repo, which reads published ranking artifacts from Cloudflare R2 and renders them on the live site. This repo no longer ships a public frontend of its own.
 
 ## **What This Project Does**
 
@@ -22,15 +22,17 @@ The model is designed to:
 | **Database** | Stores team, game, and model results tables | **[Supabase](https://supabase.com/) PostgreSQL** |
 | **Data Processing** | Loads teams/games and prepares features | `process_data.py`, `get_games.py`, `get_teams.py` |
 | **Model** | Solves convex QP for team ratings | `cvxpy`, `numpy`, `pandas` |
+| **Artifact Publishing** | Publishes ranking artifacts (JSON) for the public site to consume | `artifacts/r2.py` → Cloudflare R2 |
 | **Automation** | Weekly GitHub Action scheduled via cron (Sundays 3AM ET) | `.github/workflows/weekly-update.yml` |
-| **Frontend** | Public rankings display | **[Streamlit](https://cfb-rankings-wmentrekin.streamlit.app/)** |
+| **Public Frontend** | Rankings display, methodology, and project context | sibling [`personal-site`](../personal-site) repo (reads R2 artifacts, deployed on Cloudflare Pages) |
 
 **Data Flow Summary:**
 1. GitHub Action triggers `main.py` every Sunday morning.  
 2. New games are pulled from the API and inserted into Supabase.  
 3. The model runs using all games up to the current week.  
 4. Ratings are written back to the database.  
-5. Logs are saved for diagnostics.
+5. A ranking artifact (JSON) is published to Cloudflare R2, then `personal-site` is triggered to rebuild and pick it up.
+6. Logs are saved for diagnostics.
 
 ---
 
@@ -39,7 +41,7 @@ The model is designed to:
 This repo now uses `uv` for dependency and environment management.
 
 ```bash
-uv sync
+uv sync --extra pipeline
 uv run python main.py
 ```
 
