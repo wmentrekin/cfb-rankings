@@ -22,9 +22,9 @@ artifacts:
   implementation_report: "docs/rankings-artifact-fixes-2026-08/implementation-report.yaml"
 
 pr:
-  number: null
-  url: null
-  status: "not_opened"
+  number: 3
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/3"
+  status: "open"
 
 agents:
   - id: "orchestrator"

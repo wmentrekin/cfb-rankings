@@ -30,8 +30,8 @@ task_batches_completed: ["B1", "B2"]
 domains_touched: ["data-engineer"]
 
 pr:
-  number: null
-  url: null
+  number: 3
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/3"
 
 changes:
   files:
