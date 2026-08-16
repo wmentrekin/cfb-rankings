@@ -1,0 +1,110 @@
+artifact: plan
+feature: "rankings-artifact-fixes-2026-08"
+mode: "bounded-feature"
+status: draft
+owner_skill: work
+based_on: "docs/rankings-artifact-fixes-2026-08/requirements.yaml"
+
+objective: >
+  Add logo + standardized conference fields to the rankings artifact schema, make the
+  pipeline structurally incapable of publishing a week-0 artifact again, clean up the
+  one existing bad batch (season=2026, week=0), and regenerate all historical 2025
+  artifacts so they carry the new fields too.
+
+approach:
+  summary: >
+    Single-branch bounded-feature, one data-engineer task doing all code changes
+    (schema + guard) together since they're both small, tightly-coupled edits to the
+    same two files, followed by an ad-hoc (non-productionized) cleanup + backfill
+    pass run directly against live Postgres/R2 using this repo's existing local
+    credentials, verified with real queries before and after.
+  key_decisions:
+    - "One execution task instead of splitting schema-fields and week-0-guard into separate tasks: both touch main.py/artifacts/rankings.py narrowly and neither is independently useful without the other for this feature's stated outcome."
+    - "Conference mapping implemented as a module-level dict in artifacts/rankings.py (co-located with build_payload, the only place it's used) rather than a new file -- 11 entries doesn't warrant its own module."
+    - "Logo URL resolved by substring match on the teams.logos array (search for a URL containing '/logos-dark/32/') rather than a fixed index, so it stays correct even if CFBD ever reorders the array."
+    - "Week-0 guard placed in main.py right after args.week is finalized (covers both the auto-computed path and an explicit --week 0/--week -N), before any DB write or model run -- protects weekly-update.yml and test-week-run.yml identically without touching either workflow file."
+    - "Cleanup (DB delete + R2 key removal + index refresh) and backfill (rerun artifacts/backfill_rankings_artifacts.py for 2025 weeks 1-15) run directly by the execution agent using this repo's local .env credentials, as real validation against production -- not simulated, not deferred to a follow-up session, but explicitly confirmed with the user before executing given it deletes live rows."
+
+contracts:
+  interfaces:
+    - "Rankings artifact JSON `rankings[]` entries gain a `logo` key (string | null), additive -- existing `rank/team/conference/record/rating/delta` keys unchanged in type/meaning, only `conference`'s string values change."
+  schemas:
+    - "artifacts/rankings.py build_payload() output schema: existing keys unchanged, + logo: str | None"
+  config_changes: []
+
+branching:
+  strategy: "single-branch"
+  branch_name: "work/rankings-artifact-fixes-2026-08"
+  worktrees: []
+
+execution_batches:
+  - id: "B1"
+    goal: "Schema + guard code changes"
+    tasks:
+      - id: "T1"
+        title: "Add logo field, standardize conference names, add week-0 guard"
+        objective: >
+          Modify artifacts/rankings.py so get_ratings_with_conference() selects
+          t.logos, build_payload() emits a resolved `logo` URL and a standardized
+          `conference` string per entry; modify main.py so any run where the
+          effective week is < 1 logs and exits before touching the DB or R2.
+        assigned_domain: "data-engineer"
+        owned_scope:
+          - "artifacts/rankings.py"
+          - "main.py"
+        forbidden_scope:
+          - "artifacts/r2.py (publish/backfill mechanics unchanged, only their inputs change)"
+          - "artifacts/backfill_rankings_artifacts.py (reused as-is)"
+          - "model/**, database/get_games.py, database/model_to_db.py (rating math and ingestion untouched)"
+          - ".github/workflows/*.yml (no workflow file changes -- the guard is in-code)"
+        dependencies: []
+        parallelizable: false
+        expected_validation:
+          - "Unit-level sanity: call build_payload() against a small synthetic DataFrame covering a mapped conference, an unmapped conference (passthrough+warning), a team with logos, a team with an empty logos list (logo: null)."
+          - "uv run python main.py --year 2026 --week 0 (or no --week during the current pre-season window) and confirm no DB write / no artifact publish occurs, via log output and a post-run row-count check."
+          - "uv run python main.py --year 2026 --week 1 confirms the guard does NOT block a legitimate week."
+  - id: "B2"
+    goal: "Live data cleanup + historical backfill (ad-hoc, not new permanent code)"
+    tasks:
+      - id: "T2"
+        title: "Delete bad 2026 week-0 data, refresh R2 index, backfill 2025 weeks 1-15"
+        objective: >
+          Using this repo's local .env production credentials: delete the 138
+          season=2026/week=0 rows from Postgres `ratings`; delete R2 keys
+          rankings/2026/week-00.json, rankings/2026/latest.json, rankings/latest.json;
+          call artifacts.r2.refresh_index() to rebuild rankings/index.json from the
+          bucket's remaining contents; then run
+          `uv run python -m artifacts.backfill_rankings_artifacts --year 2025 --start-week 1 --end-week 15`
+          to republish every 2025 week with the new logo/conference fields.
+        assigned_domain: "data-engineer"
+        owned_scope:
+          - "live Postgres `ratings` table (season=2026, week=0 rows only)"
+          - "live R2 bucket, `rankings/` prefix"
+        forbidden_scope:
+          - "any ratings/teams row outside season=2026, week=0"
+          - "any R2 key outside the 3 named 2026 keys and the index self-heal"
+          - "the `teams` table (not touched by this cleanup)"
+        dependencies: ["T1"]
+        parallelizable: false
+        expected_validation:
+          - "SELECT COUNT(*) FROM ratings WHERE season=2026 AND week=0 returns 0 after cleanup."
+          - "GET rankings/index.json from R2 shows latest_season=2025, latest_week=15 after refresh."
+          - "Spot-check 2-3 of the republished 2025 week JSONs: logo field present and a valid CFBD URL, conference values are all standardized strings, rank/team/record/rating/delta byte-identical to before except for the two new/changed fields."
+
+ordering_notes:
+  - "T1 must land and be locally verified before T2 runs, since T2's backfill call exercises T1's exact build_payload()/get_ratings_with_conference() code path against real data -- it's also T1's most meaningful validation."
+
+risks:
+  - "T2 is a real production data mutation (live Postgres DELETE, live R2 object deletion) -- mitigated by the narrow, DB-verified scope (exactly 138 rows, exactly 3 R2 keys) and by surfacing this explicitly at the pre-execution checkpoint before any deletion runs."
+  - "backfill_rankings_artifacts.py republishes to the SAME R2 keys 2025 already uses (overwrite, not additive) -- if T1 has a bug, this would corrupt live 2025 data personal-site is currently serving. Mitigated by running T1's own unit-level validation first, and only proceeding to T2 once that passes."
+
+open_questions: []
+
+review:
+  status: draft
+  loop_count: 0
+  notes: []
+
+checkpoint:
+  required_before_execution: true
+  status: approved

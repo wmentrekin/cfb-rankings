@@ -1,0 +1,64 @@
+artifact: status
+feature: "rankings-artifact-fixes-2026-08"
+mode: "bounded-feature"
+stage: "execution"
+owner_skill: work
+
+objective: >
+  Add logo + standardized conference fields to the rankings artifact schema, guarantee
+  the pipeline can never publish a week-0 artifact again, clean up the existing bad
+  2026 week-0 data, and regenerate 2025's historical artifacts with the new fields.
+  Paired with personal-site's rankings-table-redesign-2026-08, which depends on this
+  feature's schema changes.
+
+summary:
+  current_focus: "User approved 'proceed with everything' including B2's live deletion. Branch work/rankings-artifact-fixes-2026-08 created off main. Spawning data-engineer for B1+B2."
+  last_completed: "Discovery: read artifacts/rankings.py, main.py, database/get_teams.py, artifacts/r2.py, artifacts/backfill_rankings_artifacts.py, both workflow YAMLs; queried live DB directly (ratings season/week counts, distinct 2026 conferences, teams.logos schema/contents) using this repo's local .env credentials."
+  current_blocker: ""
+
+artifacts:
+  requirements: "docs/rankings-artifact-fixes-2026-08/requirements.yaml"
+  plan: "docs/rankings-artifact-fixes-2026-08/plan.yaml"
+  implementation_report: null
+
+pr:
+  number: null
+  url: null
+  status: "not_opened"
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    model_guidance: "xhigh"
+    status: "active"
+    stage: "execution"
+    task: "spawning data-engineer for B1+B2"
+    last_update: "2026-08-16"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: approved
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+decisions:
+  - "Paired with personal-site's rankings-table-redesign-2026-08 -- that feature's rendering work depends on this one's schema additions (logo, standardized conference)."
+  - "Chose an in-code week<1 guard in main.py over a cron-schedule/date hack in weekly-update.yml -- generalizes to every future season without a hardcoded 2026 date, and also protects manual test-week-run.yml dispatches."
+  - "Cleanup scope narrowed via direct DB query to exactly one bad batch: season=2026, week=0, 138 ratings rows, plus 3 R2 keys -- not a broad or exploratory deletion."
+
+next_action: "Spawn data-engineer execution agent for B1 (schema+guard) then B2 (live cleanup+backfill)."
+next_recommended_command: "$work"
+user_input_needed: false
