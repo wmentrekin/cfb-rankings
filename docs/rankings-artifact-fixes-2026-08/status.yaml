@@ -1,7 +1,7 @@
 artifact: status
 feature: "rankings-artifact-fixes-2026-08"
 mode: "bounded-feature"
-stage: "execution"
+stage: "verification"
 owner_skill: work
 
 objective: >
@@ -12,14 +12,14 @@ objective: >
   feature's schema changes.
 
 summary:
-  current_focus: "User approved 'proceed with everything' including B2's live deletion. Branch work/rankings-artifact-fixes-2026-08 created off main. Spawning data-engineer for B1+B2."
-  last_completed: "Discovery: read artifacts/rankings.py, main.py, database/get_teams.py, artifacts/r2.py, artifacts/backfill_rankings_artifacts.py, both workflow YAMLs; queried live DB directly (ratings season/week counts, distinct 2026 conferences, teams.logos schema/contents) using this repo's local .env credentials."
-  current_blocker: ""
+  current_focus: "B1+B2 executed and committed (04b15a0). Orchestrator found (via live CFBD API check) that the logo-null gap in 2025 backfilled data is fixable, but it's new scope (touches teams table, forbidden in the approved plan) -- asking user before proceeding. Opening PR for T1 code next regardless."
+  last_completed: "data-engineer implemented schema fields + week-0 guard, validated both, then ran the live cleanup (138 rows + 3 R2 keys deleted, index self-healed to 2025/15) and 2025 backfill. Found logo is null for all 2025 weeks (legacy teams.logos format); orchestrator confirmed via a live CFBD API call that re-querying now returns the modern format, so it's a fixable data-staleness issue, not a code bug."
+  current_blocker: "Awaiting user decision: refresh teams.logos for season=2025 (new scope, live UPDATE) to get real logos on historical weeks, or accept null logos for 2025 and let them start appearing from 2026 week 1 onward."
 
 artifacts:
   requirements: "docs/rankings-artifact-fixes-2026-08/requirements.yaml"
   plan: "docs/rankings-artifact-fixes-2026-08/plan.yaml"
-  implementation_report: null
+  implementation_report: "docs/rankings-artifact-fixes-2026-08/implementation-report.yaml"
 
 pr:
   number: null
@@ -31,10 +31,10 @@ agents:
     role: "orchestrator"
     model_guidance: "xhigh"
     status: "active"
-    stage: "execution"
-    task: "spawning data-engineer for B1+B2"
+    stage: "verification"
+    task: "opening PR for T1 code, awaiting user decision on 2025 logo refresh"
     last_update: "2026-08-16"
-    blocker: ""
+    blocker: "2025 teams.logos refresh is new scope, needs user go-ahead"
 
 loops:
   planning_review:
@@ -53,12 +53,13 @@ checkpoint:
     - narrow_scope
     - stop
 
-blockers: []
+blockers:
+  - "2025 historical artifacts have logo: null for every entry -- fixable (teams.logos for season=2025 is a stale legacy format; live CFBD API confirmed the modern format is available now), but touching the teams table is new scope beyond the approved plan. Awaiting user decision."
 decisions:
   - "Paired with personal-site's rankings-table-redesign-2026-08 -- that feature's rendering work depends on this one's schema additions (logo, standardized conference)."
   - "Chose an in-code week<1 guard in main.py over a cron-schedule/date hack in weekly-update.yml -- generalizes to every future season without a hardcoded 2026 date, and also protects manual test-week-run.yml dispatches."
   - "Cleanup scope narrowed via direct DB query to exactly one bad batch: season=2026, week=0, 138 ratings rows, plus 3 R2 keys -- not a broad or exploratory deletion."
 
-next_action: "Spawn data-engineer execution agent for B1 (schema+guard) then B2 (live cleanup+backfill)."
+next_action: "Open PR for T1 code; ask user whether to also refresh teams.logos for season=2025."
 next_recommended_command: "$work"
-user_input_needed: false
+user_input_needed: true
