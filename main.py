@@ -76,6 +76,19 @@ def main():
     logger = setup_logging(args.year, args.week)
     logger.info("Starting model run: year=%s week=%s staging=%s", args.year, args.week, args.staging)
 
+    # GUARD AGAINST WEEK-0 (OR EARLIER) RUNS
+    # The system doesn't produce meaningful ratings before Week 1 games have been played (week 0
+    # is the pre-season placeholder get_cfb_week() returns before the season's first Sunday).
+    # Applies identically whether --week was omitted (auto-computed) or passed explicitly as 0/negative.
+    if args.week < 1:
+        logger.error(
+            "Refusing to run for year=%s week=%s: the system doesn't produce meaningful ratings "
+            "before Week 1 games have been played. Exiting before any data load, model run, DB "
+            "write, or artifact publish.",
+            args.year, args.week,
+        )
+        return
+
     # ENSURE TEAMS LOADED
     try:
         if teams_exist_for_year(args.year):
