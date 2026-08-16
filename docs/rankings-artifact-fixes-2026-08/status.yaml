@@ -12,9 +12,9 @@ objective: >
   feature's schema changes.
 
 summary:
-  current_focus: "B1+B2 executed and committed (04b15a0). Orchestrator found (via live CFBD API check) that the logo-null gap in 2025 backfilled data is fixable, but it's new scope (touches teams table, forbidden in the approved plan) -- asking user before proceeding. Opening PR for T1 code next regardless."
-  last_completed: "data-engineer implemented schema fields + week-0 guard, validated both, then ran the live cleanup (138 rows + 3 R2 keys deleted, index self-healed to 2025/15) and 2025 backfill. Found logo is null for all 2025 weeks (legacy teams.logos format); orchestrator confirmed via a live CFBD API call that re-querying now returns the modern format, so it's a fixable data-staleness issue, not a code bug."
-  current_blocker: "Awaiting user decision: refresh teams.logos for season=2025 (new scope, live UPDATE) to get real logos on historical weeks, or accept null logos for 2025 and let them start appearing from 2026 week 1 onward."
+  current_focus: "PR #3 open. User approved the 2025 teams.logos refresh; orchestrator ran it directly (136/136 matched, updated, re-backfilled) and confirmed via spot-check that 2025 weeks now have real logos. Awaiting reviewer + tester passes on PR #3."
+  last_completed: "Refreshed teams.logos for season=2025 (136 rows, re-fetched from live CFBD API, matched 1:1 by school), re-ran the 2025 backfill, spot-checked weeks 1 and 15 -- 136/136 entries have real logo URLs in both."
+  current_blocker: ""
 
 artifacts:
   requirements: "docs/rankings-artifact-fixes-2026-08/requirements.yaml"
@@ -32,9 +32,9 @@ agents:
     model_guidance: "xhigh"
     status: "active"
     stage: "verification"
-    task: "opening PR for T1 code, awaiting user decision on 2025 logo refresh"
+    task: "awaiting reviewer + tester passes on PR #3"
     last_update: "2026-08-16"
-    blocker: "2025 teams.logos refresh is new scope, needs user go-ahead"
+    blocker: ""
 
 loops:
   planning_review:
@@ -53,13 +53,13 @@ checkpoint:
     - narrow_scope
     - stop
 
-blockers:
-  - "2025 historical artifacts have logo: null for every entry -- fixable (teams.logos for season=2025 is a stale legacy format; live CFBD API confirmed the modern format is available now), but touching the teams table is new scope beyond the approved plan. Awaiting user decision."
+blockers: []
 decisions:
   - "Paired with personal-site's rankings-table-redesign-2026-08 -- that feature's rendering work depends on this one's schema additions (logo, standardized conference)."
   - "Chose an in-code week<1 guard in main.py over a cron-schedule/date hack in weekly-update.yml -- generalizes to every future season without a hardcoded 2026 date, and also protects manual test-week-run.yml dispatches."
   - "Cleanup scope narrowed via direct DB query to exactly one bad batch: season=2026, week=0, 138 ratings rows, plus 3 R2 keys -- not a broad or exploratory deletion."
+  - "User approved expanding scope (2026-08-16) to refresh teams.logos for season=2025 after the backfill revealed it was a stale legacy format -- 136 rows updated from a live CFBD API re-fetch, matched by school name, followed by a second 2025 backfill run."
 
-next_action: "Open PR for T1 code; ask user whether to also refresh teams.logos for season=2025."
+next_action: "Await reviewer + tester passes on PR #3, then report readiness to user."
 next_recommended_command: "$work"
-user_input_needed: true
+user_input_needed: false

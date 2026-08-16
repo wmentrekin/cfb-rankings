@@ -14,15 +14,14 @@ summary:
     --week invocations. The bad season=2026/week=0 batch (138 ratings rows, 3 R2 keys)
     was deleted and rankings/index.json self-healed back to 2025/week 15. All 2025
     weeks 1-15 were republished with the new fields.
-    KNOWN GAP: the `logo` field is null across every republished 2025 artifact --
-    season=2025's `teams.logos` rows are a legacy 2-URL ESPN-CDN format with no
+    RESOLVED: season=2025's teams.logos was a legacy 2-URL ESPN-CDN format with no
     /logos-dark/32/ match, unlike season=2026's modern 16-URL CFBD-CDN format the
-    requirements' research was scoped against. A live CFBD API check (this session)
-    confirms the API now serves the modern format even when queried with year=2025,
-    so this is fixable with a straightforward re-fetch-and-UPDATE of teams.logos for
-    season=2025 -- but that's new scope beyond what requirements.yaml/plan.yaml
-    covered (which explicitly listed the `teams` table as forbidden_scope for the
-    cleanup task), so it wasn't done without checking with the user first.
+    requirements' research was originally scoped against. User approved refreshing it
+    (new scope beyond the original plan, confirmed explicitly): re-fetched
+    /teams/fbs?year=2025 from CFBD live (136 teams, exact 1:1 match against the 136
+    existing season=2025 rows by school name, 0 skipped), UPDATEd teams.logos for all
+    136, then re-ran the 2025 backfill. Spot-checked weeks 1 and 15 post-refresh:
+    136/136 entries have a valid logo URL in both.
 
 task_batches_attempted: ["B1", "B2"]
 task_batches_completed: ["B1", "B2"]
@@ -49,6 +48,7 @@ local_validation:
     - "uv run python main.py --year 2026 (no --week, auto-computed during current pre-season window): guard fires identically."
     - "main.py control-flow inspection confirms args.week=1 does NOT trip the guard (execution falls through unchanged)."
     - "Live production cleanup (real credentials, real mutation): DELETE FROM ratings WHERE season=2026 AND week=0 -- 138 rows before, 0 after, confirmed via direct query. teams table untouched, confirmed via row count."
+    - "Live production teams.logos refresh for season=2025 (user-approved follow-up): re-fetched CFBD /teams/fbs?year=2025 (136 teams), matched 1:1 by school against the 136 existing season=2025 rows (0 unmatched either direction), UPDATEd logos for all 136. Re-ran the 2025 backfill afterward; spot-checked weeks 1 and 15 post-refresh -- 136/136 entries have a valid logo URL in both, e.g. Oregon (week 1, rank 1) and Indiana (week 15, rank 1) both resolved real cdn.collegefootballdata.com URLs."
     - "R2: rankings/2026/week-00.json, rankings/2026/latest.json, rankings/latest.json all confirmed present (head_object) before deletion and absent after. refresh_index() run; rankings/index.json confirmed latest_season=2025, latest_week=15 afterward."
     - "artifacts/backfill_rankings_artifacts.py run for 2025 weeks 1-15: all 15 published with zero warnings (no unmapped conference values encountered across the full season). Weeks 1/8/15 spot-checked from R2: all 136 entries have one of the 11 standardized conference strings; rank/team/record/rating/delta values internally consistent (records accumulate correctly, deltas populated, week-15 #1 team plausible)."
   failures: []
@@ -65,10 +65,9 @@ test_summary:
   gaps: []
 
 open_issues:
-  - "BLOCKING for the paired personal-site feature's real-data goal (not for this feature's own code correctness): logo is null for all 2025 historical weeks due to a stale legacy-format teams.logos column for season=2025. A live CFBD API check confirms re-querying /teams/fbs?year=2025 right now returns the modern 16-URL format -- fixable via a straightforward teams.logos UPDATE for season=2025 rows, followed by re-running the 2025 backfill. Not yet done: touches the `teams` table, which requirements.yaml/plan.yaml explicitly scoped as forbidden for the cleanup task, so this is new scope pending a decision from the user before proceeding."
-  - "2026 week 1 onward (first real run expected ~2026-09-06 per the new guard) will get real logos automatically once played, since season=2026's teams.logos is already in the modern format -- only the 2025 historical backfill is affected by the gap above."
+  - "2026 week 1 onward (first real run expected ~2026-09-06 per the new guard) will get real logos automatically once played, since season=2026's teams.logos was already in the modern format from the start."
 
 handoff:
-  current_state: "complete, pending one scope decision"
+  current_state: "complete"
   next_owner: "user"
-  next_action: "Decide whether to also refresh teams.logos for season=2025 (live UPDATE, new scope) so historical weeks get real logos too, or accept null logos for 2025's historical record and let logos start appearing from 2026 week 1 onward."
+  next_action: "Review PR #3 once reviewer/tester passes land, then merge."
