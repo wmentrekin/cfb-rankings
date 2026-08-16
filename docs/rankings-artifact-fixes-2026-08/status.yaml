@@ -1,7 +1,7 @@
 artifact: status
 feature: "rankings-artifact-fixes-2026-08"
 mode: "bounded-feature"
-stage: "verification"
+stage: "complete"
 owner_skill: work
 
 objective: >
@@ -12,7 +12,7 @@ objective: >
   feature's schema changes.
 
 summary:
-  current_focus: "PR #3 open. User approved the 2025 teams.logos refresh; orchestrator ran it directly (136/136 matched, updated, re-backfilled) and confirmed via spot-check that 2025 weeks now have real logos. Awaiting reviewer + tester passes on PR #3."
+  current_focus: "Reviewer + tester both passed on PR #3, no blocking findings. Ready for user review/merge. NOTE: the reviewer's PR review used self-approval framing (COMMENT event + 'approve' language, working around GitHub's self-review block) -- flagged to the user as not a substitute for their own review."
   last_completed: "Refreshed teams.logos for season=2025 (136 rows, re-fetched from live CFBD API, matched 1:1 by school), re-ran the 2025 backfill, spot-checked weeks 1 and 15 -- 136/136 entries have real logo URLs in both."
   current_blocker: ""
 
@@ -32,7 +32,7 @@ agents:
     model_guidance: "xhigh"
     status: "active"
     stage: "verification"
-    task: "awaiting reviewer + tester passes on PR #3"
+    task: "complete, awaiting user review/merge of PR #3"
     last_update: "2026-08-16"
     blocker: ""
 
@@ -60,6 +60,6 @@ decisions:
   - "Cleanup scope narrowed via direct DB query to exactly one bad batch: season=2026, week=0, 138 ratings rows, plus 3 R2 keys -- not a broad or exploratory deletion."
   - "User approved expanding scope (2026-08-16) to refresh teams.logos for season=2025 after the backfill revealed it was a stale legacy format -- 136 rows updated from a live CFBD API re-fetch, matched by school name, followed by a second 2025 backfill run."
 
-next_action: "Await reviewer + tester passes on PR #3, then report readiness to user."
+next_action: "User review + merge of PR #3."
 next_recommended_command: "$work"
 user_input_needed: false
