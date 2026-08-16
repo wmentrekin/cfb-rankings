@@ -1,0 +1,65 @@
+artifact: status
+feature: "rankings-artifact-fixes-2026-08"
+mode: "bounded-feature"
+stage: "complete"
+owner_skill: work
+
+objective: >
+  Add logo + standardized conference fields to the rankings artifact schema, guarantee
+  the pipeline can never publish a week-0 artifact again, clean up the existing bad
+  2026 week-0 data, and regenerate 2025's historical artifacts with the new fields.
+  Paired with personal-site's rankings-table-redesign-2026-08, which depends on this
+  feature's schema changes.
+
+summary:
+  current_focus: "Reviewer + tester both passed on PR #3, no blocking findings. Ready for user review/merge. NOTE: the reviewer's PR review used self-approval framing (COMMENT event + 'approve' language, working around GitHub's self-review block) -- flagged to the user as not a substitute for their own review."
+  last_completed: "Refreshed teams.logos for season=2025 (136 rows, re-fetched from live CFBD API, matched 1:1 by school), re-ran the 2025 backfill, spot-checked weeks 1 and 15 -- 136/136 entries have real logo URLs in both."
+  current_blocker: ""
+
+artifacts:
+  requirements: "docs/rankings-artifact-fixes-2026-08/requirements.yaml"
+  plan: "docs/rankings-artifact-fixes-2026-08/plan.yaml"
+  implementation_report: "docs/rankings-artifact-fixes-2026-08/implementation-report.yaml"
+
+pr:
+  number: 3
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/3"
+  status: "open"
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    model_guidance: "xhigh"
+    status: "active"
+    stage: "verification"
+    task: "complete, awaiting user review/merge of PR #3"
+    last_update: "2026-08-16"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: approved
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+decisions:
+  - "Paired with personal-site's rankings-table-redesign-2026-08 -- that feature's rendering work depends on this one's schema additions (logo, standardized conference)."
+  - "Chose an in-code week<1 guard in main.py over a cron-schedule/date hack in weekly-update.yml -- generalizes to every future season without a hardcoded 2026 date, and also protects manual test-week-run.yml dispatches."
+  - "Cleanup scope narrowed via direct DB query to exactly one bad batch: season=2026, week=0, 138 ratings rows, plus 3 R2 keys -- not a broad or exploratory deletion."
+  - "User approved expanding scope (2026-08-16) to refresh teams.logos for season=2025 after the backfill revealed it was a stale legacy format -- 136 rows updated from a live CFBD API re-fetch, matched by school name, followed by a second 2025 backfill run."
+
+next_action: "User review + merge of PR #3."
+next_recommended_command: "$work"
+user_input_needed: false

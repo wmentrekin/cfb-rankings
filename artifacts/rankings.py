@@ -1,6 +1,31 @@
+import logging
+
 import pandas as pd  # type: ignore
 from typing import Optional
 from datetime import datetime, timezone
+
+# Reuse the same logger name main.py configures via utils.setup_logging, so warnings from this
+# module surface through the pipeline's existing stdout/file handlers when run via main.py, and
+# still fall back to Python's default stderr handler when this module is used standalone.
+logger = logging.getLogger("cfb_lp")
+
+# Maps teams.conference raw values (as stored in Postgres, sourced from CFBD) to the standardized
+# display strings the rankings artifact should expose. Covers the 11 raw values confirmed present
+# in teams.conference for season=2026 via direct DB query. An unmapped raw value (e.g. from future
+# conference realignment) is passed through unchanged rather than raising -- see build_payload().
+CONFERENCE_DISPLAY_NAMES = {
+    "Big Ten": "BIG 10",
+    "Big 12": "BIG 12",
+    "ACC": "ACC",
+    "SEC": "SEC",
+    "American Athletic": "American",
+    "Pac-12": "PAC 12",
+    "Mountain West": "MWC",
+    "Mid-American": "MAC",
+    "Sun Belt": "SBC",
+    "Conference USA": "CUSA",
+    "FBS Independents": "FBS Independent",
+}
 
 
 def get_ratings_with_conference(engine, year, week) -> pd.DataFrame:
@@ -11,10 +36,10 @@ def get_ratings_with_conference(engine, year, week) -> pd.DataFrame:
         year (int): Season year.
         week (int): Week number.
     Returns:
-        pd.DataFrame: Columns team, rating, wins, losses, ties, season, week, conference.
+        pd.DataFrame: Columns team, rating, wins, losses, ties, season, week, conference, logos.
     """
     query = (
-        "SELECT r.team, r.rating, r.wins, r.losses, r.ties, r.season, r.week, t.conference "
+        "SELECT r.team, r.rating, r.wins, r.losses, r.ties, r.season, r.week, t.conference, t.logos "
         "FROM ratings r "
         "LEFT JOIN teams t ON r.team = t.school AND r.season = t.season "
         f"WHERE r.season = {year} AND r.week = {week};"
@@ -68,6 +93,38 @@ def compute_rank_and_delta(current_df: pd.DataFrame, previous_df: Optional[pd.Da
     return df
 
 
+def _display_conference(raw_conference) -> str:
+    """
+    Map a raw teams.conference value to its standardized display string via
+    CONFERENCE_DISPLAY_NAMES. Unmapped values are logged and passed through unchanged.
+    Args:
+        raw_conference: Raw conference value from the teams table (str, or None/NaN).
+    Returns:
+        str: The standardized display string, or the raw value unchanged if unmapped.
+    """
+    if raw_conference not in CONFERENCE_DISPLAY_NAMES:
+        logger.warning("Unmapped conference value %r; passing through unchanged.", raw_conference)
+        return raw_conference
+    return CONFERENCE_DISPLAY_NAMES[raw_conference]
+
+
+def _resolve_logo(logos) -> Optional[str]:
+    """
+    Resolve the dark-background-optimized 32px logo URL from a team's logos array by substring
+    match, not positional indexing, so this stays correct if CFBD ever reorders the array.
+    Args:
+        logos: The teams.logos value -- a list of URL strings, or None/NaN/empty.
+    Returns:
+        Optional[str]: The matching URL, or None if logos is missing/empty or no URL matches.
+    """
+    if logos is None or (isinstance(logos, float) and pd.isnull(logos)):
+        return None
+    for url in logos:
+        if url and "/logos-dark/32/" in url:
+            return url
+    return None
+
+
 def build_payload(year, week, ranked_df: pd.DataFrame) -> dict:
     """
     Build the JSON-serializable rankings artifact payload.
@@ -75,9 +132,10 @@ def build_payload(year, week, ranked_df: pd.DataFrame) -> dict:
         year (int): Season year.
         week (int): Week number.
         ranked_df (pd.DataFrame): Output of compute_rank_and_delta, must include rank/team/
-                                   conference/wins/losses/ties/rating/delta columns.
+                                   conference/logos/wins/losses/ties/rating/delta columns.
     Returns:
-        dict: {season, week, generated_at_utc, rankings: [{rank, team, conference, record, rating, delta}]}
+        dict: {season, week, generated_at_utc,
+               rankings: [{rank, team, conference, logo, record, rating, delta}]}
     """
     ordered = ranked_df.sort_values("rank", ascending=True)
     rankings = []
@@ -91,7 +149,8 @@ def build_payload(year, week, ranked_df: pd.DataFrame) -> dict:
         rankings.append({
             "rank": int(row["rank"]),
             "team": row["team"],
-            "conference": row["conference"],
+            "conference": _display_conference(row["conference"]),
+            "logo": _resolve_logo(row.get("logos")),
             "record": record,
             "rating": round(float(row["rating"]), 2),
             "delta": int(row["delta"]),

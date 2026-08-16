@@ -1,0 +1,81 @@
+artifact: requirements
+feature: "rankings-artifact-fixes-2026-08"
+mode: "bounded-feature"
+status: draft
+owner_skill: work
+
+summary:
+  problem: >
+    The rankings artifact pipeline is missing data the personal-site Rankings table needs
+    (team logo URLs, standardized conference display names), and it published a bad
+    2026 season "Week 0" artifact/DB rows before any games had been played, since the
+    week-number calculation returns 0 during the pre-season and nothing gates a run at
+    week 0. This blocks the paired personal-site table redesign
+    (rankings-table-redesign-2026-08), which needs the logo field and clean conference
+    strings to exist in the artifact schema before it can render them.
+  motivation: >
+    User is doing a desktop design pass on the Rankings table (last major desktop item
+    before Phase 3 page-freeze per docs/roadmap-to-launch.md) and found these artifact
+    gaps while planning the table's column layout.
+  requested_outcome: >
+    Artifact schema gains a `logo` field per team and standardized `conference` display
+    strings; the pipeline can never again publish a week-0 artifact; the erroneous 2026
+    week-0 data is removed from Postgres and R2; all existing published weeks (2025,
+    weeks 1-15) are regenerated so they also carry the new fields.
+
+goals:
+  - "Add a `logo` field to each ranking entry in the artifact payload: a single URL, the dark-background-optimized 32px variant from teams.logos, so it renders legibly on this site's dark-only theme."
+  - "Standardize the `conference` field in the artifact payload to a fixed display-name mapping (11 raw values confirmed present in teams.conference for season=2026 via direct DB query): Big Ten->BIG 10, Big 12->BIG 12, ACC->ACC, SEC->SEC, American Athletic->American, Pac-12->PAC 12, Mountain West->MWC, Mid-American->MAC, Sun Belt->SBC, Conference USA->CUSA, FBS Independents->FBS Independent."
+  - "Guarantee the pipeline never produces a published week-0 artifact or DB row again, for any season, regardless of whether it's invoked by the weekly cron or a manual/test dispatch with an explicit --week."
+  - "Remove the existing bad season=2026, week=0 data: 138 `ratings` rows in Postgres, and the R2 keys rankings/2026/week-00.json, rankings/2026/latest.json, rankings/latest.json (all three currently point at the bad week-0 payload), followed by an index refresh so rankings/index.json self-heals back to reflecting 2025 as latest."
+  - "Regenerate/republish artifacts for every already-published week (2025, weeks 1-15) using the existing artifacts/backfill_rankings_artifacts.py utility, so historical weeks also carry the new logo/conference fields -- no model re-run needed, this utility already just re-reads DB rows and republishes."
+
+non_goals:
+  - "Changing the ranking/rating model itself (LP model, rating math) -- out of scope, this is a data/schema/pipeline-hygiene pass only."
+  - "Changing how personal-site renders the table -- tracked separately in the paired personal-site feature rankings-table-redesign-2026-08."
+  - "Building a general-purpose reusable 'delete bad data' maintenance tool -- the week-0 guard (goal 3) makes this specific bug unrepeatable, so the one-time cleanup (goal 4) is an ad-hoc, documented, non-productionized action, not new permanent code."
+  - "Changing the weekly cron's schedule expression itself -- the week-0 guard achieves the user's stated intent (no runs before real games are played) generally and for every future season, without hardcoding a 2026-specific date into the workflow YAML."
+
+constraints:
+  technical:
+    - "publish_rankings_artifact() and backfill_rankings_artifacts.py must remain fully exception-safe / non-raising per their existing documented contract -- the artifact publish step must never be allowed to jeopardize the DB write that already succeeded."
+    - "teams.logos is a Postgres text[] confirmed via direct query to always contain 16 URLs per team for season=2026 (8 sizes x light/dark), pattern /logos(-dark)?/{500,256,128,96,64,48,32,16}/{cfbd_id}.png -- resolve the wanted URL by substring match on '/logos-dark/32/', not positional indexing, in case CFBD ever reorders the array."
+    - "The R2 client and DB engine credentials in this repo's local .env are live production credentials (verified via direct query this session) -- the cleanup step (goal 4) is a real prod mutation, not a dry run."
+  product:
+    - "Conference mapping must be a fixed dict covering the 11 raw values confirmed present now; an unmapped raw value in the future (conference realignment) should log a warning and pass the raw string through rather than crash the publish step."
+  process:
+    - "This is one of two paired features; the personal-site side (rankings-table-redesign-2026-08) depends on this feature's `logo` and standardized `conference` fields existing in the schema before its rendering changes are meaningful against real data."
+
+assumptions:
+  - "The 32px dark-variant logo is an appropriate size for a table-row icon on personal-site's dark-only (no theme toggle) design."
+  - "No other consumer of the rankings artifact JSON exists outside personal-site's Rankings page, so schema additions (logo field) are additive/safe and standardized conference strings won't break another reader."
+
+repo_context:
+  relevant_paths:
+    - "artifacts/rankings.py (get_ratings_with_conference, compute_rank_and_delta, build_payload)"
+    - "artifacts/r2.py (publish_rankings_artifact, refresh_index, get_r2_client)"
+    - "artifacts/backfill_rankings_artifacts.py (existing backfill utility, reused as-is for goal 5)"
+    - "main.py (week determination + run gating)"
+    - ".github/workflows/weekly-update.yml, .github/workflows/test-week-run.yml (both should be protected by the same in-code guard, not separately patched)"
+  systems_in_scope: ["Postgres ratings/teams tables", "Cloudflare R2 rankings/ prefix"]
+  prior_artifacts: []
+
+research:
+  repo_findings:
+    - "Direct DB query confirms ratings table has exactly one bad batch: (season=2026, week=0, 138 rows); 2025 has clean weeks 1-15, no week 0 -- narrow, well-bounded cleanup scope."
+    - "Direct DB query confirms exactly 11 distinct teams.conference raw values for season=2026, a clean 1:1 match to the user's requested 11-item display-name list -- no fuzzy matching needed."
+    - "get_cfb_week() computes week=0 for every Sunday from season_start through 6 days later; verified via computation that 2026-09-06 is the first Sunday the function returns week=1, confirming the user's 'don't run before Sept 6' framing is exactly equivalent to 'never run at week 0'."
+    - "backfill_rankings_artifacts.py already exists and does exactly what goal 5 needs (loop over weeks, call publish_rankings_artifact) -- no new script needed for the historical regeneration."
+  platform_findings: []
+
+acceptance_criteria:
+  - "Artifact JSON for any week includes a `logo` key per ranking entry (string URL or null if a team somehow has no logos)."
+  - "Artifact JSON's `conference` values are always one of the 11 standardized display strings for any of the known raw inputs, with unmapped inputs passed through and logged."
+  - "Running main.py (with no --week, or with an explicit --week 0) during the 2026 pre-season window does not write to `ratings` or publish any artifact; confirmed by testing both the auto-computed and explicit-zero paths."
+  - "After cleanup: `SELECT COUNT(*) FROM ratings WHERE season=2026 AND week=0` returns 0; R2 no longer serves 2026 week-0 data; rankings/index.json's latest_season/latest_week reverts to 2025/15 until a real 2026 week is published."
+  - "All 2025 weeks 1-15 artifacts, when re-fetched from R2, contain the new logo/conference fields with no other content changes (rank/team/record/rating/delta unchanged)."
+
+open_questions: []
+
+ready_for_planning: true
+planning_blockers: []
