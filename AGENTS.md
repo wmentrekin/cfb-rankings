@@ -4,30 +4,33 @@ Use this file as the entry point when these workflow assets are imported into a 
 
 ## Command Convention
 
-This workflow is invoked as `/work` in all three supported tools:
+This workflow is invoked as `/work` on every supported tool — each tool converts a skill
+folder named `work` into a native `/work` slash command. Plain-text `$work` mentions also
+work everywhere, either by triggering description-matched activation or as an explicit ask.
 
-- Claude Code: `/work`, discovered via `.claude/skills/work`
-- Codex: `/work` (or `$work` mention), discovered via `.codex/skills/work`
-- Antigravity: `/work`, discovered natively from `.agents/workflows/work.md`
+`/work` and `$work` are the same conceptual entry point; do not route the user across
+multiple top-level phase commands.
 
-See "Tool Compatibility" below for how each of these paths is populated.
-
-Do not route the user across multiple top-level phase commands.
+See "Tool Compatibility" below for how each tool discovers the skill, and
+`.agents/references/provider-notes.md` for the full verified mechanics.
 
 ## Tool Compatibility
 
-These assets are written to work natively across Claude Code, Codex, and Antigravity:
+`.agents/skills/work/SKILL.md` is the single canonical source, written to the open Agent
+Skills standard (agentskills.io). As of this standard's adoption, Codex CLI and Antigravity
+both read `.agents/skills/` natively — only Claude Code needs an adapter:
 
-| Concept | Claude Code | Codex | Antigravity |
-|---|---|---|---|
-| Invokable skill | `.claude/skills/work/SKILL.md` | `.codex/skills/work/SKILL.md` | `.agents/workflows/work.md` |
-| Persona/subagent | n/a (role-played via prompt) | n/a (role-played via prompt) | `.agents/agents/<name>/agent.md` |
+| Tool | Skill discovery | Setup required |
+|---|---|---|
+| Claude Code | `.claude/skills/work` (symlink to canonical source) | Run `.agents/scripts/link-claude-skills.sh` once after import, and again after `git subtree pull` if skills are added or removed |
+| Codex CLI | `.agents/skills/work/SKILL.md`, read directly | None |
+| Antigravity (IDE + `agy` CLI) | `.agents/skills/work/SKILL.md`, read directly | None |
 
-`.agents/skills/work/SKILL.md` is the single canonical source. Antigravity reads `.agents/`
-directly, so `.agents/workflows/work.md` and `.agents/agents/*/agent.md` work with no setup.
-Claude Code and Codex look outside `.agents/`, so run `.agents/scripts/link-tools.sh` once
-after import (and again after `git subtree pull` if skills are added or removed) to symlink
-`.claude/skills/work` and `.codex/skills/work` back to the canonical source.
+Gemini CLI is sunset (2026-06-18) and replaced by Antigravity CLI (`agy`), which shares
+Antigravity's harness — it is no longer a distinct target.
+
+Subagent personas (`.agents/agents/<name>/agent.md`) are portable role briefs on every tool,
+not tool-specific registrations — see `.agents/references/provider-notes.md`.
 
 ## First Read Order
 
@@ -76,10 +79,6 @@ These are internal states, not separate user-facing commands.
 
 - `.agents/skills/work/SKILL.md`
 
-## Workflows
-
-- `.agents/workflows/work.md` (Antigravity-native entry point; points back at the skill above)
-
 ## Agents
 
 - `.agents/agents/orchestrator/agent.md`
@@ -125,6 +124,18 @@ Expected project-local outputs:
 - `.agents/references/verification-checklist.md`
 - `.agents/references/engineering-standards.md`
 - `.agents/references/branch-and-pr-workflow.md`
+- `.agents/references/provider-notes.md`
+
+## Root Instruction Strategy
+
+This repo's own root files (`AGENTS.md`, `README.md`) describe the shared framework, not any
+consuming project's architecture. A consuming project's own root `AGENTS.md`/`CLAUDE.md`
+should stay responsible for that project's specifics.
+
+Optionally, add a short pointer to the shared workflow in the consuming project's own root
+file(s) — see `.agents/templates/root-instructions-snippet.md`. This is not required for
+discovery (skills are found natively per "Tool Compatibility" above) but improves activation
+reliability on tools that always load their root instruction file as context.
 
 ## Core Rules
 

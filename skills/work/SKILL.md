@@ -1,6 +1,14 @@
 ---
 name: work
-description: Run the full workflow as an outward-facing orchestrator that classifies the work, keeps the user conversation active, spawns subagents, updates a live status board, and moves through discovery, planning, execution, and verification.
+description: >
+  Primary engineering workflow for building, fixing, investigating, designing,
+  planning, implementing, debugging, refactoring, modifying, reviewing, or
+  testing code in this repository. Use for any substantive development task:
+  new features, bug fixes, pipeline or model changes, infrastructure changes,
+  architecture decisions, or code review. Coordinates requirements
+  clarification, repository and platform research, scoped subagents, planning
+  with an explicit user checkpoint, bounded execution, review, and testing.
+  Do not use for trivial one-line edits or pure Q&A with no code change.
 ---
 
 # Workflow Position
@@ -27,6 +35,22 @@ Default behavior:
 - use subagents for research, review, implementation, and testing
 - keep the main session focused on coordination, synthesis, status updates, and user discussion
 - do not do substantive editing or deep analysis in the main session unless the work slice is truly tiny and spawning would add more overhead than value
+
+## Spawning a Role
+
+Every agent under `.agents/agents/<role>/agent.md` is a portable role brief, not
+a tool-specific persona registration. To act as (or spawn) a role:
+
+1. read `.agents/agents/<role>/agent.md` in full
+2. hand its content, plus the task-specific handoff, to whatever generic
+   delegation primitive the current tool exposes (a general-purpose subagent
+   call, an agent-spawning tool, etc.)
+3. never assume the role name itself is a recognized subagent type — the
+   brief's content is what defines the role, not a registration step
+
+This works identically regardless of whether the current tool has a native
+named-subagent format. See `.agents/references/provider-notes.md` for the
+verified mechanics per tool.
 
 # Inputs
 
