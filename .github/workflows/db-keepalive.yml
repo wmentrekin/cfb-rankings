@@ -1,0 +1,44 @@
+name: Supabase Keepalive
+
+on:
+  schedule:
+    # Every 3 days at 12:00 UTC -- comfortably under Supabase's 7-day
+    # inactivity auto-pause window, including during the off-season when
+    # weekly-update.yml isn't running.
+    - cron: '0 12 */3 * *'
+  workflow_dispatch:
+
+concurrency:
+  group: db-keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen --extra pipeline
+
+      - name: Ping Supabase
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+        run: |
+          uv run python -m database.keepalive

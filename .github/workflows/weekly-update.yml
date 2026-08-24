@@ -4,6 +4,13 @@ on:
   schedule:
     # Every Sunday at 07:00 UTC = 03:00 ET
     - cron: '0 7 * * 0'
+    # ONE-OFF for 2026 Week 1: Sun/Mon Week 1 games mean the normal Sunday run
+    # would fire before Week 1 is complete, so Week 1 is pushed to Tue 2026-09-08
+    # 07:00 UTC = 03:00 ET instead. The `gate` job below suppresses the regular
+    # Sunday 2026-09-06 firing so it doesn't double-run. This cron entry recurs
+    # every Sept 8, so delete this line (and the gate job/step, restoring the
+    # single Sunday-only schedule) once the 2026 Week 1 run has shipped.
+    - cron: '0 7 8 9 *'
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +18,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Check 2026 Week 1 delay window
+        id: check
+        run: |
+          # Only scheduled (cron) triggers are gated; manual workflow_dispatch always runs.
+          # Suppresses the regular Sunday cron until Week 1 is deliberately kicked off on
+          # 2026-09-08 (see the schedule comment above). Self-disarms after that date.
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            today="$(date -u +%Y-%m-%d)"
+            if [[ "$today" < "2026-09-08" ]]; then
+              echo "Skipping: before 2026-09-08 Week 1 delay cutoff (today=$today)."
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
+
   weekly_update:
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
