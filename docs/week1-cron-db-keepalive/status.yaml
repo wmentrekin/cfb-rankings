@@ -1,7 +1,7 @@
 artifact: status
 feature: "week1-cron-db-keepalive"
 mode: "quick-fix"
-stage: "execution"
+stage: "verification"
 owner_skill: work
 
 objective: >
@@ -12,8 +12,8 @@ objective: >
   inactivity.
 
 summary:
-  current_focus: "Implementing workflow + script changes directly (tiny, localized change)"
-  last_completed: "User confirmed proceed at pre-execution checkpoint"
+  current_focus: "PR open; awaiting user's manual workflow_dispatch smoke test after merge"
+  last_completed: "Opened PR #4 with both workflow changes; YAML + script validated locally"
   current_blocker: ""
 
 artifacts:
@@ -22,9 +22,9 @@ artifacts:
   implementation_report: null
 
 pr:
-  number: null
-  url: null
-  status: "not_opened"
+  number: 4
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/4"
+  status: "open"
 
 agents:
   - id: "orchestrator"
@@ -58,6 +58,6 @@ decisions:
   - "Use a date-gated scheduled job (skip if today < 2026-09-08 for cron-triggered runs) instead of temporarily removing the Sunday cron, so no manual revert is needed after Week 1 ships."
   - "Keepalive pings Supabase every 3 days via a trivial SELECT 1, reusing the existing create_engine connection pattern."
 
-next_action: "Implement, verify workflow YAML/script syntax, open PR"
+next_action: "User reviews/merges PR #4; after merge, manually workflow_dispatch both workflows once to smoke-test in Actions (DB secrets, gate logic on a real run)"
 next_recommended_command: "$work"
-user_input_needed: false
+user_input_needed: true
