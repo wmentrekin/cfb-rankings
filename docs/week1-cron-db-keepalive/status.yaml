@@ -1,0 +1,63 @@
+artifact: status
+feature: "week1-cron-db-keepalive"
+mode: "quick-fix"
+stage: "execution"
+owner_skill: work
+
+objective: >
+  Delay the 2026 Week 1 weekly-update run to Tue 2026-09-08 03:00 ET (Sun/Mon
+  Week 1 games mean the normal Sunday cron would fire too early), with weeks 2+
+  reverting to the normal Sunday cadence automatically. Also add a lightweight
+  scheduled Supabase ping so the project doesn't pause after 7 days of
+  inactivity.
+
+summary:
+  current_focus: "Implementing workflow + script changes directly (tiny, localized change)"
+  last_completed: "User confirmed proceed at pre-execution checkpoint"
+  current_blocker: ""
+
+artifacts:
+  requirements: null
+  plan: null
+  implementation_report: null
+
+pr:
+  number: null
+  url: null
+  status: "not_opened"
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    model_guidance: "xhigh"
+    status: "active"
+    stage: "execution"
+    task: "Editing weekly-update.yml, adding db-keepalive.yml + database/keepalive.py"
+    last_update: "2026-08-24"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: accepted
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+decisions:
+  - "Use a date-gated scheduled job (skip if today < 2026-09-08 for cron-triggered runs) instead of temporarily removing the Sunday cron, so no manual revert is needed after Week 1 ships."
+  - "Keepalive pings Supabase every 3 days via a trivial SELECT 1, reusing the existing create_engine connection pattern."
+
+next_action: "Implement, verify workflow YAML/script syntax, open PR"
+next_recommended_command: "$work"
+user_input_needed: false
