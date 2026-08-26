@@ -8,6 +8,9 @@ owner_skill: work
 
 objective: ""
 
+branching:
+  branch_name: ""
+
 summary:
   current_focus: ""
   last_completed: ""
