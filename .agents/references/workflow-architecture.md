@@ -19,6 +19,11 @@ The user invokes `$work`.
 
 These are internal workflow states, not user-facing commands.
 
+The feature branch is created immediately after mode classification, before Discovery's own
+work begins — this precedes all four internal stages, for every mode, so no
+`docs/<feature>/*.yaml` artifact is ever first written on the base/main branch. See
+`.agents/references/branch-and-pr-workflow.md`.
+
 ## Modes
 
 Classify each request into one of these modes:
@@ -27,7 +32,8 @@ Classify each request into one of these modes:
 
 Use when:
 - the change is small and localized
-- broad planning would be overhead
+- broad planning would be overhead (this does not exempt branching — the feature branch is
+  still created immediately after mode classification, same as every other mode)
 
 Required artifacts:
 - `docs/<feature>/status.yaml`
@@ -92,6 +98,8 @@ Default agents:
 Owns:
 - defining the implementation approach
 - decomposing execution into bounded work
+- copying `branching.branch_name` from `status.yaml` into `plan.yaml` (the branch already exists
+  by planning time — not re-decided)
 - preparing for the user checkpoint
 
 Default agents:
@@ -101,7 +109,8 @@ Default agents:
 ### Execution
 
 Owns:
-- creating the feature branch (and worktrees, if the plan calls for parallel domains)
+- creating worktrees, if the plan calls for parallel domains (the feature branch itself was
+  already created immediately after mode classification, before Discovery)
 - bounded implementation work
 - keeping implementation handoff context current
 - opening the PR once implementation is complete
