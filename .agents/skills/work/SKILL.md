@@ -27,6 +27,10 @@ It owns the conversation with the user and coordinates all internal workflow sta
 6. `.agents/references/branch-and-pr-workflow.md`
 7. the mode-relevant templates in `.agents/templates/`
 
+Re-read `docs/<feature>/status.yaml` and these core files again at every internal stage
+transition (discovery→planning, planning→execution, execution→verification), not only once at
+session start — see `.agents/AGENTS.md`'s "Re-Anchor at Every Stage Transition" section.
+
 # Must Spawn
 
 `$work` is orchestration-first.
@@ -161,18 +165,28 @@ Treat these as internal states, not separate user-facing commands.
 # Process
 
 1. classify the work mode
-2. create or update `docs/<feature>/status.yaml`
-3. run discovery only to the depth needed by the selected mode
-4. create `requirements.yaml` if the mode requires it
-5. create `plan.yaml` if the mode requires it
-6. stop for the required pre-execution checkpoint
-7. create the feature branch (and worktrees, if the plan calls for parallel domains) per
-   `.agents/references/branch-and-pr-workflow.md`
-8. spawn the routed domain (or generalist) agents for bounded execution
-9. update `implementation-report.yaml`
-10. open the PR per `.agents/references/branch-and-pr-workflow.md`
-11. run verification with reviewer and tester agents, posting findings to the PR
-12. either complete, loop back once or twice, or stop and ask the user for direction
+2. create the feature branch per `.agents/references/branch-and-pr-workflow.md` — before any
+   `docs/<feature>/*.yaml` artifact is written, for every mode including quick-fix and
+   investigation (never commit directly to the base/main branch)
+3. create or update `docs/<feature>/status.yaml`, recording `branching.branch_name`
+4. run discovery only to the depth needed by the selected mode
+5. create `requirements.yaml` if the mode requires it
+6. create `plan.yaml` if the mode requires it, copying `branching.branch_name` from
+   `status.yaml` rather than re-deciding it
+7. stop for the required pre-execution checkpoint
+8. create worktrees, if the plan calls for parallel domains, per
+   `.agents/references/branch-and-pr-workflow.md` (the feature branch itself already exists
+   from step 2)
+9. spawn the routed domain (or generalist) agents for bounded execution
+10. update `implementation-report.yaml`
+11. open the PR per `.agents/references/branch-and-pr-workflow.md`
+12. run verification with reviewer and tester agents, posting findings to the PR
+13. either complete, loop back once or twice, or stop and ask the user for direction
+14. once the user explicitly confirms they are merging the PR, delete the entire
+    `docs/<feature>/` directory from the branch (`git rm -r`) and push that removal as the final
+    commit before merge — these are `$work`'s own ephemeral coordination artifacts, not
+    deliverables; never delete pre-existing project documentation outside `docs/<feature>/`. See
+    `.agents/references/branch-and-pr-workflow.md`'s "Completion" section.
 
 # Loop Cap
 

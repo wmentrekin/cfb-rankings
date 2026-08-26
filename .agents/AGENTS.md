@@ -44,6 +44,19 @@ When starting in a project repo, read in this order:
 
 Do not rely on memory of the workflow. Re-anchor to these files explicitly.
 
+## Re-Anchor at Every Stage Transition
+
+The First Read Order above is not a one-time, session-start-only action. Re-read
+`docs/<feature>/status.yaml` plus the relevant core workflow file(s) (at minimum
+`.agents/AGENTS.md` and `.agents/skills/work/SKILL.md`) at every internal stage transition:
+discovery→planning, planning→execution, and execution→verification — not only once at session
+start.
+
+This is good practice on any tool, and it specifically hedges against instruction loss around
+context compaction: long sessions can drop or de-prioritize earlier context, including the
+process instructions read at session start, regardless of which tool is running this workflow.
+Re-reading at each transition costs little and catches drift before it compounds.
+
 ## Workflow Model
 
 This workflow is orchestration-first.
@@ -115,6 +128,14 @@ Expected project-local outputs:
 - `docs/<feature>/plan.yaml`
 - `docs/<feature>/implementation-report.yaml`
 
+These outputs are ephemeral: they are `$work`'s own live coordination scratch state, not
+project deliverables. Once the user explicitly confirms they are merging the feature's PR,
+`docs/<feature>/` is deleted from the branch (`git rm -r`) and that removal is pushed as the
+final commit before merge — see `.agents/references/branch-and-pr-workflow.md`'s "Completion"
+section. This applies only to `$work`'s own generated `docs/<feature>/` directory; any
+genuinely pre-existing project documentation the feature touched is unaffected and must stay
+updated in place.
+
 ## References
 
 - `.agents/references/workflow-architecture.md`
@@ -139,6 +160,9 @@ reliability on tools that always load their root instruction file as context.
 
 ## Core Rules
 
+- Never commit directly to the base/main branch, under any mode — all code and doc changes,
+  including `$work`'s own `docs/<feature>/` artifacts, land via a feature branch and PR. See
+  `.agents/references/branch-and-pr-workflow.md`.
 - Keep the orchestrator active in the user conversation.
 - Keep most substantive work in subagents.
 - Keep requirements, planning, execution, and verification as internal states.
