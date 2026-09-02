@@ -1,0 +1,49 @@
+name: Supabase Backup
+
+on:
+  schedule:
+    # Weekly, Sundays 13:00 UTC. Free-tier Supabase projects get no automated
+    # backups (no daily backups, no PITR), so this self-manages one via the
+    # Supabase CLI, per Supabase's own recommendation for free-tier projects.
+    - cron: '0 13 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Dump database
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          # Port 5432 (session pooler), not the 6543 transaction pooler used
+          # elsewhere in this repo: pg_dump-based tools need session-level
+          # behavior (e.g. prepared statements) that transaction-mode
+          # pooling doesn't support.
+          supabase db dump \
+            --db-url "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require" \
+            -f backup.sql
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-backup-${{ github.run_id }}
+          path: backup.sql
+          retention-days: 90

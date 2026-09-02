@@ -2,10 +2,11 @@ name: Supabase Keepalive
 
 on:
   schedule:
-    # Every 3 days at 12:00 UTC -- comfortably under Supabase's 7-day
-    # inactivity auto-pause window, including during the off-season when
-    # weekly-update.yml isn't running.
-    - cron: '0 12 */3 * *'
+    # Daily at 12:00 UTC. Supabase's own docs say a few requests "each day"
+    # over the week is what keeps a free-tier project from being flagged for
+    # pausing -- a ping every 3 days left gaps that still triggered the
+    # inactivity warning, so this runs daily instead.
+    - cron: '0 12 * * *'
   workflow_dispatch:
 
 concurrency:
