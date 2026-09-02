@@ -26,9 +26,9 @@ artifacts:
   implementation_report: "docs/supabase-free-tier-audit/implementation-report.yaml"
 
 pr:
-  number: null
-  url: null
-  status: "not_opened"
+  number: 6
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/6"
+  status: "open"
 
 agents:
   - id: "orchestrator"
@@ -36,7 +36,7 @@ agents:
     model_guidance: "xhigh"
     status: "active"
     stage: "execution"
-    task: "Commit, push, open PR."
+    task: "PR #6 opened. Awaiting user review/merge and a post-merge workflow_dispatch smoke test of db-backup.yml."
     last_update: "2026-09-01"
     blocker: ""
 
@@ -64,6 +64,6 @@ decisions:
   - "Backup dump uses the session pooler (port 5432) instead of the transaction pooler (6543) that db-keepalive already uses, because pg_dump-based tools (which `supabase db dump` wraps) need session-level features that transaction-mode pooling doesn't support."
   - "Backups stored as GitHub Actions artifacts (90-day retention) per user's choice at the checkpoint -- no new secrets, accounts, or infra needed; reuses the existing discrete DB_HOST/DB_NAME/DB_USER/DB_PASSWORD secrets with the port overridden to 5432 for this workflow only."
 
-next_action: "Open PR against main; user reviews and merges."
+next_action: "User reviews and merges PR #6; then manually workflow_dispatch db-backup.yml once to confirm the dump succeeds end-to-end."
 next_recommended_command: "$work"
 user_input_needed: false
