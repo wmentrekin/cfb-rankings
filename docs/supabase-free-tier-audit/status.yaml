@@ -3,7 +3,7 @@
 artifact: status
 feature: "supabase-free-tier-audit"
 mode: "bounded-feature"
-stage: "execution"
+stage: "complete"
 owner_skill: work
 
 objective: >
@@ -16,8 +16,8 @@ objective: >
   a weekly Supabase CLI dump uploaded as a GitHub Actions artifact.
 
 summary:
-  current_focus: "Both fixes implemented on work/supabase-free-tier-audit; opening PR."
-  last_completed: "db-keepalive.yml cron changed from every-3-days to daily; new db-backup.yml added (weekly supabase db dump via session pooler, uploaded as a 90-day-retention artifact)."
+  current_focus: "Done. Optional: workflow_dispatch db-backup.yml once to confirm the session-pooler dump succeeds end-to-end (unverified since the file only existed pre-merge)."
+  last_completed: "PR #6 merged to main; local branch deleted and synced."
   current_blocker: ""
 
 artifacts:
@@ -28,16 +28,16 @@ artifacts:
 pr:
   number: 6
   url: "https://github.com/wmentrekin/cfb-rankings/pull/6"
-  status: "open"
+  status: "merged"
 
 agents:
   - id: "orchestrator"
     role: "orchestrator"
     model_guidance: "xhigh"
-    status: "active"
-    stage: "execution"
-    task: "PR #6 opened. Awaiting user review/merge and a post-merge workflow_dispatch smoke test of db-backup.yml."
-    last_update: "2026-09-01"
+    status: "done"
+    stage: "complete"
+    task: "PR #6 merged to main; branch deleted"
+    last_update: "2026-09-02"
     blocker: ""
 
 loops:
@@ -64,6 +64,6 @@ decisions:
   - "Backup dump uses the session pooler (port 5432) instead of the transaction pooler (6543) that db-keepalive already uses, because pg_dump-based tools (which `supabase db dump` wraps) need session-level features that transaction-mode pooling doesn't support."
   - "Backups stored as GitHub Actions artifacts (90-day retention) per user's choice at the checkpoint -- no new secrets, accounts, or infra needed; reuses the existing discrete DB_HOST/DB_NAME/DB_USER/DB_PASSWORD secrets with the port overridden to 5432 for this workflow only."
 
-next_action: "User reviews and merges PR #6; then manually workflow_dispatch db-backup.yml once to confirm the dump succeeds end-to-end."
+next_action: "Optional: manually workflow_dispatch db-backup.yml once in Actions to confirm the session-pooler dump succeeds end-to-end now that it's on main."
 next_recommended_command: "$work"
 user_input_needed: false

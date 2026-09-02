@@ -68,6 +68,6 @@ open_issues:
   - "Backup dumps land only as GitHub Actions artifacts (90-day retention) -- there is no copy outside GitHub. Acceptable per the user's checkpoint choice, but worth revisiting if longer retention or an off-platform copy (e.g. R2) becomes important later."
 
 handoff:
-  current_state: in_progress
+  current_state: complete
   next_owner: "user"
-  next_action: "Review and merge the PR, then manually workflow_dispatch db-backup.yml once to confirm the dump succeeds end-to-end (the session-pooler port swap is unverified against the live database)."
+  next_action: "Optional: manually workflow_dispatch db-backup.yml once to confirm the dump succeeds end-to-end (the session-pooler port swap is unverified against the live database)."
