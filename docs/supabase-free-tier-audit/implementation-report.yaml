@@ -1,0 +1,73 @@
+# Contract: durable execution and handoff report maintained by $work
+
+artifact: implementation_report
+feature: "supabase-free-tier-audit"
+mode: "bounded-feature"
+status: draft
+owner_skill: work
+based_on: "docs/supabase-free-tier-audit/status.yaml"
+
+summary:
+  scope_executed: >
+    Investigated why the existing 3-day Supabase keepalive still triggered a
+    free-tier inactivity pause warning, what the 5-7 connections on the
+    dashboard represent, and free-tier backup options. Implemented the two
+    fixes the user approved: db-keepalive.yml cron tightened from every 3
+    days to daily, and a new db-backup.yml added that runs a weekly
+    `supabase db dump` via the session pooler and uploads the dump as a
+    90-day-retention GitHub Actions artifact.
+  outcome: >
+    Both changes made on work/supabase-free-tier-audit; YAML validated
+    locally. Not yet run in Actions (needs a workflow_dispatch or the first
+    scheduled fire to confirm end-to-end, same as the original keepalive
+    rollout in PR #4).
+
+task_batches_attempted:
+  - "Tighten db-keepalive cadence to daily"
+  - "Add scheduled Supabase backup workflow"
+task_batches_completed:
+  - "Tighten db-keepalive cadence to daily"
+  - "Add scheduled Supabase backup workflow"
+
+domains_touched:
+  - platform-engineer
+
+pr:
+  number: 6
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/6"
+
+changes:
+  files:
+    - ".github/workflows/db-keepalive.yml"
+    - ".github/workflows/db-backup.yml"
+    - "docs/supabase-free-tier-audit/status.yaml"
+    - "docs/supabase-free-tier-audit/implementation-report.yaml"
+  modules: []
+  docs_updated: []
+
+local_validation:
+  checks_run:
+    - "python3 -c \"import yaml; yaml.safe_load(open(...))\" on all 4 changed/added workflow files -- all parse cleanly"
+    - "Post-PR self-review of db-backup.yml against the live supabase/setup-cli docs: caught and fixed a stale `@v1` action pin (current major is `@v3`) before it could fail on first run."
+  failures: []
+  skipped:
+    - "No workflow_dispatch smoke test run yet -- db-backup.yml is a new file only on this branch, and GitHub only discovers workflow_dispatch triggers for workflows already present on the default branch (confirmed by the 404 hit during the original db-keepalive rollout in nba-asset-lineage PR #5), so it can't be dispatched until merged."
+
+review_summary:
+  status: not_started
+  key_findings: []
+
+test_summary:
+  status: not_started
+  checks_run: []
+  failures: []
+  gaps:
+    - "db-backup.yml's supabase db dump command against the real session-pooler connection hasn't been exercised yet -- recommend a manual workflow_dispatch after merge, mirroring how db-keepalive.yml's pooler-vs-direct-host issue was caught in PR #5 of nba-asset-lineage."
+
+open_issues:
+  - "Backup dumps land only as GitHub Actions artifacts (90-day retention) -- there is no copy outside GitHub. Acceptable per the user's checkpoint choice, but worth revisiting if longer retention or an off-platform copy (e.g. R2) becomes important later."
+
+handoff:
+  current_state: in_progress
+  next_owner: "user"
+  next_action: "Review and merge the PR, then manually workflow_dispatch db-backup.yml once to confirm the dump succeeds end-to-end (the session-pooler port swap is unverified against the live database)."

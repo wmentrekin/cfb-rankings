@@ -1,0 +1,69 @@
+# Contract: live coordination artifact maintained by $work
+
+artifact: status
+feature: "supabase-free-tier-audit"
+mode: "bounded-feature"
+stage: "execution"
+owner_skill: work
+
+objective: >
+  Investigate why both cfb-rankings and nba-asset-lineage (each with an
+  existing 3-day db-keepalive.yml) still received Supabase "insufficient
+  activity, may pause within 7 days" warnings, explain the 5-7 connections
+  shown on the dashboard, and add free-tier backups (neither project had
+  any). Promoted from investigation to bounded-feature after the user
+  approved two specific fixes at the checkpoint: daily keepalive cadence and
+  a weekly Supabase CLI dump uploaded as a GitHub Actions artifact.
+
+summary:
+  current_focus: "Both fixes implemented on work/supabase-free-tier-audit; opening PR."
+  last_completed: "db-keepalive.yml cron changed from every-3-days to daily; new db-backup.yml added (weekly supabase db dump via session pooler, uploaded as a 90-day-retention artifact)."
+  current_blocker: ""
+
+artifacts:
+  requirements: null
+  plan: null
+  implementation_report: "docs/supabase-free-tier-audit/implementation-report.yaml"
+
+pr:
+  number: 6
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/6"
+  status: "open"
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    model_guidance: "xhigh"
+    status: "active"
+    stage: "execution"
+    task: "PR #6 opened. Awaiting user review/merge and a post-merge workflow_dispatch smoke test of db-backup.yml."
+    last_update: "2026-09-01"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: accepted
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+decisions:
+  - "Root cause of the pause warning despite a working 3-day keepalive: Supabase's own docs say activity 'each day' over the week is what keeps a project from being flagged, not just any ping within 7 days -- so cadence was tightened to daily rather than changing the query/connection method."
+  - "5-7 connections on the dashboard confirmed as normal baseline platform overhead (Storage/PostgREST/health-checker persistent connections per Supabase docs), not leaked app connections -- audited every create_engine/connect call site in this repo and all already use context managers + engine.dispose()."
+  - "Backup dump uses the session pooler (port 5432) instead of the transaction pooler (6543) that db-keepalive already uses, because pg_dump-based tools (which `supabase db dump` wraps) need session-level features that transaction-mode pooling doesn't support."
+  - "Backups stored as GitHub Actions artifacts (90-day retention) per user's choice at the checkpoint -- no new secrets, accounts, or infra needed; reuses the existing discrete DB_HOST/DB_NAME/DB_USER/DB_PASSWORD secrets with the port overridden to 5432 for this workflow only."
+
+next_action: "User reviews and merges PR #6; then manually workflow_dispatch db-backup.yml once to confirm the dump succeeds end-to-end."
+next_recommended_command: "$work"
+user_input_needed: false
