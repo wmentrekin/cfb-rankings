@@ -48,9 +48,10 @@ changes:
 local_validation:
   checks_run:
     - "python3 -c \"import yaml; yaml.safe_load(open(...))\" on all 4 changed/added workflow files -- all parse cleanly"
+    - "Post-PR self-review of db-backup.yml against the live supabase/setup-cli docs: caught and fixed a stale `@v1` action pin (current major is `@v3`) before it could fail on first run."
   failures: []
   skipped:
-    - "No workflow_dispatch smoke test run yet (would require pushing the branch and triggering via gh/Actions UI)."
+    - "No workflow_dispatch smoke test run yet -- db-backup.yml is a new file only on this branch, and GitHub only discovers workflow_dispatch triggers for workflows already present on the default branch (confirmed by the 404 hit during the original db-keepalive rollout in nba-asset-lineage PR #5), so it can't be dispatched until merged."
 
 review_summary:
   status: not_started
