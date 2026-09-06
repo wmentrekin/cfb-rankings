@@ -33,6 +33,21 @@ def get_games_by_year_week(year, week=None, season_type='regular'):
 
     games_data = response.json()
 
+    # CFBD legitimately returns an empty list for a season/season_type with no
+    # games yet (e.g. a future season's postseason before conference championship
+    # week has happened) -- pd.DataFrame([]) has zero columns, so the column
+    # selection below would raise KeyError on every such call. Short-circuit with
+    # an empty DataFrame carrying the correct final columns so load_games_to_db's
+    # empty-iterrows loop is a clean no-op instead of a raised (if caught)
+    # exception on every weekly pipeline run until real data appears.
+    if not games_data:
+        return pd.DataFrame(columns=[
+            "id", "season", "week", "season_type", "start_date", "home_team", "home_score",
+            "away_team", "away_score", "neutral_site", "conference_game", "venue", "venueid",
+            "home_conference", "away_conference", "margin", "winner", "alpha", "notes",
+            "playoff_round_name", "playoff_round_order", "playoff_bracket_slot", "playoff_bowl_name",
+        ])
+
     # Defensive extraction of the nested `playoff` object (present only on
     # CFP-affiliated games -- most games, including all regular-season and
     # non-CFP postseason games, have no `playoff` object at all). Never
