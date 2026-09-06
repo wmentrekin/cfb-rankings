@@ -1,0 +1,178 @@
+artifact: status
+feature: "schedule-grid"
+mode: "large-initiative"
+stage: "execution"
+owner_skill: work
+
+objective: >
+  Investigate adding a season schedule grid view (teams x weeks, color-coded by
+  outcome) to the CFB-Rankings section of personal-site, replicating/replacing the
+  user's manually-maintained "Georgia Tech Football" Google Sheet ("2026 Season" tab)
+  with a live, database-backed feature. Research only in this pass: repo architecture
+  in cfb-rankings and personal-site, current Supabase schema, and the Google Sheet's
+  exact data/visual model. Produce an architecture proposal and open questions;
+  no code changes yet.
+
+branching:
+  branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
+
+summary:
+  current_focus: "B1 execution complete (T1-T5). PR #7 open. T5b (confirm merge, trigger pipeline, verify artifact) requires user action -- $work agents never merge."
+  last_completed: "T4b: artifacts/schedule.py (Season Grid artifact assembly + R2 publish), committed and pushed. Caught and fixed two real bugs beyond the handoff's own scope: (1) the conference-championship-game heuristic mis-selects Army-Navy for American Athletic once a 2025+ Army-Navy row exists, since Army joined the AAC for football in 2024 -- fixed by excluding the Army/Navy pairing from every conference's candidate pool, re-verified 16/16 across 2024+2025; (2) get_cfb_week()'s fixed 7-day window can still collide two of a team's real games (confirmed live: UNC 2025's TCU/Charlotte games) -- fixed by shifting the later game forward rather than dropping it. Orchestrator independently re-ran the assembly logic against a live slice of real 2025 ACC data and reproduced both findings."
+  current_blocker: "User needs to run scripts/backfill_2025_postseason.py (or trigger the pipeline) wherever real CFBD/DB credentials exist -- T3/T4a/T4b's validation needs real postseason rows to check against"
+
+artifacts:
+  requirements: "docs/schedule-grid/requirements.yaml"
+  plan: "docs/schedule-grid/plan.yaml"
+  implementation_report: "docs/schedule-grid/implementation-report.yaml"
+
+pr:
+  number: 7
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/7"
+  status: "open"
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    model_guidance: "xhigh"
+    status: "active"
+    stage: "execution"
+    task: "coordinating B1 execution in cfb-rankings, starting with T1"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "data-engineer-T1"
+    role: "data-engineer"
+    model_guidance: "high"
+    status: "completed"
+    stage: "execution"
+    task: "T1: rankings_games view created + verified live in Supabase; model/process_data.py repointed; byte-for-byte rankings output confirmed unchanged"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "data-engineer-T2"
+    role: "data-engineer"
+    model_guidance: "high"
+    status: "completed"
+    stage: "execution"
+    task: "T2 complete: schema migration + widened get_games.py + main.py recurring-call wiring + backfill script. Orchestrator caught/fixed a playoff_bracket_slot type bug (INTEGER+numeric-cast vs CFBD's documented string type) before commit."
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "data-engineer-T3"
+    role: "data-engineer"
+    model_guidance: "high"
+    status: "completed"
+    stage: "execution"
+    task: "T3 complete: schedule_grid view created and verified live (49,746 rows = 2x games). Status derivation validated against real data; 'tbd' edge case investigated and deferred to 'upcoming'; Week 0/1 raw-week collision confirmed and deferred to T4b."
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "data-engineer-T4a"
+    role: "data-engineer"
+    model_guidance: "high"
+    status: "completed"
+    stage: "execution"
+    task: "T4a complete: schedule_standings.py, algorithm verified against a hand-built synthetic conference, records spot-checked against real 2025 data"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "data-engineer-T4b"
+    role: "data-engineer"
+    model_guidance: "high"
+    status: "completed"
+    stage: "execution"
+    task: "T4b complete: artifacts/schedule.py assembles and publishes the Season Grid artifact. Found/fixed two real bugs (Army-Navy/AAC championship-game misidentification, get_cfb_week window collision) beyond the handoff's specified scope."
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "generalist-developer-T5"
+    role: "generalist-developer"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "execution"
+    task: "T5 complete: PR #7 opened against main with a full description of T1-T4b and the post-merge credential-gated steps"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "reviewer-plan"
+    role: "reviewer"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "planning"
+    task: "plan critique (pass 1) -- requested changes, addressed in plan.yaml revision"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "reviewer-plan-2"
+    role: "reviewer"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "planning"
+    task: "plan critique (pass 2) -- requested changes (missing 'clinched' status, T9 rendering gap, underspecified algorithm, trivially-passing validation, oversized T4), all addressed"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "platform-researcher-cfbd-postseason"
+    role: "platform-researcher"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "planning"
+    task: "researched CFBD postseason data -- confirmed real bowl names ingestible now (notes, playoff.bowl_name, /playoffs/cfp/games); confirmed bowl logos permanently unavailable from CFBD. Folded into plan."
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "reviewer-plan-3"
+    role: "reviewer"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "planning"
+    task: "full-plan critique (pass 3) -- requested changes (B1/B2 dependency not structural, misleading rankings_games wording, unspecified bye-week mechanism, wrong postseason week param, logo-resolution already solved, minor contract cleanup), all addressed"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "repo-researcher-week0"
+    role: "repo-researcher"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "planning"
+    task: "confirmed empirically that games.week never contains 0 (CFBD conflates Week 0 into Week 1); found utils.get_cfb_week() already works per-game via start_date to correctly separate them. Folded into T4b."
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "platform-researcher-bowl-logos"
+    role: "platform-researcher"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "planning"
+    task: "researched non-CFBD bowl logo sources (ESPN, TheSportsDB, Wikidata) -- all worse than manual curation; recommended lightweight manual curation (~40 bowls, annual refresh) if logos are wanted this pass. Awaiting user decision."
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "repo-researcher-cfb-rankings"
+    role: "repo-researcher"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "discovery"
+    task: "cfb-rankings ingestion architecture, Supabase schema, R2 publish pattern, weekly cron"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "repo-researcher-personal-site"
+    role: "repo-researcher"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "discovery"
+    task: "personal-site CFB-Rankings frontend, artifact consumption pattern, styling/interactivity conventions"
+    last_update: "2026-09-06"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 4
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: proceed
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+decisions: []
+
+next_action: "T5b requires the user: merge PR #7, then run scripts/backfill_2025_postseason.py and manually trigger the pipeline (real credentials needed, not available in this sandbox) so the schedule artifact is actually published to R2. B2 (personal-site frontend) cannot start until then."
+next_recommended_command: "$work"
+user_input_needed: true

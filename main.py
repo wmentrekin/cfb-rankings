@@ -4,6 +4,7 @@ from database.model_to_db import ratings_to_df, insert_model_results_to_db
 from database.get_games import load_games_to_db
 from database.get_teams import load_teams_to_db
 from artifacts.r2 import publish_rankings_artifact
+from artifacts.schedule import publish_schedule_artifact
 from utils import get_cfb_week, setup_logging
 import pandas as pd #type: ignore
 from datetime import datetime, date
@@ -109,6 +110,18 @@ def main():
     except Exception as e:
         logger.warning("Games loading raised an exception (they may already be loaded). Continuing. Exception: %s", e)
 
+    # PULL POSTSEASON DATA
+    # Postseason week numbers are a different, colliding numbering scheme from
+    # the regular-season pipeline-week cursor (args.week) -- always fetch the
+    # whole postseason slate (week=None) rather than reusing args.week, which
+    # would silently fetch the wrong/empty postseason games every run. Cheap
+    # (a few dozen games) and safe given load_games_to_db's upsert idempotency.
+    try:
+        logger.info("Loading postseason games into DB for year=%s", args.year)
+        load_games_to_db(args.year, week=None, season_type='postseason')
+    except Exception as e:
+        logger.warning("Postseason games loading raised an exception (they may already be loaded). Continuing. Exception: %s", e)
+
     # RUN MODEL
     logger.info("Running model.get_ratings(year=%s, week=%s)", args.year, args.week)
     results = None
@@ -153,6 +166,17 @@ def main():
             logger.exception("Rankings artifact publish step failed unexpectedly: %s", ex)
     else:
         logger.info("Skipping rankings artifact publish because --staging was set.")
+
+    # PUBLISH SCHEDULE (SEASON GRID) ARTIFACT
+    # Season-scoped, not per-week -- no `week` argument. Own try/except so a schedule-publish
+    # failure never affects (or is affected by) the rankings publish above.
+    if not args.staging:
+        try:
+            publish_schedule_artifact(args.year)
+        except Exception as ex:
+            logger.exception("Schedule artifact publish step failed unexpectedly: %s", ex)
+    else:
+        logger.info("Skipping schedule artifact publish because --staging was set.")
 
     logger.info("Run finished successfully for year=%s week=%s", args.year, args.week)
 
