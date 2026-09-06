@@ -6,7 +6,7 @@ owner_skill: work
 based_on: "docs/schedule-grid/plan.yaml"
 
 summary:
-  scope_executed: "B1 fully complete (T1-T5b, merged, live). B2 in progress in wmentrekin/personal-site: T6/T7/T8 done, T9 (Season Grid component) next, then T10 (open PR)."
+  scope_executed: "B1 fully complete (T1-T5b, merged, live). B2 code complete in wmentrekin/personal-site: T6/T7/T8/T9 all done. T10 (open the PR) is the only remaining task in the whole feature."
   outcome: "in_progress"
 
 task_batches_attempted: ["B1", "B2"]
@@ -44,6 +44,8 @@ changes:
     - "scripts/cleanup_premature_2026_week1_rankings.py (new, incident response -- one-off R2 cleanup script, executed successfully by the user)"
     - "[wmentrekin/personal-site] scripts/fetch-rankings-data.mjs (T6: extended to also fetch schedule/index.json + schedule/{season}/latest.json into public/data/cfb/schedule/)"
     - "[wmentrekin/personal-site] src/layouts/BaseLayout.astro (T7: 7 new :root design tokens -- --schedule-win-bg/-text, --schedule-loss-bg/-text, --tab-switch-track-on/-off, --tab-switch-thumb)"
+    - "[wmentrekin/personal-site] src/components/ScheduleGrid.astro (new, T9 -- the Season Grid table component)"
+    - "[wmentrekin/personal-site] src/pages/projects/cfb-rankings/index.astro (T9: iOS-style Rankings/Season Grid tab toggle, page-level season selector, Rankings-only week selector, restructured client-side selector script)"
   modules:
     - "rankings_games Supabase view (project oyqgmbgwohlnrxodvilt)"
     - "games table (project oyqgmbgwohlnrxodvilt): 5 new nullable columns via migration 0002 (notes, playoff_round_name, playoff_round_order, playoff_bracket_slot, playoff_bowl_name)"
@@ -119,21 +121,23 @@ resolved_issues:
   - "RESOLVED 2026-09-06: that same real run's log surfaced a genuine bug -- get_games_by_year_week(2026, season_type='postseason') raised KeyError ('None of [Index(...)] are in the [columns]') because CFBD legitimately returns an empty list for 2026's postseason (it doesn't exist yet), and pd.DataFrame([]) has zero columns so the subsequent column-selection failed. This was being silently caught by main.py's broad try/except every run (not crashing the pipeline) but would have logged a spurious warning every week until real 2026 postseason data appears around December. Fixed with an empty-DataFrame short-circuit carrying the correct final columns, verified locally with a mocked empty CFBD response, committed and pushed (ce02d9d). The run's two WARNING lines (an ambiguous 2026 conference-championship pick this early in the season -- many teams still tied at their 'latest' game; SMU's week-collision shift) are separately confirmed as expected, already-documented behavior working as designed, not bugs."
 
 handoff:
-  current_state: in_progress
-  next_owner: "frontend-engineer (T9, in wmentrekin/personal-site)"
+  current_state: ready_for_T10
+  next_owner: "generalist-developer (T10, in wmentrekin/personal-site)"
   next_action: >
-    B1 is fully complete and live (see incident_response above for the
-    post-merge bug found and fixed along the way). In B2: T6 (schedule
-    artifact fetch) and T7 (design tokens) are both complete, independently
-    verified, committed and pushed to personal-site's
-    claude/georgia-tech-schedule-viz-aqy1ay branch (9a76fc1, 4da4630). T8
-    (design mockup) was already locked earlier in planning
-    (https://claude.ai/code/artifact/6704edcb-4ca4-419d-9d5b-695badc3175f).
-    Next: T9 -- build the actual Season Grid tab component (the largest
-    remaining task in the whole feature): full grid rendering (conference
-    header rows, sticky header+first-column+corner-cell, win/loss/
-    upcoming/tbd/computed-placeholder cell states), restructuring the
-    existing season/week selector in index.astro into a page-level shared
-    season selector + Rankings-only week selector + iOS-style tab toggle.
-    Then T10 (open the personal-site PR, noting it follows the merged
-    cfb-rankings PR).
+    All of B2's code is done: T6 (9a76fc1), T7 (4da4630), T9 (c2bb6c9),
+    all committed and pushed to personal-site's
+    claude/georgia-tech-schedule-viz-aqy1ay branch, T8's mockup locked
+    earlier (https://claude.ai/code/artifact/6704edcb-4ca4-419d-9d5b-695badc3175f).
+    T9 was independently verified by the orchestrator: full diff review,
+    confirmed RankingsTable.astro/BaseLayout.astro/fetch-rankings-data.mjs
+    untouched, ran `astro build` directly and confirmed real win/loss
+    cells render server-side. One real cross-tab staleness bug was found
+    and fixed during T9's own validation (shared season selector left a
+    tab showing stale data after switching). One pre-existing (not
+    introduced by this feature), non-blocking dev-mode-only bug was found
+    and independently reproduced: import.meta.url-relative paths resolve
+    one level too shallow under `astro dev` specifically (inherited from
+    the original Rankings page's own pattern) -- production static builds
+    are unaffected, confirmed via a real `astro build` run. Queued as a
+    separate follow-up task, not a blocker. Next: T10 -- open the
+    personal-site PR, noting it follows the merged cfb-rankings PR (#7).

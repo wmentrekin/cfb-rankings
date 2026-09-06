@@ -17,8 +17,8 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "B2 in progress in wmentrekin/personal-site. T6/T7 complete and pushed (branch not yet PR'd -- T10 opens the PR after T9). Starting T9 (the Season Grid component itself) -- the largest remaining task in the whole feature."
-  last_completed: "T6 (schedule artifact build-time fetch, extending fetch-rankings-data.mjs) and T7 (win/loss + tab-switch design tokens in BaseLayout.astro) both complete, independently verified (clean diffs, correct scope), committed and pushed to personal-site's claude/georgia-tech-schedule-viz-aqy1ay branch (commits 9a76fc1, 4da4630)."
+  current_focus: "T9 complete -- all of B2's code is done. Next: T10 (open the personal-site PR)."
+  last_completed: "T9: ScheduleGrid.astro (new component) + index.astro restructuring (iOS tab toggle, page-level season selector, Rankings-only week selector). Independently verified: reviewed the full diff, confirmed RankingsTable.astro/BaseLayout.astro/fetch-rankings-data.mjs untouched, ran `astro build` myself and confirmed real win/loss cells render server-side from a fixture. Also independently reproduced the agent's flagged pre-existing dev-mode-only path bug (import.meta.url-relative paths resolve one level too shallow under `astro dev`, inherited from the original Rankings page's own pattern, production build unaffected) -- confirmed real via a live `astro dev` run, queued as a follow-up task. Committed and pushed (c2bb6c9)."
   current_blocker: "none"
 
 artifacts:
@@ -56,9 +56,9 @@ agents:
   - id: "frontend-engineer-T9"
     role: "frontend-engineer"
     model_guidance: "high"
-    status: "running"
+    status: "completed"
     stage: "execution"
-    task: "T9: build the Season Grid tab component (largest remaining task in the feature)"
+    task: "T9 complete: ScheduleGrid.astro + index.astro tab/selector restructuring. Found and fixed a real cross-tab staleness bug; orchestrator independently verified via a real astro build."
     last_update: "2026-09-06"
     blocker: ""
   - id: "orchestrator"
@@ -202,6 +202,6 @@ checkpoint:
 blockers: []
 decisions: []
 
-next_action: "T6/T7/T8 all satisfied -- T9's dependencies are clear. Write T9's handoff (Season Grid tab component: full grid rendering, iOS toggle, page-level season selector restructuring) and execute, then T10 (open the personal-site PR)."
+next_action: "Open the personal-site PR (T10) -- all of T6/T7/T8/T9 are done. Note the pre-existing dev-mode path bug as a suggested follow-up in the PR description or a separate task, not a blocker to merging."
 next_recommended_command: "$work"
 user_input_needed: false
