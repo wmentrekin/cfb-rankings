@@ -6,7 +6,7 @@ owner_skill: work
 based_on: "docs/schedule-grid/plan.yaml"
 
 summary:
-  scope_executed: "B1 complete: T1-T5. PR #7 merged into main (merge commit c4eeb75)."
+  scope_executed: "B1 fully complete: T1-T5b. PR #7 merged (c4eeb75); real 2025 postseason backfilled and verified; weekly-update.yml run confirmed schedule/2026/latest.json + schedule/index.json live in R2. B2 not yet started."
   outcome: "in_progress"
 
 task_batches_attempted: ["B1"]
@@ -93,7 +93,7 @@ open_issues:
   - "T3: raw games.week is not a unique key within (season, team, season_type) -- 129+ real (season, team, season_type, week) combinations collide (the Week 0 vs. Week 1 CFBD numbering quirk plan.yaml already documents). Not a schedule_grid defect -- start_date is exposed per row precisely so T4b's per-game utils.get_cfb_week() call can disambiguate, per plan.yaml's key_decisions."
   - "T4a: the QUALIFYING_CHAMPIONSHIP_CONFERENCES list (SEC, Big Ten, Big 12, ACC, American Athletic, Conference USA, Mountain West, Mid-American) was derived from live web research done during T4a, not a repo-internal source of truth -- per the module's own docstring, it MUST be re-verified each offseason as conferences realign/change championship format (the Pac-12 in particular is actively rebuilding via 2026 Mountain West defections and could plausibly re-qualify in a future season once it has >= 4 football members again). MAC's real tiebreak criterion is 'best conference winning percentage,' not raw win total, a narrow divergence from this module's win-total counting whenever conference game counts are uneven across members mid-season -- flagged, not fixed, in the module."
   - "T4b: get_cfb_week()'s fixed 7-day-window bucketing (reused as-is, per forbidden_scope) can collide two of a team's real games into the same week-N slot when they're less than 7 days apart but cross that team's natural broadcast-week boundary -- confirmed live for North Carolina 2025 (TCU Tue 9/2, Charlotte Sat 9/6). Resolved defensively in artifacts/schedule.py (shift the later game forward to the next open week column, never drop it) rather than by touching utils.py. This is a real, if rare, cosmetic ordering limitation -- a small handful of teams per season may show a game in a week column slightly later than its true chronological position."
-  - "T5b, remaining: the pipeline (weekly-update.yml or a scheduled Sunday run) has not yet exercised main.py's recurring postseason call end-to-end (the real backfill was run directly via scripts/backfill_2025_postseason.py, calling the same underlying load_games_to_db() path, which is good evidence the mechanism works -- but main.py's own wiring hasn't been triggered live yet). The actual R2 publish (publish_schedule_artifact) has also not been exercised against real R2 credentials -- only the JSON-assembly logic has been validated against real data (see resolved_issues). Trigger weekly-update.yml (has R2 secrets; test-week-run.yml does not) and confirm schedule/{season}/latest.json + schedule/index.json land in R2."
+  - "2026's recurring postseason fetch will keep silently no-oping (correctly, now that ce02d9d's fix lands) until CFBD actually has 2026 postseason data to return, likely around conference championship week in December. Not a defect -- just noting so a `no games to load` no-op every week between now and then isn't mistaken for a problem."
 
 resolved_issues:
   - "RESOLVED 2026-09-06 by the user running scripts/backfill_2025_postseason.py with real credentials: 46 real 2025 postseason games (all CFP rounds + all bowls) now exist in `games`/`schedule_grid`."
@@ -101,24 +101,24 @@ resolved_issues:
   - "RESOLVED: playoff_round_name/playoff_bracket_slot/playoff_bowl_name keyword-matching in artifacts/schedule.py's _bucket_cfp_slot() was re-verified end-to-end against the real backfilled 2025 data (not just synthetic values) -- CFP round_name values are exactly 'First Round'/'Quarterfinal'/'Semifinal'/'National Championship', matching the keyword matching precisely. Ran build_schedule_payload() against real rows for Miami (full CFP run: First Round win, Cotton Bowl QF win, Fiesta Bowl SF win, National Championship loss to Indiana), Georgia Tech (Pop-Tarts Bowl loss, real bowl name from notes), Indiana (National Championship win), Ohio State, Georgia, Ole Miss -- every cell bucketed into the correct column with the correct game_name, and real rows correctly override T4a's computed placeholders. playoff_round_order is null on every real row (CFBD does not populate it in this feed) -- confirms the decision to never rely on it, even as a tiebreak, was correct."
   - "RESOLVED: playoff_bracket_slot's real values (e.g. 'FR2', 'QF3', 'CH') are confirmed non-numeric strings, retroactively validating T2's playoff_bracket_slot INTEGER-to-TEXT type fix -- an INTEGER column would have silently nulled every one of these."
   - "NOTED (not a bug, documented MVP scope limitation): teams that received a real first-round bye in the actual CFP bracket (Ohio State, Indiana) show status='eligible' (T4a's computed bowl-eligibility placeholder) in the CFP 1st Round + Other Bowls column rather than an explicit bye-through-round-1 indicator, since no real schedule_grid row exists for that slot for them. Predicting/representing CFP seeding and byes was explicitly out of scope for this pass."
+  - "RESOLVED 2026-09-06, T5b: user triggered weekly-update.yml (workflow_dispatch) for real -- rankings/2026/week-01.json published normally, main.py's new postseason fetch ran (see the get_games_by_year_week fix below), and publish_schedule_artifact() published schedule/2026/latest.json + schedule/index.json to R2 successfully (confirmed via the run's own log: two 'Published schedule ... to R2 key ...' INFO lines). B1/T5b is fully done; B2 (personal-site frontend) is unblocked."
+  - "RESOLVED 2026-09-06: that same real run's log surfaced a genuine bug -- get_games_by_year_week(2026, season_type='postseason') raised KeyError ('None of [Index(...)] are in the [columns]') because CFBD legitimately returns an empty list for 2026's postseason (it doesn't exist yet), and pd.DataFrame([]) has zero columns so the subsequent column-selection failed. This was being silently caught by main.py's broad try/except every run (not crashing the pipeline) but would have logged a spurious warning every week until real 2026 postseason data appears around December. Fixed with an empty-DataFrame short-circuit carrying the correct final columns, verified locally with a mocked empty CFBD response, committed and pushed (ce02d9d). The run's two WARNING lines (an ambiguous 2026 conference-championship pick this early in the season -- many teams still tied at their 'latest' game; SMU's week-collision shift) are separately confirmed as expected, already-documented behavior working as designed, not bugs."
 
 handoff:
-  current_state: blocked_on_user
-  next_owner: "user (T5b)"
+  current_state: ready_for_B2
+  next_owner: "orchestrator (B2: T6-T10 in wmentrekin/personal-site)"
   next_action: >
-    B1 is complete and PR #7 is MERGED into main (merge commit c4eeb75):
-    https://github.com/wmentrekin/cfb-rankings/pull/7 -- it went green
-    (GitGuardian passed, Supabase Preview skipped, no review comments)
-    before the user merged it. T5b remains: wherever real CFBD/DB/R2
-    credentials exist, the user needs to (1) run
-    scripts/backfill_2025_postseason.py (or trigger the pipeline) to
-    backfill 2025 postseason games; (2) manually trigger the pipeline once
-    (e.g. the existing test-week-run.yml workflow_dispatch) rather than
-    waiting for the next scheduled Sunday run, so main.py's new recurring
-    postseason fetch and publish_schedule_artifact() both actually execute
-    against real data; (3) verify the resulting schedule artifact is live
-    in R2 (schedule/{season}/latest.json + schedule/index.json). Only once
-    this is done can B2 (the personal-site frontend PR) begin -- it needs
-    real published artifact data to build against, per the user's own
-    explicit preference to lock backend data before starting frontend
-    work.
+    B1 is fully complete, including T5b: PR #7 merged (c4eeb75), 2025
+    postseason backfilled (46 real games, verified), and the user
+    triggered weekly-update.yml for real -- rankings/2026/week-01.json
+    published normally, and schedule/2026/latest.json +
+    schedule/index.json were confirmed published to R2 in the same run.
+    One real bug surfaced by that run's log (get_games_by_year_week
+    crashing on CFBD's empty-list response for 2026's not-yet-existent
+    postseason) was fixed and pushed (ce02d9d) -- it was being silently
+    caught by main.py's try/except so the pipeline wasn't broken, but it
+    would have fired every week until December. Next: begin B2 in
+    wmentrekin/personal-site -- T6 (extend fetch-rankings-data.mjs for
+    the schedule artifact), T7 (design tokens), T8 (design mockup for
+    user sign-off before T9), T9 (Season Grid tab component), T10 (open
+    the personal-site PR).

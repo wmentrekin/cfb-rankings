@@ -17,9 +17,9 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "B1 MERGED (PR #7). User ran the real 2025 postseason backfill successfully (46 games). T5b's remaining step: trigger weekly-update.yml so publish_schedule_artifact() actually publishes to R2 (test-week-run.yml lacks R2 secrets, don't use it for this). B2 (personal-site frontend) cannot start until the artifact is confirmed live in R2."
-  last_completed: "User ran scripts/backfill_2025_postseason.py locally (after a real bug fix -- the script's own sys.path assumption broke when invoked as `python scripts/foo.py`, fixed and pushed to main). Orchestrator independently verified: 46 real 2025 postseason games landed correctly, schedule_grid reflects them automatically, and ran build_schedule_payload() against the real data end-to-end -- CFP-round bucketing, real-bowl-name sourcing from notes, and real-row-overrides-placeholder all confirmed correct against genuine production data (Miami's full CFP run, Georgia Tech's Pop-Tarts Bowl, Indiana's national championship win)."
-  current_blocker: "User needs to trigger weekly-update.yml (workflow_dispatch or gh workflow run) -- it has R2 secrets and calls main.py with no args (auto-computed year/week); test-week-run.yml does NOT have R2 secrets so running it would not actually publish anything. Once triggered, confirm schedule/{season}/latest.json + schedule/index.json exist in R2."
+  current_focus: "T5b COMPLETE -- B1 fully done end to end. schedule/2026/latest.json + schedule/index.json confirmed published to R2 by a real weekly-update.yml run. B2 (personal-site frontend) is now unblocked and can begin."
+  last_completed: "User triggered weekly-update.yml for real: rankings published normally, and the new postseason fetch + schedule artifact publish both ran. Caught and fixed one real bug from the run's log: get_games_by_year_week raised KeyError on CFBD's empty-list response for 2026's not-yet-existent postseason (pd.DataFrame([]) has zero columns) -- was being silently caught by main.py's try/except every run, not crashing the pipeline, but a real gap. Fixed with an empty-DataFrame short-circuit, verified locally with a mocked empty response, committed and pushed (ce02d9d). The two WARNING lines in the run's log (ambiguous 2026 conference-championship pick this early in the season; SMU's week-collision shift) are expected, documented behavior working exactly as designed, not bugs."
+  current_blocker: "none -- B1/T5b fully done"
 
 artifacts:
   requirements: "docs/schedule-grid/requirements.yaml"
@@ -173,6 +173,6 @@ checkpoint:
 blockers: []
 decisions: []
 
-next_action: "PR #7 is merged. T5b requires the user: wherever real CFBD/DB/R2 credentials exist, run scripts/backfill_2025_postseason.py and manually trigger the pipeline (e.g. test-week-run.yml workflow_dispatch) so the schedule artifact is actually published to R2, then confirm it's live. B2 (personal-site frontend) cannot start until then."
+next_action: "B1/T5b fully done. Begin B2 in wmentrekin/personal-site: T6 (extend fetch-rankings-data.mjs for the schedule artifact), T7 (design tokens: outcome colors + iOS-style toggle), T8 (design mockup for user sign-off before T9), T9 (Season Grid tab component), T10 (open the personal-site PR)."
 next_recommended_command: "$work"
-user_input_needed: true
+user_input_needed: false
