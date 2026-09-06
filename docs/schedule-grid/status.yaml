@@ -17,9 +17,9 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "Holding at user's request -- plan and requirements are complete and reviewed, execution has not started"
-  last_completed: "Reviewer critique addressed; pre-execution checkpoint presented"
-  current_blocker: "User chose Stop at the checkpoint; awaiting their reason/direction before any execution begins"
+  current_focus: "Mockup approved; data-contract gaps (record/logo/neutral-site) and remaining pre-execution questions (backfill, ordering, DB-safety, post-merge trigger) resolved. Plan is complete."
+  last_completed: "Closed record/conf_record/logo_url/neutral_site contract gaps; confirmed direct-to-production DB approach and the post-merge manual pipeline trigger step"
+  current_blocker: "Awaiting final user go-ahead at the pre-execution checkpoint"
 
 artifacts:
   requirements: "docs/schedule-grid/requirements.yaml"
@@ -75,7 +75,7 @@ loops:
 
 checkpoint:
   pre_execution_required: true
-  pre_execution_status: stopped_by_user
+  pre_execution_status: pending
   options:
     - proceed
     - revise_plan
@@ -85,6 +85,6 @@ checkpoint:
 blockers: []
 decisions: []
 
-next_action: "Awaiting user's reason for stopping / further direction"
+next_action: "User decides: proceed / revise plan / narrow scope / stop"
 next_recommended_command: "$work"
 user_input_needed: true
