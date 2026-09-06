@@ -6,11 +6,11 @@ owner_skill: work
 based_on: "docs/schedule-grid/plan.yaml"
 
 summary:
-  scope_executed: "B1 complete: T1-T5. PR #7 opened against main."
+  scope_executed: "B1 complete: T1-T5. PR #7 merged into main (merge commit c4eeb75)."
   outcome: "in_progress"
 
 task_batches_attempted: ["B1"]
-task_batches_completed: []
+task_batches_completed: ["B1"]
 
 domains_touched: ["data-engineer"]
 
@@ -103,18 +103,19 @@ handoff:
   current_state: blocked_on_user
   next_owner: "user (T5b)"
   next_action: >
-    B1 (all of T1-T5) is complete and PR #7 is open:
-    https://github.com/wmentrekin/cfb-rankings/pull/7 -- $work agents never
-    merge PRs, per branch-and-pr-workflow.md, so a human must merge this.
-    After merging, T5b requires the user to, wherever real CFBD/DB/R2
-    credentials exist: (1) run scripts/backfill_2025_postseason.py (or
-    trigger the pipeline) to backfill 2025 postseason games; (2) manually
-    trigger the pipeline once (e.g. the existing test-week-run.yml
-    workflow_dispatch) rather than waiting for the next scheduled Sunday
-    run, so main.py's new recurring postseason fetch and
-    publish_schedule_artifact() both actually execute against real data;
-    (3) verify the resulting schedule artifact is live in R2
-    (schedule/{season}/latest.json + schedule/index.json). Only once this
-    is done can B2 (the personal-site frontend PR) begin -- it needs real
-    published artifact data to build against, per the user's own explicit
-    preference to lock backend data before starting frontend work.
+    B1 is complete and PR #7 is MERGED into main (merge commit c4eeb75):
+    https://github.com/wmentrekin/cfb-rankings/pull/7 -- it went green
+    (GitGuardian passed, Supabase Preview skipped, no review comments)
+    before the user merged it. T5b remains: wherever real CFBD/DB/R2
+    credentials exist, the user needs to (1) run
+    scripts/backfill_2025_postseason.py (or trigger the pipeline) to
+    backfill 2025 postseason games; (2) manually trigger the pipeline once
+    (e.g. the existing test-week-run.yml workflow_dispatch) rather than
+    waiting for the next scheduled Sunday run, so main.py's new recurring
+    postseason fetch and publish_schedule_artifact() both actually execute
+    against real data; (3) verify the resulting schedule artifact is live
+    in R2 (schedule/{season}/latest.json + schedule/index.json). Only once
+    this is done can B2 (the personal-site frontend PR) begin -- it needs
+    real published artifact data to build against, per the user's own
+    explicit preference to lock backend data before starting frontend
+    work.
