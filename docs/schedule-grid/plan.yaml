@@ -66,12 +66,23 @@ branching:
   strategy: "single-branch"
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
   worktrees: []
+  note: >
+    This is a 2-repo feature. "claude/georgia-tech-schedule-viz-aqy1ay" is
+    NOT one branch -- it's the SAME branch name used in TWO separate git
+    repositories (wmentrekin/cfb-rankings and wmentrekin/personal-site,
+    each with its own checkout, its own history, its own PR). All B1 tasks
+    (T1-T5b) operate in the cfb-rankings checkout; all B2 tasks (T6-T10,
+    T8) operate in the personal-site checkout. See each task's `repo`
+    field below for the explicit, per-task statement of which -- do not
+    infer it only from batch membership if a task is ever handed to an
+    implementing agent on its own.
 
 execution_batches:
   - id: "B1"
     goal: "cfb-rankings: guard the model, widen+backfill postseason ingestion, new grid view, artifact builder, weekly publish, PR"
     tasks:
       - id: "T1"
+        repo: "wmentrekin/cfb-rankings"
         title: "Create rankings_games silver view and point the model at it (replaces an inline filter)"
         objective: >
           Add a checked-in migration creating a `rankings_games` Supabase
@@ -111,6 +122,7 @@ execution_batches:
           - "Confirm rankings output for a known past week (e.g. 2025 week 10) is byte-for-byte unchanged before/after this change, since no postseason rows exist yet at this point"
 
       - id: "T2"
+        repo: "wmentrekin/cfb-rankings"
         title: "Add postseason columns to games, widen ingestion, backfill 2025+2026, wire recurring weekly postseason refresh"
         objective: >
           Extend get_games_by_year_week/load_games_to_db to also ingest
@@ -164,6 +176,7 @@ execution_batches:
           - "Confirm notes and playoff.bowl_name/round_name/round_order/bracket_slot populate for a known real 2025 postseason game (both a CFP game and a non-CFP bowl) -- if notes doesn't reliably carry a real bowl name for non-CFP bowls, document that finding and fall back to a generic label rather than silently shipping garbage text"
 
       - id: "T3"
+        repo: "wmentrekin/cfb-rankings"
         title: "Create schedule_grid silver view via checked-in migration"
         objective: >
           Design and apply a second silver-layer Supabase view (or table,
@@ -199,6 +212,7 @@ execution_batches:
           - "Confirm conference_game and neutral_site match known 2025 games (e.g. a known rivalry/conference game reads conference_game=true; a known neutral-site game reads neutral_site=true)"
 
       - id: "T4a"
+        repo: "wmentrekin/cfb-rankings"
         title: "Compute team records and conference-championship/bowl-eligibility status (isolated, unit-testable)"
         objective: >
           Add a standalone module (e.g. artifacts/schedule_standings.py) with
@@ -241,6 +255,7 @@ execution_batches:
           - "Spot-check computed record/conf_record against known 2025 final standings"
 
       - id: "T4b"
+        repo: "wmentrekin/cfb-rankings"
         title: "Build and publish the schedule R2 artifact"
         objective: >
           Add artifacts/schedule.py (new module, following the same
@@ -328,6 +343,7 @@ execution_batches:
           - "Confirm publish failure handling matches the existing artifact-safe discipline (never raises/breaks the pipeline run)"
 
       - id: "T5"
+        repo: "wmentrekin/cfb-rankings"
         title: "Open cfb-rankings PR"
         objective: "Open the PR for B1, base the description on this plan/requirements, and report readiness."
         assigned_domain: "generalist-developer"
@@ -339,6 +355,7 @@ execution_batches:
           - "PR opened against the correct base branch with a clear description"
 
       - id: "T5b"
+        repo: "wmentrekin/cfb-rankings"
         title: "Confirm B1 merged, trigger the pipeline, verify the schedule artifact is live"
         objective: >
           Added after full-plan review: the "manually trigger the pipeline
@@ -369,6 +386,7 @@ execution_batches:
     goal: "personal-site: lock the visual design, then fetch new artifact and render a switchable Rankings/Season Grid tab (code work starts only after B1 MERGES)"
     tasks:
       - id: "T8"
+        repo: "wmentrekin/personal-site"
         title: "Design mockup: schedule grid + Rankings/Season Grid tab toggle (mockup itself predates the 'Season Grid' name and iOS-switch decisions -- T9 implements the current spec, not the mockup's literal toggle label/style)"
         objective: >
           Before any personal-site code is written, produce a visual mockup
@@ -391,6 +409,7 @@ execution_batches:
           - "User explicitly signs off on (or requests changes to) the mockup before T9 begins"
 
       - id: "T6"
+        repo: "wmentrekin/personal-site"
         title: "Extend build-time artifact fetch for the schedule data"
         objective: >
           Extend scripts/fetch-rankings-data.mjs (or add a sibling script run
@@ -410,6 +429,7 @@ execution_batches:
           - "npm run prebuild succeeds locally against the real published B1 artifact and populates public/data/cfb/schedule/"
 
       - id: "T7"
+        repo: "wmentrekin/personal-site"
         title: "New design tokens for outcome colors and the tab-switch control"
         objective: >
           Add win/loss/upcoming/tbd color custom properties to
@@ -432,6 +452,7 @@ execution_batches:
           - "Tokens match the locked mockup's color choices for the grid; switch tokens are new (not in the mockup, which showed the old pill-button toggle) but follow the same naming/value conventions"
 
       - id: "T9"
+        repo: "wmentrekin/personal-site"
         title: "Build the Season Grid tab: grid page/component on the existing rankings page"
         objective: >
           Add a switchable tab (Rankings | Season Grid, defaulting to
@@ -508,6 +529,7 @@ execution_batches:
           - "Confirm the tab switch renders and behaves as an iOS-style toggle (oval track, circular thumb sliding left/right) with 'Rankings' and 'Season Grid' as flanking labels, not the mockup's pill-button pair"
 
       - id: "T10"
+        repo: "wmentrekin/personal-site"
         title: "Open personal-site PR"
         objective: "Open the PR for B2 (only after B1's PR has merged and its artifact is live), report readiness."
         assigned_domain: "generalist-developer"
