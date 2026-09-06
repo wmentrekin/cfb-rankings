@@ -1,7 +1,7 @@
 artifact: status
 feature: "schedule-grid"
-mode: "investigation"
-stage: "discovery"
+mode: "large-initiative"
+stage: "planning"
 owner_skill: work
 
 objective: >
@@ -17,13 +17,13 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "Discovery complete; architecture proposal and open questions delivered to user"
-  last_completed: "Repo research (cfb-rankings + personal-site), Supabase schema/data verification, Google Sheet structure review"
-  current_blocker: "Awaiting user decisions on open_questions in requirements.yaml before scoping a bounded-feature plan"
+  current_focus: "Plan revised after reviewer request-changes + user's B2-timing/placement/mockup answers; ready to present pre-execution checkpoint"
+  last_completed: "Reviewer critique addressed (model-guard task added, recurring postseason refresh added, view-grain collision fixed); requirements.yaml updated with B2 timing/placement/design-pass decisions"
+  current_blocker: "Awaiting user go/no-go at the pre-execution checkpoint"
 
 artifacts:
   requirements: "docs/schedule-grid/requirements.yaml"
-  plan: null
+  plan: "docs/schedule-grid/plan.yaml"
   implementation_report: null
 
 pr:
@@ -36,10 +36,18 @@ agents:
     role: "orchestrator"
     model_guidance: "xhigh"
     status: "active"
-    stage: "discovery"
-    task: "discovery complete; presented architecture proposal + open questions to user, awaiting direction"
+    stage: "planning"
+    task: "plan revised post-review; presenting pre-execution checkpoint to user"
     last_update: "2026-09-06"
-    blocker: "user decisions needed on scope/design/data-model open questions"
+    blocker: "awaiting user checkpoint decision"
+  - id: "reviewer-plan"
+    role: "reviewer"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "planning"
+    task: "plan critique -- requested changes, addressed in plan.yaml revision"
+    last_update: "2026-09-06"
+    blocker: ""
   - id: "repo-researcher-cfb-rankings"
     role: "repo-researcher"
     model_guidance: "medium"
@@ -59,7 +67,7 @@ agents:
 
 loops:
   planning_review:
-    count: 0
+    count: 1
     max: 2
   execution_verification:
     count: 0
@@ -77,6 +85,6 @@ checkpoint:
 blockers: []
 decisions: []
 
-next_action: "User reviews open_questions in requirements.yaml and decides scope/design/data-model direction; then $work can move to planning for a bounded-feature pass"
+next_action: "User decides: proceed / revise plan / narrow scope / stop"
 next_recommended_command: "$work"
 user_input_needed: true

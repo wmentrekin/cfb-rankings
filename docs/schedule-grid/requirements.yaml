@@ -88,19 +88,44 @@ research:
     - "A third tab ('Bowl Game' reference data: tiers, sponsors, tie-ins) is unrelated to the grid itself -- pure reference data, not part of the per-team schedule view."
     - "Could not retrieve cell background-color/formatting data through the available Google Drive connector -- only plain/markdown text content was returned. The actual win/loss/bye/upcoming color legend is unknown and must come from the user directly (description or screenshot) rather than being inferred from the sheet."
 
-acceptance_criteria: []
+acceptance_criteria:
+  - "Grid covers Week 0 through the full regular season, one column per week, plus bowl/CFP columns, for seasons 2025 and 2026"
+  - "Teams are grouped by conference; group order is the 4 power conferences (ACC, Big 12, Big Ten, SEC) first, then Independents, then the remaining 6 FBS conferences (American, Conference USA, MAC, Mountain West, Pac-12, Sun Belt); within a conference, teams are sorted by conference standings"
+  - "No team is treated as special/pinned to the top -- Georgia Tech renders in its normal ACC position like every other team"
+  - "The page is general/team-agnostic, not a Georgia Tech-specific view"
+  - "Postseason (bowl/CFP) games are ingested and included as columns for 2025 and 2026, requiring a backfill for both seasons"
+  - "Cell coloring for MVP: green = win, red = loss, neutral/blank = upcoming or bye. Conference-game/rivalry highlighting is explicitly deferred, not MVP"
+  - "Layout is a single wide, horizontally scrollable table grouped by conference (with conference header rows, like the source Sheet) -- no collapse/expand interaction for MVP"
+  - "Data model is a new Supabase view or table purpose-built for the grid, so the artifact renders identically on every publish rather than being recomputed ad hoc from raw games/teams each time"
+  - "Update cadence is weekly, piggybacking the existing Sunday rankings cron -- no new cron needed for MVP"
 
-open_questions:
-  - "Scope: full FBS (130+ teams, all conferences) from week 0 like the 2026 tab, or a narrower 'focus team + relevant opponents' view like the completed prior-season tab? This changes both artifact size and the personal-site rendering approach."
-  - "Should the public page be Georgia Tech-specific (a GT schedule tracker) or fully general/team-agnostic? Affects whether it lives inside the existing CFB-Rankings section or becomes its own page/feature."
-  - "Should postseason (bowl/CFP) columns be included? If yes, ingestion needs to be widened beyond season_type='regular', which is a change to a previously-decided non-goal."
-  - "What is the exact color legend to replicate (win/loss/tie/bye/upcoming/in-progress, plus any secondary highlighting like ranked opponents or rivalry games)? Not recoverable from the Sheet via available tooling -- needs the user's input or a design pass."
-  - "Layout/perf approach for 130+ teams x ~15-18 week columns: a single scrollable table (extending RankingsTable.astro's pattern), grouped-by-conference with collapse/expand, or some other structure? No existing precedent in personal-site at this scale."
-  - "Historical seasons: does the grid need to support browsing past completed seasons (2014-2025 all already have full games data), or is 2026-forward sufficient at launch?"
-  - "Data model: compute the team x week grid transform at publish time straight from games+teams (recommended, no new ingestion/storage), or introduce a new Supabase table/materialized view specifically for grid-shaped rows? Note this repo has no schema/migrations file at all today, so either choice sets a first precedent."
-  - "Update cadence: is piggybacking the existing weekly Sunday cron acceptable, or does the grid need faster (e.g. same-day) result updates once games are played?"
-  - "Process: scope this as one coordinated feature spanning both repos (cfb-rankings artifact builder + optional postseason ingestion, personal-site fetch script + new page/component + design tokens), or split into two sequential PRs (data first, then UI)?"
+open_questions: []
 
-ready_for_planning: false
-planning_blockers:
-  - "Awaiting user decisions on the open questions above before scoping a bounded-feature plan"
+decisions:
+  - question: "Scope: full FBS from week 0, or narrower 'focus team' view?"
+    answer: "Full FBS, week 0 onward, one column per week (plus bowl/CFP columns). No team is pinned/special-cased; Georgia Tech sits in its normal ACC spot."
+  - question: "GT-specific page or general?"
+    answer: "General, team-agnostic grid."
+  - question: "Include bowl/CFP columns?"
+    answer: "Yes -- requires backfilling postseason ingestion for 2025 and 2026 (currently excluded by season_type='regular')."
+  - question: "Color legend?"
+    answer: "MVP: green=win, red=loss, blank/neutral=upcoming or bye. Conference-game/rivalry flags deferred to a future enhancement, not MVP."
+  - question: "Layout at scale?"
+    answer: "Single wide scrollable table grouped by conference (conference header rows like the source Sheet). No collapse/expand for MVP."
+  - question: "Historical seasons?"
+    answer: "2025 (completed) and 2026 (current) only."
+  - question: "Data model: compute at publish time vs. new view/table?"
+    answer: "New Supabase view or table purpose-built for the grid, so the artifact is deterministic/identical on every render rather than recomputed ad hoc."
+  - question: "Update cadence?"
+    answer: "Weekly, piggybacking the existing Sunday cron. Faster cadence deferred to a future enhancement."
+  - question: "One coordinated feature or two sequential PRs?"
+    answer: "Two PRs, one per repo, developed together/in sync -- but the cfb-rankings PR must merge first so personal-site's PR can visually test against real published artifact data."
+  - question: "Should personal-site code work start now against a staging artifact, or wait for B1 to merge?"
+    answer: "Strictly wait for B1 to merge -- no personal-site code work starts until real published data exists. Explicit preference: lock build/UI questions before making changes."
+  - question: "Where does the new grid live in personal-site's site structure?"
+    answer: "Tentative (to be confirmed via a design mockup): not a new standalone page. The existing /projects/cfb-rankings page gains a switchable tab (defaults to Rankings, toggle to Schedule), both views on the same page/URL. Home page and projects-index links keep pointing at the single rankings page."
+  - question: "Design pass before implementation?"
+    answer: "Yes -- a visual mockup of the grid (conference grouping, tab toggle, win/loss/upcoming coloring, sticky header/first-column) is produced and shown to the user for sign-off before any personal-site component code is written."
+
+ready_for_planning: true
+planning_blockers: []

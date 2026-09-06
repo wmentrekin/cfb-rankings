@@ -1,0 +1,302 @@
+artifact: plan
+feature: "schedule-grid"
+mode: "large-initiative"
+status: draft
+owner_skill: work
+based_on: "docs/schedule-grid/requirements.yaml"
+
+objective: >
+  Publish a general, team-agnostic season schedule grid (all FBS teams x weeks,
+  color-coded by outcome, grouped by conference) for the 2025 and 2026 seasons,
+  replicating a stylized version of the user's manual Google Sheet. Data flows
+  cfb-rankings (Supabase -> new grid-shaped view -> R2 artifact, weekly cron)
+  into personal-site (build-time fetch -> a switchable tab on the existing
+  rankings page), matching the existing rankings artifact pattern exactly.
+
+approach:
+  summary: >
+    Two sequential batches, one per repo, each ending in its own PR. B1
+    (cfb-rankings) must fully MERGE before any B2 (personal-site) code work
+    starts -- the user explicitly chose to wait for real merged/published
+    data rather than build against a staging artifact, to lock build/UI
+    questions before making changes. The one exception is a visual design
+    mockup (not code), which has no data dependency and can happen any time,
+    including in parallel with B1 -- see T8 and ordering_notes.
+  key_decisions:
+    - "CRITICAL GUARD (added after plan review): model/process_data.py's games query (the one actually consumed by the ranking model) has NO season_type filter at all -- it reads ALL rows for season/week<=N regardless of season_type. This has been safe only because postseason rows have never existed in `games` before. Before any postseason backfill happens, this query (and any other unguarded reads of `games`) must be explicitly filtered to season_type='regular' (+ conference championship, matching the existing confirmed rankings scope), or the backfill will silently corrupt the ratings model -- directly reversing a previously confirmed non-goal (docs/2026-season-readiness/requirements.yaml). This is now its own task (T1), ordered strictly before ingestion widening."
+    - "Recurring postseason ingestion, not just a one-time backfill: 2026 postseason games play out through Jan 2027, so a weekly re-fetch of season_type='postseason' must be wired into the existing main.py pipeline run (load_games_to_db is already idempotent via ON CONFLICT DO UPDATE), not just a one-off backfill invocation. Otherwise 2026 Bowl/CFP columns go stale immediately after the backfill."
+    - "schedule_grid view grain must be (season, team_id, season_type, week) or an explicit named 'slot' (Week 0..N, Bowl, CFP-Quarterfinal, CFP-Semifinal, CFP-Final) -- NOT (season, team_id, week) alone, because postseason week-numbering may collide with regular-season week numbers (e.g. both starting at week=1). This must be confirmed against real CFBD postseason data during T2/T3, not assumed."
+    - "Data model: a new Supabase view (preferred over a table) named schedule_grid, computing one row per (season, team_id, season_type/slot, week) with: conference, week_label, opponent (nullable/TBD for undetermined future playoff matchups), home_away, status (win/loss/bye/upcoming/tbd), team_score, opp_score. A view stays always in sync with games/teams with no separate population/write step. Fall back to a materialized table only if query performance requires it."
+    - "'Played' vs 'upcoming' vs 'TBD' must be derived from start_date / an explicit completed-indicator, never from score nullness -- confirmed finding: unplayed 2026 games are stored as home_score=0/away_score=0, not NULL. This applies equally to postseason rows, which additionally may have no opponent determined yet (playoff slots) -- that is a distinct status from 'upcoming with a known opponent' and must be handled explicitly, not just inferred from a missing score."
+    - "Conference group order: ACC, Big 12, Big Ten, SEC (power 4, alphabetical), then Independents, then the remaining 6 conferences alphabetically (American, Conference USA, MAC, Mountain West, Pac-12, Sun Belt). This exact ordering is a small ordered list/lookup in the artifact-builder, not inferred at query time, so it's easy for the user to reorder later."
+    - "Within-conference sort: by conference standings, approximated as conference-game win% (from games where conference_game=true and both teams share a conference) descending, tiebroken by overall win% descending, tiebroken by team name. This is an explicit approximation (no division/tiebreaker awareness) and must be flagged to the user as a known limitation, not presented as authoritative."
+    - "New view is added via a versioned SQL migration file committed to the repo (e.g. database/migrations/0001_schedule_grid_view.sql) and applied with the Supabase MCP tool -- the repo's first checked-in schema artifact."
+    - "R2 key layout for the schedule artifact is season-scoped (schedule/{season}/latest.json + schedule/index.json), NOT the rankings artifact's per-week snapshot scheme -- correct given the grid is a cumulative-per-season view, not a discrete weekly snapshot. The index-builder in artifacts/schedule.py is new, parallel logic (same self-healing-via-bucket-listing philosophy as artifacts/r2.py) -- it cannot literally import/reuse rankings' per-week regex indexer."
+    - "personal-site placement (per user, still tentative pending the mockup): NOT a new standalone route. The existing /projects/cfb-rankings page gains a switchable tab at the top (defaults to 'Rankings', toggle to 'Schedule'), both views living on the same page/URL. Home page and projects-index links continue to point at the single rankings page."
+    - "Per the user: lock UI questions before writing personal-site code. A visual design mockup (conference grouping, tab toggle, win/loss/upcoming coloring, sticky header/first-column corner-cell handling) is produced and shown to the user for reaction BEFORE T9 (the real component) is implemented -- see T8."
+
+contracts:
+  interfaces:
+    - "New artifact schema (JSON): { season, generated_at_utc, conferences: [{ name, teams: [{ team, weeks: [{ slot_id, label, season_type, opponent, opponent_tbd, home_away, status, team_score, opp_score }] }] }] } -- exact shape finalized in B1's artifact-builder task (T4), then treated as a fixed contract for B2 to consume. slot_id/label carries both regular weeks (0..N) and named postseason slots (Bowl, CFP-QF, CFP-SF, CFP-Final) so the frontend never has to re-derive column identity from a possibly-colliding raw week number."
+    - "personal-site's fetch-rankings-data.mjs pattern extended (new function or sibling script) to pull schedule/index.json and schedule/{season}/latest.json into public/data/cfb/schedule/, following the exact same prebuild/readFileSync consumption model as rankings -- no direct Supabase or live R2 access from the rendered page."
+  schemas:
+    - "New Supabase view schedule_grid (or equivalent name decided in T3), keyed by (season, team_id, season_type/slot, week), documented in a checked-in migration file"
+    - "A defensive season_type='regular' (+ conference championship) filter added to model/process_data.py's games query (T1) -- a schema-consumption contract change, not a schema change itself"
+  config_changes:
+    - "weekly-update.yml: no new workflow, but main.py gains two new steps -- (1) a recurring postseason games fetch alongside the existing regular-season fetch, (2) the new schedule artifact publish -- both in the same job/run as today's pipeline"
+    - "personal-site scripts/fetch-rankings-data.mjs (or a new prebuild script) gains the new R2 keys to fetch"
+
+branching:
+  strategy: "single-branch"
+  branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
+  worktrees: []
+
+execution_batches:
+  - id: "B1"
+    goal: "cfb-rankings: guard the model, widen+backfill postseason ingestion, new grid view, artifact builder, weekly publish, PR"
+    tasks:
+      - id: "T1"
+        title: "Guard the rankings model against non-regular-season games before any postseason data exists"
+        objective: >
+          Add an explicit season_type filter (regular season + conference
+          championship, matching the model's existing documented scope) to
+          model/process_data.py's games query and audit for any other place
+          `games` is read without a season_type guard. This must land and be
+          validated BEFORE T2's postseason backfill runs, since postseason
+          week numbers are expected to collide with regular-season week
+          numbers (see T3), which would otherwise cause postseason rows to
+          satisfy the model's `week <= N` filter for essentially every
+          ranking week.
+        assigned_domain: "data-engineer"
+        owned_scope:
+          - "model/process_data.py (the games-query season_type filter only)"
+        forbidden_scope:
+          - "Any other model logic, weighting, or rating computation"
+        dependencies: []
+        parallelizable: false
+        expected_validation:
+          - "Confirm the query now explicitly filters season_type"
+          - "Confirm rankings output for a known past week (e.g. 2025 week 10) is byte-for-byte unchanged before/after this change, since no postseason rows exist yet at this point"
+
+      - id: "T2"
+        title: "Widen postseason ingestion, backfill 2025+2026, wire recurring weekly postseason refresh"
+        objective: >
+          Extend get_games_by_year_week/load_games_to_db to also ingest
+          season_type='postseason' games from CFBD. Confirm CFBD's exact
+          postseason week-numbering/labeling (bowls vs CFP rounds vs
+          conference championships) against the live API before writing
+          backfill logic. Run a one-time backfill for season=2025 (complete)
+          and season=2026 (partially TBD). Wire a recurring call into
+          main.py's weekly run so 2026 postseason rows keep updating as
+          matchups are determined and games are played (load_games_to_db is
+          already idempotent).
+        assigned_domain: "data-engineer"
+        owned_scope:
+          - "database/get_games.py"
+          - "main.py (add the recurring postseason fetch call)"
+          - "one-off backfill invocation (script or documented manual command)"
+        forbidden_scope:
+          - "model/ (T1 already lands the guard; do not touch rating logic here)"
+        dependencies: ["T1"]
+        parallelizable: false
+        expected_validation:
+          - "Query Supabase directly to confirm postseason rows exist for 2025 with real final scores and for 2026 (scheduled, TBD opponent/0-0 where undetermined) after backfill"
+          - "Confirm existing regular-season row counts (2025: 887, 2026: 888 as of investigation) are unchanged"
+          - "Re-run T1's known-week rankings check and confirm output is STILL unchanged now that postseason rows exist -- this is the real regression test T1 alone couldn't provide"
+          - "Confirm the new recurring call is safe to run weekly without duplicating or corrupting rows (upsert behavior verified)"
+
+      - id: "T3"
+        title: "Create schedule_grid Supabase view via checked-in migration"
+        objective: >
+          Design and apply a Supabase view (or table, only if the view proves
+          insufficient) producing one row per (season, team_id, season_type,
+          week/slot) with conference, opponent (nullable/TBD-aware for
+          undetermined playoff matchups), home/away, status
+          (win/loss/bye/upcoming/tbd), and scores. Explicitly key by
+          season_type + week (or a named slot) to avoid collisions between
+          regular-season and postseason week numbers. Derive played vs.
+          upcoming vs. TBD from start_date/a completed-indicator, never from
+          score nullness. Commit the migration SQL to the repo.
+        assigned_domain: "data-engineer"
+        owned_scope:
+          - "database/migrations/ (new)"
+          - "Supabase schema (via apply_migration)"
+        forbidden_scope:
+          - "games/teams table structure (read-only source data, no column changes)"
+        dependencies: ["T2"]
+        parallelizable: false
+        expected_validation:
+          - "Query the view for a known team/week and manually verify status/opponent/home-away against known 2025 results, for both regular and postseason rows"
+          - "Confirm regular-season and postseason rows for the same team never collide/overwrite under the chosen key"
+          - "Confirm bye weeks, upcoming (unplayed) weeks, and TBD-opponent postseason slots each render as distinct, correctly-derived statuses -- not as false 0-0 losses/ties"
+
+      - id: "T4"
+        title: "Build and publish the schedule R2 artifact"
+        objective: >
+          Add artifacts/schedule.py (new module, following the same
+          exception-safe/never-raise discipline as artifacts/r2.py, but with
+          its own season-scoped key layout and index-builder -- not a
+          literal reuse of rankings' per-week regex indexer) that queries
+          schedule_grid, groups by the fixed conference order, sorts within
+          conference by the standings heuristic, shapes the JSON payload per
+          the contract above, and publishes to R2 -- wired into main.py to
+          run in the same weekly pipeline execution as the existing rankings
+          publish.
+        assigned_domain: "data-engineer"
+        owned_scope:
+          - "artifacts/schedule.py (new)"
+          - "main.py (add the new publish call)"
+        forbidden_scope:
+          - "artifacts/rankings.py, artifacts/r2.py (reuse helpers where they genuinely fit; do not rewrite them)"
+        dependencies: ["T3"]
+        parallelizable: false
+        expected_validation:
+          - "Run the pipeline (or the publish step standalone) against real 2025/2026 data and inspect the resulting JSON for correct conference grouping/order, sort, and per-cell status (including postseason slots)"
+          - "Confirm publish failure handling matches the existing artifact-safe discipline (never raises/breaks the pipeline run)"
+
+      - id: "T5"
+        title: "Open cfb-rankings PR"
+        objective: "Open the PR for B1, base the description on this plan/requirements, and report readiness."
+        assigned_domain: "generalist-developer"
+        owned_scope: []
+        forbidden_scope: []
+        dependencies: ["T4"]
+        parallelizable: false
+        expected_validation:
+          - "PR opened against the correct base branch with a clear description"
+
+  - id: "B2"
+    goal: "personal-site: lock the visual design, then fetch new artifact and render a switchable Rankings/Schedule tab (code work starts only after B1 MERGES)"
+    tasks:
+      - id: "T8"
+        title: "Design mockup: schedule grid + Rankings/Schedule tab toggle"
+        objective: >
+          Before any personal-site code is written, produce a visual mockup
+          of: the tab toggle on the existing rankings page (defaults to
+          Rankings, switches to Schedule), the conference-grouped grid layout
+          (conference header rows, fixed group order), win/loss/upcoming cell
+          coloring, and the sticky-header + sticky-first-column corner-cell
+          treatment at full scale (~130 teams x ~18-20 columns). Present to
+          the user as an Artifact for explicit reaction/lock-in before T9
+          starts. This task has no data dependency on B1 and does not modify
+          either repo's code, so it is not blocked by B1's merge.
+        assigned_domain: "orchestrator (design pass, not a subagent code task)"
+        owned_scope:
+          - "A published design mockup (Artifact), not repo files"
+        forbidden_scope:
+          - "Writing real personal-site component/page code"
+        dependencies: []
+        parallelizable: true
+        expected_validation:
+          - "User explicitly signs off on (or requests changes to) the mockup before T9 begins"
+
+      - id: "T6"
+        title: "Extend build-time artifact fetch for the schedule data"
+        objective: >
+          Extend scripts/fetch-rankings-data.mjs (or add a sibling script run
+          from the same npm prebuild step) to pull schedule/index.json and
+          schedule/{season}/latest.json into public/data/cfb/schedule/,
+          following the same read-only-credential, warn-on-missing-env,
+          fail-loud-on-fetch-error pattern already in place.
+        assigned_domain: "frontend-engineer"
+        owned_scope:
+          - "scripts/fetch-rankings-data.mjs or a new sibling script"
+          - "package.json prebuild wiring if a new script file is added"
+        forbidden_scope:
+          - "Any direct Supabase/R2 access from page/component code (build-time script only)"
+        dependencies: []
+        parallelizable: false
+        expected_validation:
+          - "npm run prebuild succeeds locally against the real published B1 artifact and populates public/data/cfb/schedule/"
+
+      - id: "T7"
+        title: "New design tokens for outcome colors"
+        objective: >
+          Add win/loss/upcoming/tbd color custom properties to
+          BaseLayout.astro's :root, following the --error-bg/--error-text
+          naming convention. personal-site has a single dark theme (no
+          light/dark toggle) -- confirm tokens render correctly against the
+          current dark palette only, no cross-theme validation needed.
+        assigned_domain: "frontend-engineer"
+        owned_scope:
+          - "src/layouts/BaseLayout.astro (:root token additions only)"
+        forbidden_scope:
+          - "Existing tokens (no renaming/removal of current design tokens)"
+        dependencies: ["T8"]
+        parallelizable: false
+        expected_validation:
+          - "Tokens match the locked mockup's color choices"
+
+      - id: "T9"
+        title: "Build the Schedule tab: grid page/component on the existing rankings page"
+        objective: >
+          Add a switchable tab (Rankings | Schedule, defaulting to Rankings)
+          on the existing /projects/cfb-rankings page, rendering the full
+          grouped/color-coded grid per the locked T8 mockup: conference
+          header rows in the fixed order, teams sorted per the standings
+          heuristic within each conference, one column per week plus named
+          postseason slots, sticky header row AND sticky first (team name)
+          column with a properly handled sticky corner cell (z-index/
+          background, since no existing component in this codebase combines
+          both) -- horizontally scrollable. General/team-agnostic, no team
+          special-cased in markup or styling. Tab-switch interactivity
+          follows the existing vanilla-JS/astro:page-load pattern (no
+          framework).
+        assigned_domain: "frontend-engineer"
+        owned_scope:
+          - "src/pages/projects/cfb-rankings/ (tab UI + schedule rendering added to the existing page)"
+          - "src/components/ (new schedule-grid component)"
+        forbidden_scope:
+          - "RankingsTable.astro's own markup/logic (reuse/extend via composition, don't rewrite the existing rankings render path)"
+        dependencies: ["T6", "T7", "T8"]
+        parallelizable: false
+        expected_validation:
+          - "Run the dev server; confirm B1 has actually merged and the fetched data is real (not a placeholder) before validating"
+          - "Visually confirm the grid renders correctly for both 2025 and 2026: correct conference order/grouping, correct within-conference sort, correct win/loss/upcoming/tbd coloring, horizontal scroll works, sticky header/column/corner-cell work without z-index or background bleed-through"
+          - "Spot-check a handful of known 2025 results (e.g. a specific rivalry game) render with the correct color and opponent"
+          - "Confirm the default tab is Rankings and switching preserves/restores correctly across client-side navigation (astro:page-load)"
+
+      - id: "T10"
+        title: "Open personal-site PR"
+        objective: "Open the PR for B2 (only after B1's PR has merged and its artifact is live), report readiness."
+        assigned_domain: "generalist-developer"
+        owned_scope: []
+        forbidden_scope: []
+        dependencies: ["T9"]
+        parallelizable: false
+        expected_validation:
+          - "PR opened, description notes it follows the merged cfb-rankings PR"
+
+ordering_notes:
+  - "Within B1: T1 (model guard) strictly before T2 (widen+backfill+recurring) strictly before T3 (view) strictly before T4 (artifact) strictly before T5 (PR). T1 exists specifically because T2's backfill would otherwise corrupt the rankings model -- do not skip or reorder T1 after T2."
+  - "T8 (design mockup) has no code/data dependency and can start immediately (in parallel with B1 execution) -- the user asked to lock UI questions before making changes, and a mockup is the fastest way to do that without writing real code."
+  - "All other B2 tasks (T6, T7, T9, T10) do not start until B1's PR has actually MERGED, per the user's explicit choice to wait for real published data rather than build against staging."
+  - "T7 depends on T8 (tokens should match the locked mockup's colors, not be guessed ahead of it)."
+  - "T9 depends on T6, T7, AND T8 -- fetch script, tokens, and the locked design must all be in place first."
+
+risks:
+  - risk: "Without T1, widening postseason ingestion would silently corrupt the rankings model via model/process_data.py's season_type-blind query -- confirmed via plan review, not hypothetical."
+    mitigation: "T1 is now a standalone, ordered-first task with its own before/after validation; T2's validation re-runs the same check after the backfill lands."
+  - risk: "Postseason and regular-season week numbers may collide under a naive (season, team_id, week) key, corrupting the grid view."
+    mitigation: "T3 explicitly keys by season_type/slot in addition to week, and validates no collisions occur."
+  - risk: "The conference-standings sort heuristic (conference win% from games) won't match official/division-aware standings in all cases (e.g. head-to-head tiebreakers, divisional structures)."
+    mitigation: "Documented as an explicit approximation in key_decisions; flagged to the user as a known limitation post-implementation, not silently presented as authoritative."
+  - risk: "A single wide table for ~130 teams x ~18-20 columns, now also combining sticky header AND sticky first column (no precedent in this codebase), may have real rendering/perf/CSS issues, especially the sticky corner cell."
+    mitigation: "The T8 mockup surfaces this before real implementation; T9's validation includes an explicit sticky-corner-cell check. If perf is bad at full scale, that's a finding for a follow-up pass, per the user's choice not to build collapse/expand for MVP."
+  - risk: "CFBD's exact season_type/week labeling for conference championships vs. bowls vs. CFP rounds is not yet confirmed from the repo (only inferred from prior docs)."
+    mitigation: "T2 explicitly calls out confirming this against the live CFBD API response before writing backfill logic; T3's grain design depends on getting this right."
+  - risk: "2026 postseason matchups are mostly undetermined (playoff slots, bowl tie-ins depending on final standings) -- backfilling now will produce many TBD-opponent rows, not just TBD-score rows."
+    mitigation: "T3's status model explicitly includes a 'tbd' status distinct from 'upcoming' (known opponent, not yet played), validated against real 2026 backfilled data."
+
+open_questions: []
+
+review:
+  status: "changes_requested_and_addressed"
+  loop_count: 1
+  notes:
+    - "Reviewer (plan-review pass) requested changes: (1) T1's original forbidden_scope excluded model/, but model/process_data.py's games query has no season_type filter, so the postseason backfill would silently leak into the rankings model, reversing a previously confirmed non-goal -- fixed by adding a new, ordered-first T1 task scoped narrowly to the guard. (2) Original plan only backfilled postseason once, leaving 2026 Bowl/CFP columns permanently stale -- fixed by adding a recurring weekly postseason fetch to T2. (3) View grain (season, team_id, week) risked collisions between regular and postseason week numbers -- fixed by keying on season_type/slot too, in T3. (4) Minor wording fixes applied: T4's index-builder is new/parallel logic not literal reuse; T9 acknowledges the sticky-header+sticky-column intersection is new work, not scaled-up reuse; T7's theme validation simplified (single dark theme, confirmed, not conditional)."
+    - "Plan.yaml's prior open_questions were resolved directly by the user: B2 code work waits strictly for B1 merge (not staging); a design mockup (T8) is wanted before B2 implementation; page placement is now a tabbed toggle on the existing rankings page (tentative, to be locked via the T8 mockup)."
+
+checkpoint:
+  required_before_execution: true
+  status: pending
