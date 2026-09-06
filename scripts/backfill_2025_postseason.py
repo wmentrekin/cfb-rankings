@@ -20,7 +20,17 @@ secrets the scheduled pipeline uses.
 
 Usage:
     python scripts/backfill_2025_postseason.py
+    uv run python scripts/backfill_2025_postseason.py
 """
+
+import sys
+from pathlib import Path
+
+# Running this file directly (`python scripts/backfill_2025_postseason.py`) only puts
+# scripts/ on sys.path, not the repo root, so `database` isn't importable -- unlike
+# main.py, which lives at the repo root itself. Bootstrap the repo root onto sys.path
+# so this script works regardless of the current working directory it's invoked from.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from database.get_games import load_games_to_db
 
