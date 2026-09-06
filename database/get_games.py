@@ -31,8 +31,24 @@ def get_games_by_year_week(year, week=None, season_type='regular'):
     response = requests.get(url, headers=headers, params=params)
     response.raise_for_status()
 
-    games_df = pd.DataFrame(response.json())
-    games_df = games_df[["id","season","week","seasonType", "startDate","homeTeam","homePoints","awayTeam","awayPoints","neutralSite","conferenceGame","venue","venueId","homeConference","awayConference"]]
+    games_data = response.json()
+
+    # Defensive extraction of the nested `playoff` object (present only on
+    # CFP-affiliated games -- most games, including all regular-season and
+    # non-CFP postseason games, have no `playoff` object at all). Never
+    # raise on a missing object or a missing/renamed field within it --
+    # default to None so the vast majority of rows simply carry nulls here.
+    for game in games_data:
+        playoff = game.get("playoff") or {}
+        if not isinstance(playoff, dict):
+            playoff = {}
+        game["playoffRoundName"] = playoff.get("round_name") or playoff.get("roundName")
+        game["playoffRoundOrder"] = playoff.get("round_order") or playoff.get("roundOrder")
+        game["playoffBracketSlot"] = playoff.get("bracket_slot") or playoff.get("bracketSlot")
+        game["playoffBowlName"] = playoff.get("bowl_name") or playoff.get("bowlName")
+
+    games_df = pd.DataFrame(games_data)
+    games_df = games_df[["id","season","week","seasonType", "startDate","homeTeam","homePoints","awayTeam","awayPoints","neutralSite","conferenceGame","venue","venueId","homeConference","awayConference","notes","playoffRoundName","playoffRoundOrder","playoffBracketSlot","playoffBowlName"]]
     games_df["id"] = pd.to_numeric(games_df["id"], errors="coerce").fillna(0).astype("Int64")
     games_df["venueId"] = pd.to_numeric(games_df["venueId"], errors="coerce").fillna(0).astype(int)
     games_df["homePoints"] = pd.to_numeric(games_df["homePoints"], errors="coerce").fillna(0).astype("Int64")
@@ -53,6 +69,10 @@ def get_games_by_year_week(year, week=None, season_type='regular'):
         'venueId': 'venueid',
         'homeConference': 'home_conference',
         'awayConference': 'away_conference',
+        'playoffRoundName': 'playoff_round_name',
+        'playoffRoundOrder': 'playoff_round_order',
+        'playoffBracketSlot': 'playoff_bracket_slot',
+        'playoffBowlName': 'playoff_bowl_name',
     })
 
     games_df['home_score'] = games_df['home_score'].astype('Int64')
@@ -63,6 +83,15 @@ def get_games_by_year_week(year, week=None, season_type='regular'):
     games_df['neutral_site'] = games_df['neutral_site'].astype(bool)
     games_df['conference_game'] = games_df['conference_game'].astype(bool)
     games_df['start_date'] = pd.to_datetime(games_df['start_date'])
+    # playoff_round_order: nullable int, no fillna -- absent for the vast
+    # majority of rows (non-playoff games), and that null is the correct
+    # value, not a default to paper over.
+    games_df['playoff_round_order'] = pd.to_numeric(games_df['playoff_round_order'], errors="coerce").astype("Int64")
+    # playoff_bracket_slot is documented by CFBD as a STRING field (not
+    # numeric) -- do not cast it. A numeric coercion here would silently
+    # null out any real value that isn't purely digits (e.g. a bracket
+    # label), which is exactly the kind of silent data loss this column
+    # exists to avoid.
 
     # Get FBS teams from teams table
     db_url = (

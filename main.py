@@ -109,6 +109,18 @@ def main():
     except Exception as e:
         logger.warning("Games loading raised an exception (they may already be loaded). Continuing. Exception: %s", e)
 
+    # PULL POSTSEASON DATA
+    # Postseason week numbers are a different, colliding numbering scheme from
+    # the regular-season pipeline-week cursor (args.week) -- always fetch the
+    # whole postseason slate (week=None) rather than reusing args.week, which
+    # would silently fetch the wrong/empty postseason games every run. Cheap
+    # (a few dozen games) and safe given load_games_to_db's upsert idempotency.
+    try:
+        logger.info("Loading postseason games into DB for year=%s", args.year)
+        load_games_to_db(args.year, week=None, season_type='postseason')
+    except Exception as e:
+        logger.warning("Postseason games loading raised an exception (they may already be loaded). Continuing. Exception: %s", e)
+
     # RUN MODEL
     logger.info("Running model.get_ratings(year=%s, week=%s)", args.year, args.week)
     results = None

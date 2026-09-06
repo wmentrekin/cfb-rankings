@@ -6,7 +6,7 @@ owner_skill: work
 based_on: "docs/schedule-grid/plan.yaml"
 
 summary:
-  scope_executed: "Execution starting: B1 (cfb-rankings) T1"
+  scope_executed: "B1 in progress: T1, T2 complete"
   outcome: "in_progress"
 
 task_batches_attempted: ["B1"]
@@ -19,14 +19,34 @@ pr:
   url: null
 
 changes:
-  files: []
-  modules: []
+  files:
+    - "database/migrations/0001_rankings_games_view.sql (new)"
+    - "model/process_data.py (repointed games query to rankings_games)"
+    - "database/migrations/0002_games_postseason_columns.sql (new, T2)"
+    - "database/get_games.py (T2: get_games_by_year_week widened to select/map notes + playoff.round_name/round_order/bracket_slot/bowl_name, defensive .get()-style access, defaulting to null when the playoff object or a field on it is absent)"
+    - "main.py (T2: added one new call, load_games_to_db(args.year, week=None, season_type='postseason'), in its own try/except-and-continue directly after the existing regular-season call)"
+    - "scripts/backfill_2025_postseason.py (new, T2 -- written but NOT executed; requires real CFBD/DB credentials this sandbox does not have)"
+  modules:
+    - "rankings_games Supabase view (project oyqgmbgwohlnrxodvilt)"
+    - "games table (project oyqgmbgwohlnrxodvilt): 5 new nullable columns via migration 0002 (notes, playoff_round_name, playoff_round_order, playoff_bracket_slot, playoff_bowl_name)"
   docs_updated: []
 
 local_validation:
-  checks_run: []
+  checks_run:
+    - "T1: rankings_games row count matches games WHERE season_type='regular' (24,873 = 24,873)"
+    - "T1: data-level diff (2025 weeks<=10, all of 2024) byte-identical before/after"
+    - "T1: end-to-end ranking output for season=2025/week=10 byte-for-byte identical before/after (md5 ab199a7eeb7da682ba78e14437382c60)"
+    - "T1: audit confirmed no other unguarded read of `games` exists in the repo"
+    - "T2: migration 0002 applied via Supabase MCP apply_migration; information_schema.columns confirms all 5 new columns exist on `games` as nullable"
+    - "ORCHESTRATOR REVIEW (post-T2, before commit): playoff_bracket_slot was created as INTEGER with a pd.to_numeric cast in get_games.py, but CFBD documents this field as a STRING (see plan.yaml key_decisions' CFBD postseason data research) -- a numeric coercion would have silently nulled any real value that isn't purely digits. Fixed directly: migration changed to TEXT, live column altered via a follow-up migration (fix_playoff_bracket_slot_type, safe -- confirmed 0 non-null values existed at the time), and get_games.py's cast removed so the field passes through as-is like notes/playoff_round_name/playoff_bowl_name. playoff_round_order remains INTEGER (documented/named as an ordering number, not a label)."
+    - "Column types after the fix: notes/playoff_round_name/playoff_bracket_slot/playoff_bowl_name = text, playoff_round_order = integer -- all nullable"
+    - "T2: games row count unchanged after migration (24,873 before and after); a 5-row sample's pre-existing column values (id/season/week/season_type/home_team/home_score/away_team/away_score) unchanged, all 5 new columns null as expected"
+    - "T2: mock-CFBD-response test (scratchpad script, not committed -- monkeypatches requests.get + create_engine/pd.read_sql_query since get_games_by_year_week also does a live DB read to filter to FBS teams) run against 3 constructed cases -- a plain game with no `playoff` key at all, a CFP game with a fully populated nested playoff object, and a non-CFP bowl with `playoff` explicitly null -- confirms the resulting DataFrame includes all 5 new column names with the exact spelling migration 0002 uses, maps playoff.round_name/round_order/bracket_slot/bowl_name and top-level notes correctly for the CFP case, and does not raise for either case lacking a usable playoff object (fields land as null instead)"
+    - "T2: confirmed model/process_data.py's games query still reads rankings_games (unchanged by this task's diff) and model/ directory has no changes in this diff"
   failures: []
-  skipped: []
+  skipped:
+    - "T2: get_games_by_year_week()/load_games_to_db() were NOT run end-to-end against real CFBD/Postgres -- no CFBD_API_KEY or DB_* credentials exist in this sandbox (GitHub Actions secrets only). Per the T2 handoff's explicit environment_constraint, this is deliberate scoping, not an omission: the user will run the actual 2025 backfill (scripts/backfill_2025_postseason.py) and trigger the pipeline (which now includes the new recurring postseason call) wherever real credentials exist. See open_issues."
+    - "T2: whether CFBD's `notes` field reliably carries real bowl names for non-CFP bowls was NOT empirically verified (no live CFBD access from this sandbox) -- flagged, not assumed, per the handoff's implementation_notes"
 
 review_summary:
   status: not_started
@@ -38,9 +58,12 @@ test_summary:
   failures: []
   gaps: []
 
-open_issues: []
+open_issues:
+  - "T2's actual 2025 postseason backfill (scripts/backfill_2025_postseason.py) has not been run -- requires real CFBD/DB credentials not available in this sandbox. Must be run by the user before T3's schedule_grid view will have real postseason rows to expose."
+  - "T2's new recurring postseason call in main.py has not been exercised against a live run -- verify on the next real pipeline run (manual trigger or scheduled) that it completes without error and upserts postseason rows idempotently."
+  - "Whether CFBD's `notes` field reliably carries real bowl names for non-CFP bowls is still unconfirmed -- verify against real 2025 data once the backfill runs; fall back to a generic label in a later task (T4b) if it doesn't."
 
 handoff:
   current_state: in_progress
-  next_owner: "data-engineer (T1)"
-  next_action: "Execute T1: create rankings_games view, repoint model/process_data.py, validate byte-for-byte rankings output"
+  next_owner: "data-engineer (T3)"
+  next_action: "Execute T3: create schedule_grid silver view via checked-in migration, keyed by season_type + week/slot to avoid regular/postseason week-number collisions, selecting T2's new playoff_* columns. Also: the user needs to run scripts/backfill_2025_postseason.py (or trigger the pipeline) wherever real CFBD/DB credentials exist so T3/T4a/T4b have real postseason rows to validate against."
