@@ -1,0 +1,101 @@
+artifact: task_handoff
+feature: "schedule-grid"
+mode: "large-initiative"
+execution_batch_id: "B2"
+task_id: "T9"
+assigned_domain: "frontend-engineer"
+branch: "claude/georgia-tech-schedule-viz-aqy1ay"
+repo: "wmentrekin/personal-site"
+owner_skill: work
+
+objective: >
+  Build the actual "Season Grid" tab on the existing /projects/cfb-rankings
+  page: a switchable Rankings | Season Grid toggle (iOS-style, defaulting
+  to Rankings) where Season Grid renders the full conference-grouped,
+  color-coded team-by-week schedule grid from the schedule artifact T6
+  already fetches at build time. This is the largest remaining task in the
+  whole feature -- take your time, and lean on the locked mockup + this
+  handoff's precise field-by-field spec rather than re-deriving behavior.
+
+why_this_matters: >
+  Everything before this task (the whole cfb-rankings backend, T6's fetch,
+  T7's tokens, T8's locked mockup) exists to make this component possible.
+  This is also where a real design mockup (T8) and its provenance matter --
+  read that artifact for the visual reference, but this handoff's written
+  spec is authoritative wherever it's more specific or differs, since the
+  UX was refined multiple times AFTER the mockup was locked (the iOS
+  toggle replaced the mockup's own pill-button pair; the shared
+  page-level season selector didn't exist in the mockup at all).
+
+inputs:
+  requirements: "docs/schedule-grid/requirements.yaml"
+  plan: "docs/schedule-grid/plan.yaml (T9 task block is the primary spec; contracts.interfaces has the exact JSON shape; key_decisions has the conference order/sort/iOS-switch/season-selector decisions)"
+  implementation_report: "docs/schedule-grid/implementation-report.yaml (in cfb-rankings -- update it with T9's results when done)"
+  design_mockup: "https://claude.ai/code/artifact/6704edcb-4ca4-419d-9d5b-695badc3175f -- a Claude Design canvas artifact (not plain HTML). Load it to see the visual reference (conference grouping look, sticky header/column feel, cell layout) -- but per the note above, this handoff's written spec governs wherever more specific, especially the tab-switch style (mockup shows an old pill-button pair; the ACTUAL required control is the iOS-style toggle T7 already built tokens for)."
+  relevant_paths:
+    - "src/pages/projects/cfb-rankings/index.astro (the page you're modifying -- read the ENTIRE file first, both the Astro frontmatter/JSX-like markup AND the inline <script> at the bottom that drives the season/week selector's client-side re-fetch; you are restructuring this script, not replacing it)"
+    - "src/components/RankingsTable.astro (DO NOT modify this file's markup/logic -- read it to understand its rendering conventions, especially how it handles a missing team logo, then follow the exact same convention in your new component)"
+    - "src/layouts/BaseLayout.astro (the design tokens T7 already added: --schedule-win-bg/-text, --schedule-loss-bg/-text, --tab-switch-track-on/-off, --tab-switch-thumb -- plus the existing --muted/--text-soft tokens you'll reuse for every non-win/loss cell state)"
+    - "public/data/cfb/schedule/index.json and public/data/cfb/schedule/{season}/latest.json (T6 already fetches these at build time -- read the ACTUAL shape of whatever real data exists there right now, don't just trust the written contract blind; cross-check against plan.yaml's contracts.interfaces)"
+
+scope:
+  owned:
+    - "src/pages/projects/cfb-rankings/index.astro (add the tab toggle UI, restructure the season/week selector script into a page-level season selector + tab-aware behavior, add the Season Grid tab panel)"
+    - "src/components/ (one new component for the grid itself, e.g. ScheduleGrid.astro -- your naming choice)"
+  forbidden:
+    - "src/components/RankingsTable.astro's own markup/logic -- reuse/extend via composition (it keeps rendering the Rankings tab exactly as it does today); do not rewrite or fork it"
+    - "scripts/fetch-rankings-data.mjs, src/layouts/BaseLayout.astro's token declarations (T6/T7's scope, already done)"
+
+implementation_notes:
+  - "JSON CONTRACT (T4b's actual output, already live in R2 and fetched by T6): { season, generated_at_utc, conferences: [{ name, teams: [{ team, logo_url, record: {wins, losses}, conf_record: {wins, losses} | null, weeks: [{ slot_id, label, season_type, opponent, opponent_logo_url, conditional_opponent, game_name, home_away, neutral_site, status, team_score, opp_score }] }] }] }. status is one of: win / loss / bye / upcoming / tbd / possible / eliminated / clinched / eligible / ineligible."
+  - "SERVER-SIDE WORK ALREADY DONE -- do not re-derive these in the frontend: (1) conferences[] is ALREADY in the correct fixed display order (ACC, Big 12, Big Ten, SEC, Independents, then the rest alphabetically) -- just render the array in the order given. (2) conferences[].name is ALREADY the display name (e.g. 'BIG 10', not the raw 'Big Ten') -- render it directly, no re-mapping. (3) teams[] within each conference is ALREADY sorted by the standings heuristic -- just render in order. (4) weeks[] is ALREADY the canonical column list in order, identical across every team in the payload (every team has the same slot_id sequence, bye-filled where nothing else applies) -- build your column HEADER row from any one team's weeks array (e.g. the first team of the first conference), not by recomputing/deriving columns yourself. (5) The Army-Navy column already resolves to a real game for Army/Navy and status='bye' for literally everyone else -- render it exactly like any other cell, no special-casing needed in the frontend at all."
+  - "CELL RENDERING BY STATUS -- this is the core of the component:
+     * status='win' or 'loss': full cell background highlight using --schedule-win-bg/--schedule-win-text or --schedule-loss-bg/--schedule-loss-text (every played cell, not alternating rows -- a real CSS-specificity bug in the original mockup that must not be reintroduced). Content: opponent_logo_url (if present, else just text per the missing-logo convention below), then '@' + opponent if home_away='away', or 'vs' + opponent if home_away='home', with a '*' suffix appended when neutral_site is true (e.g. 'vs Georgia*'), then a W/L badge and the score (team_score-opp_score).
+     * status='upcoming': no background highlight (neutral/transparent, blend with the row). Content: opponent_logo_url (if present) + '@'/'vs' + opponent name + '*' if neutral_site -- same opponent-naming logic as above, but NO score/badge (game hasn't happened).
+     * status='bye': blank/neutral cell, no logo, no text (or a very muted em-dash/'bye' label if you judge it reads better empty -- your call, but keep it visually quiet, this is the majority case for most cells in the grid).
+     * status='tbd': muted text 'vs TBD', no logo (opponent is null for this status by contract).
+     * status='clinched': ALSO muted text 'vs TBD' -- visually identical to 'tbd' (both mean 'this game will happen, opponent not yet known'), but your code must branch on the status field to reach this rendering, not string-match against 'tbd' rendered elsewhere -- these are semantically distinct in the data model even though they render the same today.
+     * status='possible': muted text 'possible', or 'possible vs {conditional_opponent}' when conditional_opponent is non-null.
+     * status='eliminated': muted text 'eliminated'.
+     * status='eligible': muted text 'bowl eligible'.
+     * status='ineligible': muted text 'bowl ineligible'.
+     * ANY status where game_name is non-null (a real, determined postseason game, e.g. 'Pop-Tarts Bowl'): show game_name as part of the cell's label rather than a generic tag -- this can co-occur with win/loss/upcoming/tbd, so check game_name first/alongside status, don't treat it as a mutually exclusive 11th case."
+  - "MISSING LOGO CONVENTION (verified against the actual codebase, NOT a 'placeholder-initial style' -- that does not exist anywhere in this repo, confirmed by search): RankingsTable.astro's real convention is simply: if a logo URL exists, render the <img>; if it's null/missing, render NO image at all, just the plain team-name text (see RankingsTable.astro's `cell.logo ? (<img.../>...) : (cell.name)` pattern). Follow this exact same convention for both each team's own logo_url and every cell's opponent_logo_url -- do not invent a placeholder-initial badge that has no precedent in this codebase."
+  - "RECORD DISPLAY: '{wins}-{losses}, {conf_wins}-{conf_losses} {conference_name}' when conf_record is non-null (e.g. '9-3, 6-2 ACC'), or just '{wins}-{losses}' when conf_record is null (Independents -- no ', 0-0 XXX' suffix, per the locked contract decision)."
+  - "TAB TOGGLE: an iOS-style switch using T7's tokens (--tab-switch-track-on/-off, --tab-switch-thumb) -- a single oval/pill track (border-radius: 999px) with a circular thumb that slides left/right via a CSS transform transition, NOT the two-button pill pair from the T8 mockup. Static text labels flank it: 'Rankings' (left) and 'Season Grid' (right). Defaults to Rankings. Clicking anywhere on the control (track or thumb) toggles state. Follow the site's existing vanilla-JS/astro:page-load pattern (see index.astro's current initRankingsSelector, wired via `document.addEventListener('astro:page-load', ...)`) -- no framework, no new dependency."
+  - "PAGE-LEVEL SEASON SELECTOR + RANKINGS-ONLY WEEK SELECTOR: restructure the EXISTING season/week selector script in index.astro (do not build an isolated parallel one). The season <select> moves to the page level, above/outside both tab panels, shared by both tabs. The week <select> stays exactly where the Rankings panel needs it, but must become hidden/disabled whenever the Season Grid tab is active (Season Grid has no week concept at all -- it always shows schedule/{season}/latest.json's full cumulative state for whichever season is selected, never a specific week). Changing the season selector while on the Rankings tab keeps today's existing behavior (re-fetch rankings/{season}/week-{firstAvailableWeek}.json, per the current populateWeekOptions+loadWeek flow). Changing the season selector while on the Season Grid tab re-fetches /data/cfb/schedule/{season}/latest.json client-side (fetch + JSON.parse, mirroring the existing loadWeek's fetch pattern: use fetch(), check response.ok, guard against out-of-order responses with the same loadGeneration-counter pattern already in the file) and re-renders the grid. Switching tabs itself does not need a network fetch if you keep both tabs' currently-loaded data in memory (e.g. render Season Grid's initial state from Astro-frontmatter-injected build-time data for the default/latest season, same as the Rankings panel already does for its own initial render, then only fetch client-side on an actual season change)."
+  - "STICKY HEADER + STICKY FIRST COLUMN + CORNER CELL: no existing component in this codebase combines both (confirmed by prior research) -- this is genuinely new. `position: sticky; top: 0` on header cells (`<th>` or equivalent), `position: sticky; left: 0` on each row's first cell (team name/logo), and the top-left corner cell needs BOTH (`position: sticky; top: 0; left: 0`) with an explicit `z-index` above both the merely-top-sticky and merely-left-sticky layers, AND an explicit opaque background (not transparent) so content scrolling underneath doesn't bleed through -- reuse RankingsTable.astro's existing sticky-header background approach (`background: rgba(10, 15, 20, 0.96)` on `th`) as your starting point for consistency, and use a matching opaque background for the sticky first-column cells and the corner cell specifically. Test this by actually scrolling both directions at the real full scale (~130 teams, ~20 columns) -- a small few-team/few-column test won't surface z-index/bleed-through bugs that only show up with a lot of scrollable content."
+  - "HORIZONTAL SCROLL: wrap the grid table in a container with `overflow-x: auto`, following RankingsTable.astro's existing `.rankings-shell` convention exactly (border, border-radius, background -- reuse the same visual treatment so the Season Grid panel feels like part of the same site, not a bolted-on widget)."
+  - "GENERAL/TEAM-AGNOSTIC: no team (including Georgia Tech, the original motivating use case for this whole feature) is special-cased, pinned, or highlighted differently from any other team in markup or styling."
+  - "CONFERENCE HEADER ROWS: render a header row (or equivalent visual separator) before each conference's block of teams, using conferences[].name (already the display name) -- matching the mockup's conference-grouped-with-header-rows look."
+
+success_criteria:
+  - "Season Grid tab renders correctly for real 2025 AND 2026 data: correct conference order/grouping (as given, not re-derived), correct within-conference team order (as given), correct per-cell rendering for every status value observed in the real fetched data"
+  - "Every played-game cell (win/loss) is fully background-highlighted, not just alternating rows"
+  - "Sticky header row + sticky first column + corner cell all work correctly when scrolling both directions at full real scale, no z-index bleed-through"
+  - "Tab toggle is a genuine iOS-style sliding switch (not a button pair), defaults to Rankings, and switching preserves correct state across an astro:page-load transition (client-side navigation)"
+  - "Season selector is a single page-level control driving both tabs; week selector is visible/usable ONLY on the Rankings tab and hidden/disabled on Season Grid; changing season while on Season Grid never shows a week selector and correctly re-fetches/re-renders that season's schedule data"
+  - "A missing team/opponent logo falls back to plain text exactly like RankingsTable.astro already does elsewhere on this same page -- no invented placeholder badge"
+  - "RankingsTable.astro's own markup/logic is completely untouched -- diff it to confirm"
+
+validation_expected:
+  - "Run the dev server (`npm run dev`) against the REAL data T6 already fetched (confirm public/data/cfb/schedule/ is populated with real, non-placeholder content before validating -- if it's missing/empty in your environment, say so clearly and validate what you can against a realistic local fixture instead, matching how T6 handled the same credential gap)"
+  - "Visually confirm the grid renders correctly for both 2025 and 2026 seasons via the season selector: correct conference order/grouping, correct win/loss/upcoming/bye/tbd/possible/eliminated/clinched/eligible/ineligible coloring and text on every relevant cell (not just win/loss)"
+  - "Spot-check a handful of known real results (e.g. a specific rivalry game from the real 2025 data) render with the correct color, opponent, logo, neutral-site '*' marker where applicable, and score"
+  - "Confirm the Army-Navy column and CFP-round columns render correctly using real data (a real determined game shows its real name/score; everyone else shows the correct blank/computed-placeholder state) -- 2025 has real postseason data now (46 games backfilled and verified in B1), use it"
+  - "Confirm default tab is Rankings, and tab-switching + season-changing both work correctly across an astro:page-load transition (navigate away and back, or trigger a soft navigation, not just a hard reload)"
+  - "Confirm sticky header/column/corner-cell behavior by actually scrolling in both directions at full real scale (~130 teams, ~20 columns) in a real browser or dev-server render, not just by reading the CSS"
+
+output_format:
+  sections:
+    - Changes
+    - Local Validation
+    - Blockers
+    - Notes
+
+escalate_if:
+  - missing_context
+  - conflicting_artifacts
+  - product_or_architecture_guess_required
+  - scope_expansion_required
+  - "the real fetched schedule JSON's actual shape meaningfully differs from this handoff's documented contract -- report exactly what differs rather than silently adapting to an undocumented shape"
