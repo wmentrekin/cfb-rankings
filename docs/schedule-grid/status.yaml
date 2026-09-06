@@ -17,9 +17,9 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "Discovery: repo architecture (both repos), Supabase schema, Google Sheet data model"
-  last_completed: ""
-  current_blocker: ""
+  current_focus: "Discovery complete; architecture proposal and open questions delivered to user"
+  last_completed: "Repo research (cfb-rankings + personal-site), Supabase schema/data verification, Google Sheet structure review"
+  current_blocker: "Awaiting user decisions on open_questions in requirements.yaml before scoping a bounded-feature plan"
 
 artifacts:
   requirements: "docs/schedule-grid/requirements.yaml"
@@ -37,8 +37,24 @@ agents:
     model_guidance: "xhigh"
     status: "active"
     stage: "discovery"
-    task: "coordinating discovery across cfb-rankings, personal-site, Supabase, Google Sheet"
-    last_update: ""
+    task: "discovery complete; presented architecture proposal + open questions to user, awaiting direction"
+    last_update: "2026-09-06"
+    blocker: "user decisions needed on scope/design/data-model open questions"
+  - id: "repo-researcher-cfb-rankings"
+    role: "repo-researcher"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "discovery"
+    task: "cfb-rankings ingestion architecture, Supabase schema, R2 publish pattern, weekly cron"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "repo-researcher-personal-site"
+    role: "repo-researcher"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "discovery"
+    task: "personal-site CFB-Rankings frontend, artifact consumption pattern, styling/interactivity conventions"
+    last_update: "2026-09-06"
     blocker: ""
 
 loops:
@@ -61,6 +77,6 @@ checkpoint:
 blockers: []
 decisions: []
 
-next_action: "Spawn repo-researcher agents for both repos; inspect Google Sheet and Supabase schema directly"
+next_action: "User reviews open_questions in requirements.yaml and decides scope/design/data-model direction; then $work can move to planning for a bounded-feature pass"
 next_recommended_command: "$work"
-user_input_needed: false
+user_input_needed: true

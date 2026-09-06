@@ -1,0 +1,106 @@
+artifact: requirements
+feature: "schedule-grid"
+mode: "investigation"
+status: draft
+owner_skill: work
+
+summary:
+  problem: >
+    The user manually maintains a "Georgia Tech Football" Google Sheet ("2026 Season"
+    tab) that shows every FBS team down the rows and each week across the columns,
+    with cells color-coded by game outcome. They manually enter schedules (not yet
+    done for most non-P4 teams) and manually color-highlight/update results after
+    games complete.
+  motivation: >
+    Replace/replicate a stylized version of this as a live, database-backed view in
+    the CFB-Rankings section of personal-site, removing the manual upkeep burden and
+    giving the public a season-long visual of how the whole season plays out.
+  requested_outcome: >
+    An architecture proposal and open-questions list (this pass). No code yet -- the
+    user will decide scope/design questions before a bounded-feature pass begins.
+
+goals:
+  - "Ingest the full regular-season FBS schedule once per season"
+  - "Update results weekly, ideally piggybacking the existing rankings cron"
+  - "Publish a stylized team x week grid, color-coded by outcome, in personal-site's CFB-Rankings section"
+
+non_goals:
+  - "Writing any implementation code in this pass"
+  - "Deciding exact color values / visual design system (needs a follow-up design pass)"
+
+constraints:
+  technical:
+    - "personal-site never reads Supabase directly (no @supabase/supabase-js dependency, CSP connect-src 'self') -- it only reads static JSON artifacts fetched from R2 at build time (scripts/fetch-rankings-data.mjs, run as npm prebuild)"
+    - "cfb-rankings is static-first by design: compute in the pipeline, publish a durable R2 artifact, never couple the public site to live DB availability (see cfb-rankings/AGENTS.md and docs/cfb-site-migration/requirements.yaml)"
+    - "No schema/migrations files exist in cfb-rankings; the Postgres schema lives only in the live Supabase project and is reflected in code via SQLAlchemy autoload"
+    - "personal-site has no CSS framework (no Tailwind) and no JS UI framework (no React/Vue/Svelte) -- styling is CSS custom properties in BaseLayout.astro's :root, interactivity is vanilla JS wired to astro:page-load"
+  product:
+    - "Existing rankings artifact shape has no per-game/schedule data, only an aggregate record string per team per week -- a new artifact type is required"
+    - "Postseason/bowl/CFP games are NOT currently ingested (get_games_by_year_week defaults to season_type='regular'), by a prior explicit decision recorded in docs/2026-season-readiness/requirements.yaml -- but the Sheet's grid includes Bowl/CFP columns"
+  process:
+    - "Never commit directly to main; branch claude/georgia-tech-schedule-viz-aqy1ay already in use for this investigation"
+
+assumptions:
+  - "The weekly cadence of the existing rankings pipeline (Sundays 07:00 UTC, .github/workflows/weekly-update.yml) is an acceptable cadence for schedule/result updates too, matching the user's current manual update cadence"
+  - "A per-team-per-week grid can be derived entirely from the existing games + teams tables via a new artifact-builder step -- no new ingestion source is needed for regular-season data"
+
+repo_context:
+  relevant_paths:
+    - "cfb-rankings/main.py"
+    - "cfb-rankings/database/get_games.py"
+    - "cfb-rankings/database/get_teams.py"
+    - "cfb-rankings/artifacts/r2.py"
+    - "cfb-rankings/artifacts/rankings.py"
+    - "cfb-rankings/.github/workflows/weekly-update.yml"
+    - "cfb-rankings/docs/cfb-site-migration/requirements.yaml"
+    - "cfb-rankings/docs/2026-season-readiness/requirements.yaml"
+    - "cfb-rankings/utils.py (get_cfb_week)"
+    - "personal-site/src/pages/projects/cfb-rankings/index.astro"
+    - "personal-site/src/components/RankingsTable.astro"
+    - "personal-site/scripts/fetch-rankings-data.mjs"
+    - "personal-site/src/layouts/BaseLayout.astro (:root design tokens)"
+    - "personal-site/docs/roadmap-to-launch.md"
+    - "personal-site/public/_headers (CSP)"
+  systems_in_scope:
+    - "Supabase project cfb-rankings (oyqgmbgwohlnrxodvilt): tables games, teams, ratings, ratings_test"
+    - "Cloudflare R2 (artifact storage, public read path)"
+    - "GitHub Actions weekly-update.yml cron"
+    - "Google Sheets: 'Georgia Tech Football' spreadsheet, '2026 Season' tab (source-of-truth being replicated)"
+  prior_artifacts:
+    - "cfb-rankings/docs/cfb-site-migration/ (resolved the R2-artifact public-read architecture this feature should follow)"
+    - "cfb-rankings/docs/2026-season-readiness/ (confirmed games/teams table row counts and postseason non-ingestion decision)"
+
+research:
+  repo_findings:
+    - "games table already holds full regular-season schedules with results, going back to 2014 (e.g. 2025: 887 rows/15 weeks all scored; 2026: 888 rows/14 weeks so far). teams table has 138 FBS teams for 2026. Supabase list_tables reported 0 rows for both, which is a stale/inaccurate estimate, not reality -- verified via direct SQL count."
+    - "get_games.py's weekly ingestion is already idempotent (INSERT ... ON CONFLICT (id) DO UPDATE) and safe to re-run; get_teams.py's season-load is append-only, guarded by a teams_exist_for_year() check in main.py so it only runs once per season."
+    - "CRITICAL: unplayed/future games are stored with home_score=0, away_score=0 (not NULL) -- confirmed directly: all 99 week-1 2026 games with start_date in the future have zero_zero=true, null_score=0. A naive outcome derivation from score would misread every upcoming game as a 0-0 tie. Any grid/artifact builder MUST derive 'played vs upcoming' from start_date (or another played-indicator) rather than from score nullness."
+    - "Postseason/bowl/CFP games are excluded from ingestion today (season_type='regular' default, never overridden in main.py); this was an explicit prior non-goal for the rankings model, but the Sheet being replicated has Bowl/CFP/Quarterfinal/Semifinal/Final columns."
+    - "The R2 publish pattern (artifacts/r2.py + artifacts/rankings.py) is a directly reusable template: build a JSON payload from a DB query, upload to a versioned key + a rolling 'latest' key, then rebuild a self-healing index by listing the bucket -- wrapped so publish failures never raise/break the pipeline run."
+    - "weekly-update.yml already runs main.py every Sunday with all needed secrets (CFBD API_KEY, DB_*, R2_*) and already triggers a personal-site rebuild afterward -- a schedule/results-update step can piggyback in the same run."
+    - "personal-site fetches R2 artifacts only at build time via scripts/fetch-rankings-data.mjs (npm run prebuild), writing to public/data/cfb/; it never queries Supabase or R2 at request time. This is a deliberate security/cost decision (roadmap-to-launch.md Phase 4) to keep the public page servable as static CDN content immune to bot/scraper load, and is enforced by CSP (connect-src 'self') as well as by convention."
+    - "RankingsTable.astro is the only existing tabular component: plain server-rendered <table>, sticky header, .rankings-shell{overflow-x:auto} wrapper, global (not scoped) styles because a client script rebuilds rows via document.createElement. A schedule grid at 130+ teams x ~15-18 week columns is a much larger render than the existing single-week table and has no precedent at that scale in this codebase."
+    - "No CSS framework and no JS UI framework exist in personal-site; all interactivity today is vanilla <script> wired to astro:page-load (View Transitions lifecycle), e.g. the rankings season/week selector and TravelGlobe.astro's canvas globe."
+    - "BaseLayout.astro's :root defines all current design tokens (colors, spacing, radius, shadow) as plain CSS custom properties; there are no existing win/loss/bye/upcoming outcome color tokens, only an --error-bg/--error-text semantic pair to follow as a naming convention."
+  platform_findings:
+    - "Google Sheet 'Georgia Tech Football', tab '2026 Season' (id 1NHXPMzF_L4W5qIVS1EYBiw6-vqUA9ybfxUZvjEQmle4): header row = Week 0..14 (with dates) + Bowl/CFP 1st Rd + CFP Quarterfinals + CFP Semifinals + CFP Final. Teams grouped under ALL-CAPS conference divider rows (ATLANTIC COAST CONFERENCE, SOUTHEASTERN CONFERENCE, BIG XII, BIG TEN, INDEPENDENTS, AMERICAN CONFERENCE, CONFERENCE USA, MID-AMERICAN CONFERENCE, ...). Each team row: 'Team Name (W-L, conf record)' then one cell per week: 'vs Opponent' / '@ Opponent' / blank for bye. Georgia Tech alone gets a second row underneath with per-week final scores and a running record/AP/Coaches/CFP-rank summary cell."
+    - "A separate, already-completed prior-season tab in the same spreadsheet uses a narrower grouping (ACC OPPONENTS / NON-CONFERENCE OPPONENTS / ACC NON-OPPONENTS / OPPONENTS IN COMMON / OTHER TEAMS TO TRACK -- i.e. only teams relevant to Georgia Tech's schedule/resume) plus a poll-history mini-table and a conference-championship-matchup table -- a materially different shape from the full-FBS 2026 tab."
+    - "A third tab ('Bowl Game' reference data: tiers, sponsors, tie-ins) is unrelated to the grid itself -- pure reference data, not part of the per-team schedule view."
+    - "Could not retrieve cell background-color/formatting data through the available Google Drive connector -- only plain/markdown text content was returned. The actual win/loss/bye/upcoming color legend is unknown and must come from the user directly (description or screenshot) rather than being inferred from the sheet."
+
+acceptance_criteria: []
+
+open_questions:
+  - "Scope: full FBS (130+ teams, all conferences) from week 0 like the 2026 tab, or a narrower 'focus team + relevant opponents' view like the completed prior-season tab? This changes both artifact size and the personal-site rendering approach."
+  - "Should the public page be Georgia Tech-specific (a GT schedule tracker) or fully general/team-agnostic? Affects whether it lives inside the existing CFB-Rankings section or becomes its own page/feature."
+  - "Should postseason (bowl/CFP) columns be included? If yes, ingestion needs to be widened beyond season_type='regular', which is a change to a previously-decided non-goal."
+  - "What is the exact color legend to replicate (win/loss/tie/bye/upcoming/in-progress, plus any secondary highlighting like ranked opponents or rivalry games)? Not recoverable from the Sheet via available tooling -- needs the user's input or a design pass."
+  - "Layout/perf approach for 130+ teams x ~15-18 week columns: a single scrollable table (extending RankingsTable.astro's pattern), grouped-by-conference with collapse/expand, or some other structure? No existing precedent in personal-site at this scale."
+  - "Historical seasons: does the grid need to support browsing past completed seasons (2014-2025 all already have full games data), or is 2026-forward sufficient at launch?"
+  - "Data model: compute the team x week grid transform at publish time straight from games+teams (recommended, no new ingestion/storage), or introduce a new Supabase table/materialized view specifically for grid-shaped rows? Note this repo has no schema/migrations file at all today, so either choice sets a first precedent."
+  - "Update cadence: is piggybacking the existing weekly Sunday cron acceptable, or does the grid need faster (e.g. same-day) result updates once games are played?"
+  - "Process: scope this as one coordinated feature spanning both repos (cfb-rankings artifact builder + optional postseason ingestion, personal-site fetch script + new page/component + design tokens), or split into two sequential PRs (data first, then UI)?"
+
+ready_for_planning: false
+planning_blockers:
+  - "Awaiting user decisions on the open questions above before scoping a bounded-feature plan"
