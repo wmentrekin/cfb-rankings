@@ -94,10 +94,14 @@ acceptance_criteria:
   - "No team is treated as special/pinned to the top -- Georgia Tech renders in its normal ACC position like every other team"
   - "The page is general/team-agnostic, not a Georgia Tech-specific view"
   - "Postseason (bowl/CFP) games are ingested and included as columns for 2025 and 2026, requiring a backfill for both seasons"
-  - "Cell coloring for MVP: green = win, red = loss, neutral/blank = upcoming or bye. Conference-game/rivalry highlighting is explicitly deferred, not MVP"
+  - "Cell coloring for MVP: every played-game cell is fully background-highlighted (green = win, red = loss), every row -- not just alternating rows. Neutral/blank = upcoming or bye. Conference-game/rivalry highlighting beyond win/loss color is explicitly deferred, not MVP"
   - "Layout is a single wide, horizontally scrollable table grouped by conference (with conference header rows, like the source Sheet) -- no collapse/expand interaction for MVP"
   - "Data model is a new Supabase view or table purpose-built for the grid, so the artifact renders identically on every publish rather than being recomputed ad hoc from raw games/teams each time"
   - "Update cadence is weekly, piggybacking the existing Sunday rankings cron -- no new cron needed for MVP"
+  - "Each team shows overall record AND conference record, e.g. \"5-0, 3-0 ACC\""
+  - "Each team's logo and each week's opponent's logo render next to the respective name, pulled from teams.logos in Supabase (not hardcoded/curated)"
+  - "Each played-game cell shows: opponent logo, \"@\"/\"vs\" + opponent name (with a \"*\" suffix for a neutral-site game, from games.neutral_site), and a W/L badge + score. Each unplayed cell shows only opponent logo + \"@\"/\"vs\" + name"
+  - "Within-conference sort by standings is an approximation (conference win% -> head-to-head if a 2-way tie -> overall win% -> name), NOT an implementation of any conference's real tiebreaker bylaws -- no such rules are stored anywhere canonically, and implementing them is an explicit non-goal for this pass"
 
 open_questions: []
 
@@ -128,6 +132,10 @@ decisions:
     answer: "Yes -- a visual mockup of the grid (conference grouping, tab toggle, win/loss/upcoming coloring, sticky header/first-column) is produced and shown to the user for sign-off before any personal-site component code is written."
   - question: "Bronze/silver/gold layering for the Supabase tables feeding the two artifacts?"
     answer: "Lightweight version adopted, not full medallion: bronze stays the existing `games` table; silver is two named SQL views with disjoint predicates over that one table -- rankings_games (season_type='regular' + conf championship, replacing an inline Python filter) and schedule_grid (all games, reshaped); gold is the two R2 artifacts. Explicitly rejected: materialized silver tables with their own refresh/upsert jobs -- disproportionate to this repo's scale and reintroduces a staleness risk views avoid."
+  - question: "Mockup review surfaced record/logo/neutral-site display -- was the data side of this already accounted for?"
+    answer: "Partially. Sort-by-standings was already planned (an approximation, see next decision). Conference record, overall record, and logos were NOT yet wired into the view/artifact contract -- fixed in plan.yaml: schedule_grid (T3) now exposes conference_game and neutral_site per row; the artifact builder (T4) now explicitly computes overall/conference record per team from schedule_grid rows and resolves logo URLs from teams.logos (own team and each week's opponent); the artifact JSON contract now carries record, conf_record, logo_url, opponent_logo_url, and neutral_site."
+  - question: "Conference standings tiebreakers aren't stored canonically -- how do we handle that?"
+    answer: "Explicit non-goal for this pass: no conference's real tiebreaker bylaws (head-to-head sweeps, common-opponent records, division rules, etc. -- these vary by conference and are not exposed by CFBD or any other ingested source) are implemented. The approximation is: conference win% desc -> head-to-head result if exactly two teams are tied and played each other this season -> overall win% desc -> team name. This is a known, documented limitation, not presented as authoritative; revisit only if it visibly misorders real standings in practice."
 
 ready_for_planning: true
 planning_blockers: []

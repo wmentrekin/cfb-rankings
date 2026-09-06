@@ -29,7 +29,9 @@ approach:
     - "Data model: a new Supabase view (preferred over a table) named schedule_grid, computing one row per (season, team_id, season_type/slot, week) with: conference, week_label, opponent (nullable/TBD for undetermined future playoff matchups), home_away, status (win/loss/bye/upcoming/tbd), team_score, opp_score. A view stays always in sync with games/teams with no separate population/write step. Fall back to a materialized table only if query performance requires it."
     - "'Played' vs 'upcoming' vs 'TBD' must be derived from start_date / an explicit completed-indicator, never from score nullness -- confirmed finding: unplayed 2026 games are stored as home_score=0/away_score=0, not NULL. This applies equally to postseason rows, which additionally may have no opponent determined yet (playoff slots) -- that is a distinct status from 'upcoming with a known opponent' and must be handled explicitly, not just inferred from a missing score."
     - "Conference group order: ACC, Big 12, Big Ten, SEC (power 4, alphabetical), then Independents, then the remaining 6 conferences alphabetically (American, Conference USA, MAC, Mountain West, Pac-12, Sun Belt). This exact ordering is a small ordered list/lookup in the artifact-builder, not inferred at query time, so it's easy for the user to reorder later."
-    - "Within-conference sort: by conference standings, approximated as conference-game win% (from games where conference_game=true and both teams share a conference) descending, tiebroken by overall win% descending, tiebroken by team name. This is an explicit approximation (no division/tiebreaker awareness) and must be flagged to the user as a known limitation, not presented as authoritative."
+    - "Within-conference sort: by conference standings, approximated as conference-game win% (from games where conference_game=true and both teams share a conference) descending, tiebroken by head-to-head result if exactly two tied teams played each other this season, then by overall win% descending, then by team name. This is an explicit approximation, not an implementation of any conference's real, often multi-step tiebreaker bylaws (head-to-head sweeps, common-opponent records, division rules, etc. vary by conference and are not stored anywhere canonically -- there is no CFBD or other ingested source for computed/tiebroken standings). Flagged to the user as a known MVP limitation; implementing real per-conference tiebreaker rules is an explicit non-goal for this pass, revisit only if the approximation visibly misorders standings in practice."
+    - "Team/opponent logos: teams.logos (Supabase, ARRAY type) is the source -- the artifact builder (T4) resolves one URL per team (own row logo) and reuses the same lookup for each week's opponent logo. The array's exact structure (multiple sizes/variants) is not yet confirmed from live data -- T4 must inspect a real teams.logos value during implementation to decide which array element to use, not guess. Not a new ingestion need: teams.logos already exists from the season's teams load."
+    - "Conference record and overall record are NOT stored anywhere as of-a-date aggregates -- they must be computed by T4 from schedule_grid rows (already has per-game results) at artifact-build time: overall win/loss = tally all played rows for the team/season; conference win/loss = tally only rows where conference_game=true. This requires schedule_grid (T3) to expose conference_game and neutral_site per row, which the original T3 scope did not list -- added below."
     - "New view is added via a versioned SQL migration file committed to the repo (e.g. database/migrations/0001_schedule_grid_view.sql) and applied with the Supabase MCP tool -- the repo's first checked-in schema artifact."
     - "R2 key layout for the schedule artifact is season-scoped (schedule/{season}/latest.json + schedule/index.json), NOT the rankings artifact's per-week snapshot scheme -- correct given the grid is a cumulative-per-season view, not a discrete weekly snapshot. The index-builder in artifacts/schedule.py is new, parallel logic (same self-healing-via-bucket-listing philosophy as artifacts/r2.py) -- it cannot literally import/reuse rankings' per-week regex indexer."
     - "personal-site placement (per user, still tentative pending the mockup): NOT a new standalone route. The existing /projects/cfb-rankings page gains a switchable tab at the top (defaults to 'Rankings', toggle to 'Schedule'), both views living on the same page/URL. Home page and projects-index links continue to point at the single rankings page."
@@ -38,7 +40,7 @@ approach:
 
 contracts:
   interfaces:
-    - "New artifact schema (JSON): { season, generated_at_utc, conferences: [{ name, teams: [{ team, weeks: [{ slot_id, label, season_type, opponent, opponent_tbd, home_away, status, team_score, opp_score }] }] }] } -- exact shape finalized in B1's artifact-builder task (T4), then treated as a fixed contract for B2 to consume. slot_id/label carries both regular weeks (0..N) and named postseason slots (Bowl, CFP-QF, CFP-SF, CFP-Final) so the frontend never has to re-derive column identity from a possibly-colliding raw week number."
+    - "New artifact schema (JSON): { season, generated_at_utc, conferences: [{ name, teams: [{ team, logo_url, record: {wins, losses}, conf_record: {wins, losses}, weeks: [{ slot_id, label, season_type, opponent, opponent_logo_url, opponent_tbd, home_away, neutral_site, status, team_score, opp_score }] }] }] } -- exact shape finalized in B1's artifact-builder task (T4), then treated as a fixed contract for B2 to consume. slot_id/label carries both regular weeks (0..N) and named postseason slots (Bowl, CFP-QF, CFP-SF, CFP-Final) so the frontend never has to re-derive column identity from a possibly-colliding raw week number. record/conf_record/logo_url/opponent_logo_url/neutral_site were added after the mockup review surfaced that the UI needs them and the original contract didn't carry them -- see key_decisions."
     - "personal-site's fetch-rankings-data.mjs pattern extended (new function or sibling script) to pull schedule/index.json and schedule/{season}/latest.json into public/data/cfb/schedule/, following the exact same prebuild/readFileSync consumption model as rankings -- no direct Supabase or live R2 access from the rendered page."
   schemas:
     - "New Supabase view rankings_games (T1): season_type='regular' + conference championship rows only, from the bronze `games` table. model/process_data.py queries this view instead of `games` directly -- a real schema object, not an inline Python filter."
@@ -123,14 +125,16 @@ execution_batches:
           only if the view proves insufficient), schedule_grid, producing one
           row per (season, team_id, season_type, week/slot) with conference,
           opponent (nullable/TBD-aware for undetermined playoff matchups),
-          home/away, status (win/loss/bye/upcoming/tbd), and scores --
-          selected from the same bronze `games` table as T1's rankings_games,
-          but with a disjoint predicate (all games, not just regular season).
-          Explicitly key by season_type + week (or a named slot) to avoid
-          collisions between regular-season and postseason week numbers.
-          Derive played vs. upcoming vs. TBD from start_date/a
-          completed-indicator, never from score nullness. Commit the
-          migration SQL to the repo alongside T1's.
+          home/away, status (win/loss/bye/upcoming/tbd), scores,
+          conference_game (bool, for T4's conference-record tally and
+          within-conference sort), and neutral_site (bool, for the UI's
+          neutral-site marker) -- selected from the same bronze `games` table
+          as T1's rankings_games, but with a disjoint predicate (all games,
+          not just regular season). Explicitly key by season_type + week (or
+          a named slot) to avoid collisions between regular-season and
+          postseason week numbers. Derive played vs. upcoming vs. TBD from
+          start_date/a completed-indicator, never from score nullness.
+          Commit the migration SQL to the repo alongside T1's.
         assigned_domain: "data-engineer"
         owned_scope:
           - "database/migrations/0002_schedule_grid_view.sql (new)"
@@ -143,6 +147,7 @@ execution_batches:
           - "Query the view for a known team/week and manually verify status/opponent/home-away against known 2025 results, for both regular and postseason rows"
           - "Confirm regular-season and postseason rows for the same team never collide/overwrite under the chosen key"
           - "Confirm bye weeks, upcoming (unplayed) weeks, and TBD-opponent postseason slots each render as distinct, correctly-derived statuses -- not as false 0-0 losses/ties"
+          - "Confirm conference_game and neutral_site match known 2025 games (e.g. a known rivalry/conference game reads conference_game=true; a known neutral-site game reads neutral_site=true)"
 
       - id: "T4"
         title: "Build and publish the schedule R2 artifact"
@@ -151,11 +156,16 @@ execution_batches:
           exception-safe/never-raise discipline as artifacts/r2.py, but with
           its own season-scoped key layout and index-builder -- not a
           literal reuse of rankings' per-week regex indexer) that queries
-          schedule_grid, groups by the fixed conference order, sorts within
-          conference by the standings heuristic, shapes the JSON payload per
-          the contract above, and publishes to R2 -- wired into main.py to
-          run in the same weekly pipeline execution as the existing rankings
-          publish.
+          schedule_grid, computes each team's overall record and conference
+          record (tallying schedule_grid's win/loss statuses, conference
+          record restricted to conference_game=true rows), resolves each
+          team's and each week's opponent's logo URL from teams.logos,
+          groups by the fixed conference order, sorts within conference by
+          the standings heuristic (including the head-to-head tiebreak step
+          from key_decisions), shapes the JSON payload per the contract
+          above (including neutral_site per week), and publishes to R2 --
+          wired into main.py to run in the same weekly pipeline execution as
+          the existing rankings publish.
         assigned_domain: "data-engineer"
         owned_scope:
           - "artifacts/schedule.py (new)"
@@ -166,6 +176,9 @@ execution_batches:
         parallelizable: false
         expected_validation:
           - "Run the pipeline (or the publish step standalone) against real 2025/2026 data and inspect the resulting JSON for correct conference grouping/order, sort, and per-cell status (including postseason slots)"
+          - "Spot-check a handful of teams' computed record/conf_record against known 2025 final standings"
+          - "Confirm logo_url and opponent_logo_url resolve to real URLs for a sample of teams, not nulls/broken paths"
+          - "Confirm neutral_site is set correctly for at least one known neutral-site 2025 game"
           - "Confirm publish failure handling matches the existing artifact-safe discipline (never raises/breaks the pipeline run)"
 
       - id: "T5"
@@ -255,7 +268,14 @@ execution_batches:
           both) -- horizontally scrollable. General/team-agnostic, no team
           special-cased in markup or styling. Tab-switch interactivity
           follows the existing vanilla-JS/astro:page-load pattern (no
-          framework).
+          framework). Per the locked mockup: each team row shows its logo
+          (team.logo_url), overall + conference record (e.g. "4-1, 1-0
+          ACC"); every played-game cell is fully background-highlighted
+          (not just alternating rows -- this was a real CSS-specificity bug
+          in the mockup, fixed there, must not be reintroduced here) and
+          shows the opponent's logo, "@"/"vs" + name (with a "*" suffix when
+          neutral_site is true), and for played games a W/L badge + score;
+          unplayed cells show only logo + "@"/"vs" + name.
         assigned_domain: "frontend-engineer"
         owned_scope:
           - "src/pages/projects/cfb-rankings/ (tab UI + schedule rendering added to the existing page)"
@@ -266,8 +286,9 @@ execution_batches:
         parallelizable: false
         expected_validation:
           - "Run the dev server; confirm B1 has actually merged and the fetched data is real (not a placeholder) before validating"
-          - "Visually confirm the grid renders correctly for both 2025 and 2026: correct conference order/grouping, correct within-conference sort, correct win/loss/upcoming/tbd coloring, horizontal scroll works, sticky header/column/corner-cell work without z-index or background bleed-through"
-          - "Spot-check a handful of known 2025 results (e.g. a specific rivalry game) render with the correct color and opponent"
+          - "Visually confirm the grid renders correctly for both 2025 and 2026: correct conference order/grouping, correct within-conference sort, correct win/loss/upcoming/tbd coloring on every played row (not just alternating), horizontal scroll works, sticky header/column/corner-cell work without z-index or background bleed-through"
+          - "Spot-check a handful of known 2025 results (e.g. a specific rivalry game) render with the correct color, opponent, logo, and neutral-site marker where applicable"
+          - "Confirm team/opponent logo <img> tags have real alt text and a sane fallback (e.g. the existing placeholder-initial style) for any team missing a teams.logos entry -- do not let a broken image silently blank a cell"
           - "Confirm the default tab is Rankings and switching preserves/restores correctly across client-side navigation (astro:page-load)"
 
       - id: "T10"
