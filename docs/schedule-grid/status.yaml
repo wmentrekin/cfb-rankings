@@ -17,8 +17,8 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "User approved proceeding at the pre-execution checkpoint. Starting B1 execution: T1 (rankings_games guard view) handed to a data-engineer agent."
-  last_completed: "Pre-execution checkpoint: user chose Proceed"
+  current_focus: "B1 execution in progress. T1 complete and verified (view live in Supabase, model output byte-identical before/after). Starting T2."
+  last_completed: "T1: rankings_games guard view created, model/process_data.py repointed, validated, committed and pushed"
   current_blocker: ""
 
 artifacts:
@@ -43,9 +43,17 @@ agents:
   - id: "data-engineer-T1"
     role: "data-engineer"
     model_guidance: "high"
+    status: "completed"
+    stage: "execution"
+    task: "T1: rankings_games view created + verified live in Supabase; model/process_data.py repointed; byte-for-byte rankings output confirmed unchanged"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "data-engineer-T2"
+    role: "data-engineer"
+    model_guidance: "high"
     status: "running"
     stage: "execution"
-    task: "T1: create rankings_games view, repoint model/process_data.py, validate byte-for-byte rankings output"
+    task: "T2 (rescoped for sandbox credential limits): schema migration + widened get_games.py + main.py recurring-call wiring + a documented backfill script. Actual CFBD fetch/backfill deferred to the user (no CFBD API key or DB credentials exist in this sandbox -- only in GitHub Actions secrets)."
     last_update: "2026-09-06"
     blocker: ""
   - id: "reviewer-plan"
@@ -133,6 +141,6 @@ checkpoint:
 blockers: []
 decisions: []
 
-next_action: "Execute T1 (data-engineer), then T2 through T5b in strict order"
+next_action: "Execute T2 (data-engineer), then T3 through T5b in strict order"
 next_recommended_command: "$work"
 user_input_needed: false
