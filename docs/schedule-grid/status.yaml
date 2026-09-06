@@ -67,7 +67,7 @@ agents:
   - id: "reviewer-plan-3"
     role: "reviewer"
     model_guidance: "medium"
-    status: "pending"
+    status: "running"
     stage: "planning"
     task: "full-plan critique (pass 3, per user request) -- reviewing the entire plan top to bottom, not just the postseason addition, before the pre-execution checkpoint"
     last_update: "2026-09-06"
