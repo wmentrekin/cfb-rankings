@@ -6,11 +6,11 @@ owner_skill: work
 based_on: "docs/schedule-grid/plan.yaml"
 
 summary:
-  scope_executed: "Feature complete on the implementation side. B1 fully merged and live (cfb-rankings PR #7). B2 fully complete: T6-T10 all done, personal-site PR #17 opened and subscribed. Remaining: user review/merge of PR #17."
-  outcome: "in_progress"
+  scope_executed: "FEATURE COMPLETE. Both PRs merged: cfb-rankings#7 (T1-T5b) and personal-site#17 (T6-T10). The Season Grid tab is live in production."
+  outcome: "success"
 
 task_batches_attempted: ["B1", "B2"]
-task_batches_completed: ["B1"]
+task_batches_completed: ["B1", "B2"]
 
 domains_touched: ["data-engineer", "frontend-engineer"]
 
@@ -121,22 +121,19 @@ resolved_issues:
   - "RESOLVED 2026-09-06: that same real run's log surfaced a genuine bug -- get_games_by_year_week(2026, season_type='postseason') raised KeyError ('None of [Index(...)] are in the [columns]') because CFBD legitimately returns an empty list for 2026's postseason (it doesn't exist yet), and pd.DataFrame([]) has zero columns so the subsequent column-selection failed. This was being silently caught by main.py's broad try/except every run (not crashing the pipeline) but would have logged a spurious warning every week until real 2026 postseason data appears around December. Fixed with an empty-DataFrame short-circuit carrying the correct final columns, verified locally with a mocked empty CFBD response, committed and pushed (ce02d9d). The run's two WARNING lines (an ambiguous 2026 conference-championship pick this early in the season -- many teams still tied at their 'latest' game; SMU's week-collision shift) are separately confirmed as expected, already-documented behavior working as designed, not bugs."
 
 handoff:
-  current_state: blocked_on_user
-  next_owner: "user (PR review/merge)"
+  current_state: complete
+  next_owner: "none -- feature complete"
   next_action: >
-    The entire schedule-grid feature is code-complete across both repos.
-    cfb-rankings PR #7 is MERGED and live (T1-T5b). personal-site PR #17
-    (https://github.com/wmentrekin/personal-site/pull/17) is OPEN, covering
-    T6/T7/T9 (T8's mockup was locked earlier in planning), and this
-    session is subscribed to its activity for CI/review handling. Nothing
-    further to build -- the user needs to review and merge PR #17
-    (following whatever review/CI process personal-site normally uses).
-    One follow-up item was queued separately (not a blocker): a
-    pre-existing dev-mode-only path resolution bug, unrelated to this
-    feature's own logic, found while validating T9.
+    Both PRs are merged: cfb-rankings#7 and personal-site#17. The Season
+    Grid tab is live in production on both the backend (weekly-published
+    schedule artifact) and frontend (the new tab on /projects/cfb-rankings).
+    One follow-up item was queued separately (not a blocker, already
+    merged): a pre-existing dev-mode-only path resolution bug, unrelated
+    to this feature's own logic, found while validating T9 (task_3988dbda).
     Per .agents/AGENTS.md's own convention, docs/schedule-grid/ is this
-    workflow's ephemeral coordination scratch state and should be removed
-    from cfb-rankings main once the user confirms the feature is fully
-    done (both PRs merged) -- flagging this here since B1's own PR already
-    merged with this directory still present, a minor process deviation
-    from the stated convention that wasn't corrected retroactively.
+    workflow's ephemeral coordination scratch state (not a project
+    deliverable) and should be removed from cfb-rankings main now that the
+    feature is fully merged -- asked the user rather than deleting
+    unilaterally, since B1's own PR already merged with this directory
+    still present (a minor process deviation from the stated convention
+    that was flagged, not silently corrected retroactively).

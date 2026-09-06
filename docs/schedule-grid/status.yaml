@@ -17,9 +17,9 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "Both PRs are open. cfb-rankings PR #7 is MERGED and live; personal-site PR #17 is open, subscribed for CI/review activity. The entire schedule-grid feature's code is now complete across both repos -- remaining work is PR review/merge, which is the user's call."
-  last_completed: "T10: opened personal-site PR #17 (https://github.com/wmentrekin/personal-site/pull/17), subscribed to its activity. All of B2 (T6, T7, T8, T9, T10) is done."
-  current_blocker: "none -- waiting on the user to review/merge personal-site PR #17"
+  current_focus: "FEATURE COMPLETE. Both PRs merged: cfb-rankings#7 and personal-site#17. The Season Grid tab is live in production on both the backend and frontend."
+  last_completed: "personal-site PR #17 merged. Both halves of this two-repo feature are now live: cfb-rankings publishes the schedule/{season}/latest.json artifact weekly, and personal-site renders it as the Season Grid tab on /projects/cfb-rankings."
+  current_blocker: "none"
 
 artifacts:
   requirements: "docs/schedule-grid/requirements.yaml"
@@ -34,7 +34,7 @@ pr:
 pr_personal_site:
   number: 17
   url: "https://github.com/wmentrekin/personal-site/pull/17"
-  status: "open"
+  status: "merged"
 
 agents:
   - id: "frontend-engineer-T6"
@@ -210,6 +210,6 @@ checkpoint:
 blockers: []
 decisions: []
 
-next_action: "Feature complete on the implementation side. Waiting on the user to review and merge personal-site PR #17 (https://github.com/wmentrekin/personal-site/pull/17). Both PRs' activity are subscribed -- CI/review events will be handled per the drive-to-green posture. Once PR #17 merges, per .agents/AGENTS.md convention, docs/schedule-grid/ should be removed from cfb-rankings main as this workflow's own ephemeral coordination scratch state (not a project deliverable) -- confirm with the user before doing so, since B1's own PR already merged with this directory still present, a minor process deviation worth flagging rather than silently repeating or silently fixing retroactively."
+next_action: "FEATURE COMPLETE -- both PRs merged. Only remaining item: per .agents/AGENTS.md convention, docs/schedule-grid/ is this workflow's own ephemeral coordination scratch state (not a project deliverable) and should be removed from cfb-rankings main now that the feature is fully merged -- asked the user before doing so rather than deleting unilaterally, since it's a durable record of a lot of decisions someone might still want to reference."
 next_recommended_command: "$work"
-user_input_needed: false
+user_input_needed: true
