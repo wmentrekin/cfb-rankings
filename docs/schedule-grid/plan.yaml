@@ -23,7 +23,7 @@ approach:
     mockup (not code), which has no data dependency and can happen any time,
     including in parallel with B1 -- see T8 and ordering_notes.
   key_decisions:
-    - "CRITICAL GUARD (added after plan review): model/process_data.py's games query (the one actually consumed by the ranking model) has NO season_type filter at all -- it reads ALL rows for season/week<=N regardless of season_type. This has been safe only because postseason rows have never existed in `games` before. Before any postseason backfill happens, this query (and any other unguarded reads of `games`) must be explicitly filtered to season_type='regular' (+ conference championship, matching the existing confirmed rankings scope), or the backfill will silently corrupt the ratings model -- directly reversing a previously confirmed non-goal (docs/2026-season-readiness/requirements.yaml). This is now its own task (T1), ordered strictly before ingestion widening."
+    - "CRITICAL GUARD (added after plan review): model/process_data.py's games query (the one actually consumed by the ranking model) has NO season_type filter at all -- it reads ALL rows for season/week<=N regardless of season_type. This has been safe only because postseason rows have never existed in `games` before. Before any postseason backfill happens, this query (and any other unguarded reads of `games`) must be explicitly filtered to season_type='regular' (a plain, single-predicate filter -- conference championship games are already included under 'regular' today, not a separate category needing extra handling, per T1's corrected wording), or the backfill will silently corrupt the ratings model -- directly reversing a previously confirmed non-goal (docs/2026-season-readiness/requirements.yaml). This is now its own task (T1), ordered strictly before ingestion widening."
     - "Recurring postseason ingestion, not just a one-time backfill: 2026 postseason games play out through Jan 2027, so a weekly re-fetch of season_type='postseason' must be wired into the existing main.py pipeline run (load_games_to_db is already idempotent via ON CONFLICT DO UPDATE), not just a one-off backfill invocation. Otherwise 2026 Bowl/CFP columns go stale immediately after the backfill."
     - "schedule_grid view grain must be (season, team_id, season_type, week) or an explicit named 'slot' -- NOT (season, team_id, week) alone, because postseason week-numbering may collide with regular-season week numbers (e.g. both starting at week=1). This must be confirmed against real CFBD postseason data during T2/T3, not assumed."
     - "Postseason column model (added per user request, replaces the earlier flat 'Bowl / CFP-QF / CFP-SF / CFP-Final' scheme): after the last regular-season/conference-championship column comes a standalone 'Army-Navy Game Week' column (populated only for Army's and Navy's rows, vs. each other; blank for every other team -- identified by home/away team pairing, not by a new ingestion path, since Army-Navy is an ordinary already-ingested game), then 'CFP 1st Round + Other Bowls' (all non-playoff bowl games + CFP first round), 'CFP Quarterfinals', 'CFP Semifinals', 'CFP National Championship'."
@@ -37,7 +37,9 @@ approach:
     - "'Played' vs 'upcoming' vs 'TBD' must be derived from start_date / an explicit completed-indicator, never from score nullness -- confirmed finding: unplayed 2026 games are stored as home_score=0/away_score=0, not NULL. This applies equally to postseason rows, which additionally may have no opponent determined yet (playoff slots) -- that is a distinct status from 'upcoming with a known opponent' and must be handled explicitly, not just inferred from a missing score."
     - "Conference group order: ACC, Big 12, Big Ten, SEC (power 4, alphabetical), then Independents, then the remaining 6 conferences alphabetically (American, Conference USA, MAC, Mountain West, Pac-12, Sun Belt). This exact ordering is a small ordered list/lookup in the artifact-builder, not inferred at query time, so it's easy for the user to reorder later."
     - "Within-conference sort: by conference standings, approximated as conference-game win% (from games where conference_game=true and both teams share a conference) descending, tiebroken by head-to-head result if exactly two tied teams played each other this season, then by overall win% descending, then by team name. This is an explicit approximation, not an implementation of any conference's real, often multi-step tiebreaker bylaws (head-to-head sweeps, common-opponent records, division rules, etc. vary by conference and are not stored anywhere canonically -- there is no CFBD or other ingested source for computed/tiebroken standings). Flagged to the user as a known MVP limitation; implementing real per-conference tiebreaker rules is an explicit non-goal for this pass, revisit only if the approximation visibly misorders standings in practice."
-    - "Team/opponent logos: teams.logos (Supabase, ARRAY type) is the source -- the artifact builder (T4b) resolves one URL per team (own row logo) and reuses the same lookup for each week's opponent logo. The array's exact structure (multiple sizes/variants) is not yet confirmed from live data -- T4b must inspect a real teams.logos value during implementation to decide which array element to use, not guess. Not a new ingestion need: teams.logos already exists from the season's teams load."
+    - "Team/opponent logos: teams.logos (Supabase, ARRAY type) is the source -- CORRECTED after full-plan review, this is NOT an open question: artifacts/rankings.py already has a working `_resolve_logo()` helper (substring-matches `/logos-dark/32/`, i.e. the 32px dark-background variant) used in production today for the Rankings tab. T4b must reuse this exact helper/convention, not re-derive a different one -- using a different size/variant would produce a visible mismatch between the Rankings and Season Grid tabs on the same page."
+    - "Week 0 vs Week 1 disambiguation (added per user request, researched and confirmed empirically): CFBD's own week numbering does NOT distinguish 'Week 0' trope openers (e.g. the Dublin, Ireland season-opener games) from the main Week 1 slate -- both are stored as games.week=1, confirmed via a live query across all 13 ingested seasons (games.week never contains 0, ever). T4b must NOT bucket grid columns by raw games.week for regular-season rows; instead it derives each row's display-week-slot by calling the EXISTING utils.get_cfb_week(game_start_date, season_start_override=None) per-game (already accepts an arbitrary date positionally, no modification needed) -- hand-verified against real 2024/2025 data to correctly separate Week 0 from Week 1. Full detail in T4b."
+    - "Bye-week/full-grid-alignment mechanism (added after full-plan review flagged this as previously unspecified and effectively unbuildable as described): schedule_grid (T3) only ever contains rows for games that exist -- there is no row at all for a bye week, so nothing in the original plan explained how every team ends up with exactly one cell per canonical grid column. Resolved: T4b builds the canonical column list per season in Python (derived from the data itself, not hardcoded) and fills every (team, column) combination, defaulting to status='bye' where no schedule_grid row matches. This is a Python-side responsibility in T4b, not a T3/SQL-view concern -- T3's scope is unchanged. Also resolves the related Army-Navy alignment question: the calendar week Army/Navy's game against each other falls in shows 'bye' in their own normal week column (the game itself only appears in the dedicated Army-Navy column), so no team's row ever has a gap or a duplicated game. Full detail in T4b."
     - "Conference record and overall record are NOT stored anywhere as of-a-date aggregates -- they must be computed by T4a from schedule_grid rows (already has per-game results) at artifact-build time: overall win/loss = tally all played rows for the team/season; conference win/loss = tally only rows where conference_game=true. This requires schedule_grid (T3) to expose conference_game and neutral_site per row, which the original T3 scope did not list -- added below."
     - "New view is added via a versioned SQL migration file committed to the repo (e.g. database/migrations/0001_schedule_grid_view.sql) and applied with the Supabase MCP tool -- the repo's first checked-in schema artifact."
     - "R2 key layout for the schedule artifact is season-scoped (schedule/{season}/latest.json + schedule/index.json), NOT the rankings artifact's per-week snapshot scheme -- correct given the grid is a cumulative-per-season view, not a discrete weekly snapshot. The index-builder in artifacts/schedule.py is new, parallel logic (same self-healing-via-bucket-listing philosophy as artifacts/r2.py) -- it cannot literally import/reuse rankings' per-week regex indexer."
@@ -46,14 +48,14 @@ approach:
     - "Page-level shared season selector, tab-specific week selector (added per user request): the Rankings and Season Grid tabs share ONE season selector living at the page level, above/outside both tab panels -- not two independent per-tab selectors. Changing season re-fetches whichever tab is currently active (rankings/{season}/week-{NN}.json for Rankings, schedule/{season}/latest.json for Season Grid). The week selector applies ONLY to the Rankings tab (rankings publishes a distinct, browsable snapshot per week) and is hidden/inactive whenever the Season Grid tab is active. The Season Grid tab has NO week concept at all -- it always shows the latest cumulative schedule_grid state for the selected season, since each weekly publish only adds new results on top of prior weeks, never replaces or loses them (this is exactly why T4b's R2 key layout is season-scoped schedule/{season}/latest.json rather than a per-week snapshot scheme like rankings -- no artifact-shape change needed here, just frontend behavior). This requires T9 to integrate with and restructure the EXISTING season/week selector script already in personal-site/src/pages/projects/cfb-rankings/index.astro (lift the season control out to page level, make it tab-aware), not just add new isolated markup alongside it -- RankingsTable.astro itself still isn't touched, only the selector/switching logic around it."
     - "Tab-toggle control redesigned as an iOS-style switch (added per user request): NOT the two-button pill pair shown in the T8 mockup -- a single oval/pill track with a circular thumb that slides left/right (the familiar iOS light/dark-mode-style toggle), with static text labels flanking it (left = 'Rankings', right = 'Season Grid'). A written spec is sufficient here (no new mockup round) given how unambiguous the user's own reference point is; T7 gains new design tokens for the switch's track (on/off background) and thumb, following the same CSS-custom-property convention as the rest of BaseLayout.astro's :root."
     - "Per the user: lock UI questions before writing personal-site code. A visual design mockup (conference grouping, tab toggle, win/loss/upcoming coloring, sticky header/first-column corner-cell handling) is produced and shown to the user for reaction BEFORE T9 (the real component) is implemented -- see T8."
-    - "Lightweight bronze/silver/gold, by user request, NOT full medallion: the user asked whether to introduce a layered bronze/silver/gold table structure. Adopted a cheap version -- name the split as two SQL VIEWS, not physical materialized tables. Bronze = the existing `games` table (raw-ish CFBD ingest, all season_types once T2 widens it). Silver = two named, disjoint-predicate views over that one bronze table: `rankings_games` (season_type='regular' + conference championship -- T1) and `schedule_grid` (all games, reshaped per-team-per-week -- T3). Gold = the two R2 JSON artifacts (rankings, schedule). This directly answers 'how do you separate the games in one vs. the other': two named views with explicit predicates, not overlapping ad hoc logic in Python and SQL. Explicitly rejected: materialized silver tables with their own refresh/upsert jobs -- that adds a staleness/idempotency surface that works against the 'renders identically every time' goal, and is disproportionate to this repo's scale (a few thousand games/season, two consumers)."
+    - "Lightweight bronze/silver/gold, by user request, NOT full medallion: the user asked whether to introduce a layered bronze/silver/gold table structure. Adopted a cheap version -- name the split as two SQL VIEWS, not physical materialized tables. Bronze = the existing `games` table (raw-ish CFBD ingest, all season_types once T2 widens it). Silver = two named, disjoint-predicate views over that one bronze table: `rankings_games` (season_type='regular' -- T1, a plain single-predicate filter) and `schedule_grid` (all games, reshaped per-team-per-week -- T3). Gold = the two R2 JSON artifacts (rankings, schedule). This directly answers 'how do you separate the games in one vs. the other': two named views with explicit predicates, not overlapping ad hoc logic in Python and SQL. Explicitly rejected: materialized silver tables with their own refresh/upsert jobs -- that adds a staleness/idempotency surface that works against the 'renders identically every time' goal, and is disproportionate to this repo's scale (a few thousand games/season, two consumers)."
 
 contracts:
   interfaces:
-    - "New artifact schema (JSON): { season, generated_at_utc, conferences: [{ name, teams: [{ team, logo_url, record: {wins, losses}, conf_record: {wins, losses}, weeks: [{ slot_id, label, season_type, opponent, opponent_logo_url, opponent_tbd, conditional_opponent, game_name, home_away, neutral_site, status, team_score, opp_score }] }] }] } -- exact shape finalized in B1's artifact-builder task (T4b), then treated as a fixed contract for B2 to consume. slot_id/label carries regular weeks (0..N), the standalone Army-Navy Game Week slot, and CFP 1st Round + Other Bowls, CFP Quarterfinals, CFP Semifinals, CFP National Championship (see key_decisions) so the frontend never has to re-derive column identity from a possibly-colliding raw week number. status enum: win/loss/bye/upcoming/tbd (already-scheduled real games) plus possible/eliminated/clinched/eligible/ineligible (computed conference-championship and bowl-eligibility placeholders, current season only -- 'clinched' fixed after plan review: it is its OWN status value, distinct from 'tbd', because 'tbd' means a real scheduled game with an undetermined opponent while 'clinched' means a computed projection with no real schedule_grid row yet -- both render as muted 'vs TBD' text, but T4a/T9 must never conflate them). conditional_opponent is non-null only for status='possible' once another team has clinched/reached a threshold that names part of the matchup; null otherwise -- distinct from opponent, which is only set for a real, confirmed game. game_name is non-null only for a real, determined postseason game -- e.g. 'Pop-Tarts Bowl' -- sourced from CFBD's `notes` field (non-CFP bowls) or `playoff.bowl_name` (CFP games, confirmed to exist in CFBD's schema per T2's research, see key_decisions). record/conf_record/logo_url/opponent_logo_url/neutral_site/conditional_opponent/game_name were all added after mockup/planning review surfaced UI needs the original contract didn't carry -- see key_decisions."
+    - "New artifact schema (JSON): { season, generated_at_utc, conferences: [{ name, teams: [{ team, logo_url, record: {wins, losses}, conf_record: {wins, losses} | null, weeks: [{ slot_id, label, season_type, opponent, opponent_logo_url, conditional_opponent, game_name, home_away, neutral_site, status, team_score, opp_score }] }] }] } -- exact shape finalized in B1's artifact-builder task (T4b), then treated as a fixed contract for B2 to consume. slot_id/label carries regular weeks (0..N), the standalone Army-Navy Game Week slot, and CFP 1st Round + Other Bowls, CFP Quarterfinals, CFP Semifinals, CFP National Championship (see key_decisions) so the frontend never has to re-derive column identity from a possibly-colliding raw week number. status enum: win/loss/bye/upcoming/tbd (already-scheduled real games -- for 'tbd', opponent=null and no separate flag is needed) plus possible/eliminated/clinched/eligible/ineligible (computed conference-championship and bowl-eligibility placeholders, current season only -- 'clinched' fixed after plan review: it is its OWN status value, distinct from 'tbd', because 'tbd' means a real scheduled game with an undetermined opponent while 'clinched' means a computed projection with no real schedule_grid row yet -- both render as muted 'vs TBD' text, but T4a/T9 must never conflate them). REMOVED after full-plan review: an earlier draft had a redundant opponent_tbd boolean -- status='tbd' with opponent=null already fully captures that state, no separate flag needed. conditional_opponent is non-null only for status='possible' once another team has clinched/reached a threshold that names part of the matchup; null otherwise -- distinct from opponent, which is only set for a real, confirmed game. game_name is non-null only for a real, determined postseason game -- e.g. 'Pop-Tarts Bowl' -- sourced from CFBD's `notes` field (non-CFP bowls) or `playoff.bowl_name` (CFP games, confirmed to exist in CFBD's schema per T2's research, see key_decisions). conf_record is null for Independents (no conference to record against) -- the frontend shows only the overall record for those teams, no ', 0-0 XXX' suffix. record/conf_record/logo_url/opponent_logo_url/neutral_site/conditional_opponent/game_name were all added after mockup/planning review surfaced UI needs the original contract didn't carry -- see key_decisions."
     - "personal-site's fetch-rankings-data.mjs pattern extended (new function or sibling script) to pull schedule/index.json and schedule/{season}/latest.json into public/data/cfb/schedule/, following the exact same prebuild/readFileSync consumption model as rankings -- no direct Supabase or live R2 access from the rendered page."
   schemas:
-    - "New Supabase view rankings_games (T1): season_type='regular' + conference championship rows only, from the bronze `games` table. model/process_data.py queries this view instead of `games` directly -- a real schema object, not an inline Python filter."
+    - "New Supabase view rankings_games (T1): WHERE season_type='regular', from the bronze `games` table -- identical scope to today's ingestion (conference championship games already included, not a separate category). model/process_data.py queries this view instead of `games` directly -- a real schema object, not an inline Python filter."
     - "New Supabase view schedule_grid (T3): all games (regular + postseason) from the bronze `games` table, reshaped one row per (season, team_id, season_type/slot, week), documented in a checked-in migration file."
     - "Both views are the repo's 'silver' layer (see key_decisions) -- disjoint predicates over one shared bronze table, no materialized tables or refresh jobs."
   config_changes:
@@ -73,9 +75,16 @@ execution_batches:
         title: "Create rankings_games silver view and point the model at it (replaces an inline filter)"
         objective: >
           Add a checked-in migration creating a `rankings_games` Supabase
-          view: season_type='regular' + conference championship rows only,
-          selected from the bronze `games` table (matching the model's
-          existing documented scope). Point model/process_data.py's games
+          view: WHERE season_type='regular' -- a plain, single-predicate
+          filter, identical in scope to what the pipeline already ingests
+          today (CORRECTED after full-plan review: conference championship
+          games are NOT a separate CFBD season_type needing extra detection
+          logic -- they're already included under plain 'regular' today,
+          confirmed via docs/2026-season-readiness/status.yaml and current
+          get_games.py/process_data.py behavior. Do not build any special
+          conference-championship detection here; a plain season_type
+          equality check is the complete, correct predicate).
+          Selected from the bronze `games` table. Point model/process_data.py's games
           query at this view instead of `games` directly, and audit for any
           other place `games` is read without the same guard. This must land
           and be validated BEFORE T2's postseason backfill runs, since
@@ -97,7 +106,7 @@ execution_batches:
         dependencies: []
         parallelizable: false
         expected_validation:
-          - "Confirm rankings_games returns only season_type='regular' + conference championship rows"
+          - "Confirm rankings_games returns exactly the same rows as today's plain season_type='regular' ingestion -- including known conference championship games, which are already 'regular' today, not a separate category"
           - "Confirm model/process_data.py now reads from rankings_games, not games, directly"
           - "Confirm rankings output for a known past week (e.g. 2025 week 10) is byte-for-byte unchanged before/after this change, since no postseason rows exist yet at this point"
 
@@ -128,7 +137,15 @@ execution_batches:
           (complete) and season=2026 (partially TBD). Wire a recurring call
           into main.py's weekly run so 2026 postseason rows keep updating as
           matchups are determined and games are played (load_games_to_db is
-          already idempotent).
+          already idempotent). CORRECTED after full-plan review: this
+          recurring call must NOT reuse main.py's existing `args.week`
+          (the regular-season pipeline-week cursor from get_cfb_week()) --
+          postseason week numbers are a different, colliding numbering
+          scheme (see key_decisions), so passing args.week would silently
+          fetch the wrong or empty postseason slate every run. Instead call
+          with week=None / omitted, fetching CFBD's entire postseason slate
+          for the season on every run -- cheap (a few dozen games) and safe
+          given load_games_to_db's existing upsert idempotency.
         assigned_domain: "data-engineer"
         owned_scope:
           - "database/get_games.py"
@@ -188,19 +205,26 @@ execution_batches:
           pure functions, no R2/DB-write concerns, taking schedule_grid rows
           as input and producing: (1) each team's overall record and
           conference record (tallying win/loss statuses, conference record
-          restricted to conference_game=true rows); (2) for the current
-          season, each team's conference-championship status
-          (possible/eliminated/clinched) via the exact algorithm specified
-          in key_decisions (the W_T/R_T/B_T/L_T counting method -- NOT a
-          brute-force simulation), applied only to conferences confirmed to
-          use a top-2-by-conference-win-total format with >= 4 members
-          (blank/no-entry for every other conference, same as
+          restricted to conference_game=true rows; conf_record is null for
+          Independents -- no conference to tally against, not "0-0"); (2)
+          for the current season, each team's conference-championship
+          status (possible/eliminated/clinched) via the exact algorithm
+          specified in key_decisions (the W_T/R_T/B_T/L_T counting method
+          -- NOT a brute-force simulation), applied only to conferences
+          confirmed to use a top-2-by-conference-win-total format with >= 4
+          members (blank/no-entry for every other conference, same as
           Independents); (3) each team's bowl-eligibility status
           (possible/eligible at 6+ wins/ineligible at 7+ losses) for the
-          CFP 1st Round + Other Bowls slot. GUARDRAIL: this module must
-          never be imported by or feed data into model/ or rankings_games
-          -- it is a display-only computation over schedule_grid, entirely
-          separate from T1's rating-model guard.
+          CFP 1st Round + Other Bowls slot. The list of conferences
+          confirmed to use the top-2 format lives as a small versioned
+          constant/config in this module (not inline scattered logic) --
+          FLAG per full-plan review: conference membership/format changes
+          most years with realignment, so this list needs a comment noting
+          it should be re-verified each offseason, not treated as
+          permanent. GUARDRAIL: this module must never be imported by or
+          feed data into model/ or rankings_games -- it is a display-only
+          computation over schedule_grid, entirely separate from T1's
+          rating-model guard.
         assigned_domain: "data-engineer"
         owned_scope:
           - "artifacts/schedule_standings.py (new)"
@@ -241,6 +265,45 @@ execution_batches:
           eligible/ineligible statuses ONLY when no real postseason game
           already exists for that team/slot (real data always takes
           precedence over a computed placeholder);
+          (5) ADDED after full-plan review -- disambiguates Week 0 from
+          Week 1 for regular-season rows: CFBD's own week numbering does
+          NOT distinguish them (confirmed empirically: games.week never
+          contains 0 across all 13 ingested seasons; e.g. the 2024/2025
+          Dublin-Ireland season-opener games are stored as week=1,
+          identical to the main Week-1 slate). Do NOT bucket regular-season
+          rows into grid columns using the raw `week` value directly.
+          Instead, for each row, compute its display-week-slot by calling
+          the EXISTING utils.get_cfb_week(game_start_date,
+          season_start_override=None) function per-game (it already
+          accepts an arbitrary date as its first argument despite the
+          'today'-oriented naming/docstring -- reuse it as-is, do not
+          reimplement the date-anchor math a second time in this module).
+          This correctly separates true Week-0 openers (e.g. Dublin games)
+          from the main Week-1 slate, hand-verified against 2024/2025 real
+          data during research. This determines slot_id/label for weeks
+          0..N, not the raw games.week column;
+          (6) ADDED after full-plan review -- synthesizes bye-week rows so
+          every team has exactly one cell per canonical column (the plan
+          previously had no mechanism for this, since schedule_grid can
+          only contain rows for games that exist): build the canonical
+          column list for the season in Python (Week 0 through the highest
+          real display-week-slot found in that season's data -- derived
+          from the data itself via (5), not hardcoded -- then conference
+          championship week if applicable, then Army-Navy Game Week, then
+          the four CFP-round columns), then for each team iterate that
+          canonical list; where a schedule_grid row matches (team, slot),
+          use it, and where none exists, emit status='bye'. This is a
+          Python-side lookup/fill operation over T4b's already-queried
+          schedule_grid rows, not a SQL-view concern -- T3 does not change
+          for this;
+          (7) ADDED after full-plan review -- Army-Navy carve-out
+          alignment: when Army's and Navy's game against each other is
+          pulled into the standalone Army-Navy Game Week column (per (3)
+          above), the calendar week-slot that game would otherwise have
+          occupied in Army's and Navy's own normal week columns must show
+          status='bye' there (not a duplicate of the game, and not an
+          unexplained gap) -- every other team's normal week columns are
+          unaffected;
           then shapes the JSON payload per the contract above and publishes
           to R2 -- wired into main.py to run in the same weekly pipeline
           execution as the existing rankings publish.
@@ -251,14 +314,17 @@ execution_batches:
         forbidden_scope:
           - "artifacts/rankings.py, artifacts/r2.py (reuse helpers where they genuinely fit; do not rewrite them)"
           - "artifacts/schedule_standings.py's internal logic (consume its output, don't reimplement or duplicate the status/record computation here)"
+          - "utils.py (call get_cfb_week() as-is; do not modify its signature/behavior for this feature)"
         dependencies: ["T4a"]
         parallelizable: false
         expected_validation:
           - "Run the pipeline (or the publish step standalone) against real 2025/2026 data and inspect the resulting JSON for correct conference grouping/order, sort, and per-cell status (including postseason slots)"
-          - "Confirm logo_url and opponent_logo_url resolve to real URLs for a sample of teams, not nulls/broken paths"
+          - "Confirm logo_url and opponent_logo_url resolve to real URLs for a sample of teams using artifacts/rankings.py's existing _resolve_logo() convention (32px dark variant), matching what the Rankings tab already renders for the same teams -- not a re-derived/different size or variant"
           - "Confirm neutral_site is set correctly for at least one known neutral-site 2025 game"
           - "Confirm 2025's Army-Navy Game Week and CFP-round columns bucket real games correctly using CFBD's round data (not date inference), with real game_name values for determined bowls (e.g. spot-check a known 2025 bowl name)"
           - "Confirm a real postseason row, once it exists for a team/slot, always overrides T4a's computed placeholder for that cell"
+          - "Confirm a known 2025 Week-0 game (e.g. a Dublin-Ireland opener, if one of its teams is in the grid's scope) lands in the Week 0 column, not Week 1, despite games.week=1 for that row"
+          - "Confirm every team has exactly one cell for every canonical column with no gaps, including a real bye week showing status='bye' correctly, and Army's/Navy's own weekly column showing 'bye' for the week their game against each other actually occupies"
           - "Confirm publish failure handling matches the existing artifact-safe discipline (never raises/breaks the pipeline run)"
 
       - id: "T5"
@@ -271,6 +337,33 @@ execution_batches:
         parallelizable: false
         expected_validation:
           - "PR opened against the correct base branch with a clear description"
+
+      - id: "T5b"
+        title: "Confirm B1 merged, trigger the pipeline, verify the schedule artifact is live"
+        objective: >
+          Added after full-plan review: the "manually trigger the pipeline
+          after merge" step (ordering_notes) and the "B1 must fully merge
+          before B2 starts" rule (approach.summary) were previously prose
+          -only with no owning task and no structural dependency gating
+          B2 on them -- fixed by making this its own task. After the user
+          merges B1's PR (a human action -- $work agents never merge, per
+          branch-and-pr-workflow.md), confirm the merge, manually trigger
+          the pipeline (the existing test-week-run.yml workflow_dispatch,
+          or equivalent) per ordering_notes rather than waiting for the
+          next scheduled Sunday cron, and verify the resulting
+          schedule/{season}/latest.json and schedule/index.json actually
+          exist in R2 with real (non-placeholder) data before any B2 task
+          begins.
+        assigned_domain: "platform-engineer"
+        owned_scope: []
+        forbidden_scope:
+          - "Any repo code changes (this is a verification/trigger action, not a development task)"
+        dependencies: ["T5"]
+        parallelizable: false
+        expected_validation:
+          - "Confirm the PR is actually MERGED, not just opened"
+          - "Confirm the manually-triggered pipeline run completes successfully"
+          - "Confirm schedule/{season}/latest.json and schedule/index.json exist in R2 with real data (not empty/placeholder) for at least the current season"
 
   - id: "B2"
     goal: "personal-site: lock the visual design, then fetch new artifact and render a switchable Rankings/Season Grid tab (code work starts only after B1 MERGES)"
@@ -311,7 +404,7 @@ execution_batches:
           - "package.json prebuild wiring if a new script file is added"
         forbidden_scope:
           - "Any direct Supabase/R2 access from page/component code (build-time script only)"
-        dependencies: []
+        dependencies: ["T5b"]
         parallelizable: false
         expected_validation:
           - "npm run prebuild succeeds locally against the real published B1 artifact and populates public/data/cfb/schedule/"
@@ -333,7 +426,7 @@ execution_batches:
           - "src/layouts/BaseLayout.astro (:root token additions only)"
         forbidden_scope:
           - "Existing tokens (no renaming/removal of current design tokens)"
-        dependencies: ["T8"]
+        dependencies: ["T8", "T5b"]
         parallelizable: false
         expected_validation:
           - "Tokens match the locked mockup's color choices for the grid; switch tokens are new (not in the mockup, which showed the old pill-button toggle) but follow the same naming/value conventions"
@@ -367,7 +460,9 @@ execution_batches:
           markup/logic still isn't touched, only the selector/switching
           logic around it. Per the locked mockup: each team row shows its logo
           (team.logo_url), overall + conference record (e.g. "4-1, 1-0
-          ACC"); every played-game cell is fully background-highlighted
+          ACC" -- for Independents, conf_record is null in the contract, so
+          the row shows only the overall record, no ", 0-0 XXX" suffix);
+          every played-game cell is fully background-highlighted
           (not just alternating rows -- this was a real CSS-specificity bug
           in the mockup, fixed there, must not be reintroduced here) and
           shows the opponent's logo, "@"/"vs" + name (with a "*" suffix when
@@ -424,14 +519,13 @@ execution_batches:
           - "PR opened, description notes it follows the merged cfb-rankings PR"
 
 ordering_notes:
-  - "Within B1: T1 (model guard) strictly before T2 (widen+backfill+recurring+games schema) strictly before T3 (view) strictly before T4a (standings/status computation) strictly before T4b (artifact assembly+publish) strictly before T5 (PR). T1 exists specifically because T2's backfill would otherwise corrupt the rankings model -- do not skip or reorder T1 after T2. T4a before T4b because T4b consumes T4a's output directly."
+  - "Within B1: T1 (model guard) strictly before T2 (widen+backfill+recurring+games schema) strictly before T3 (view) strictly before T4a (standings/status computation) strictly before T4b (artifact assembly+publish) strictly before T5 (PR) strictly before T5b (confirm merge + trigger pipeline + verify artifact). T1 exists specifically because T2's backfill would otherwise corrupt the rankings model -- do not skip or reorder T1 after T2. T4a before T4b because T4b consumes T4a's output directly."
   - "T1/T2/T3 (migration + backfill) apply directly to the live Supabase project, not a database branch -- confirmed with the user: T1 is a read-path guard validated by before/after output comparison, and T2's backfill is additive-only with idempotent upserts, so the extra branch/merge overhead isn't warranted at this project's scale. Note DB changes are NOT gated by the git branch/PR the way code is -- running the migration/backfill during implementation takes effect on production immediately, independent of when the PR merges."
-  - "After T5's PR merges, manually trigger the pipeline (the existing test-week-run.yml workflow_dispatch, or equivalent) rather than waiting for the next scheduled Sunday cron -- otherwise B2's T6 validation has nothing real to fetch for up to a week. This is a required step before B2 code work begins, not optional."
+  - "STRUCTURALLY ENCODED after full-plan review (this was previously prose-only, a real gap): T5b sits between T5 and B2, and T6/T7 (and transitively T9/T10) now depend on T5b directly -- so the 'B1 must fully merge before B2 starts' rule and the 'manually trigger the pipeline post-merge' step are both real dependency-graph edges, not just ordering_notes prose an implementer could miss."
   - "Expect the 2026 postseason backfill (within T2) to return few or zero rows at first -- bowl/CFP matchups aren't determined by CFBD until conference championship week in December. This is expected, not a bug; the recurring weekly fetch (also T2) picks them up automatically once CFBD publishes them, and the frontend's neutral/blank cell styling already covers 'no data yet' for those columns."
-  - "T8 (design mockup) has no code/data dependency and can start immediately (in parallel with B1 execution) -- the user asked to lock UI questions before making changes, and a mockup is the fastest way to do that without writing real code."
-  - "All other B2 tasks (T6, T7, T9, T10) do not start until B1's PR has actually MERGED, per the user's explicit choice to wait for real published data rather than build against staging."
-  - "T7 depends on T8 (tokens should match the locked mockup's colors, not be guessed ahead of it)."
-  - "T9 depends on T6, T7, AND T8 -- fetch script, tokens, and the locked design must all be in place first."
+  - "T8 (design mockup) has no code/data dependency and can start immediately (in parallel with B1 execution) -- the user asked to lock UI questions before making changes, and a mockup is the fastest way to do that without writing real code. (T8 is already complete as of this plan revision.)"
+  - "T7 depends on T8 AND T5b (tokens should match the locked mockup's colors, not be guessed ahead of it, and personal-site code work waits for B1 merge like everything else in B2)."
+  - "T9 depends on T6, T7, AND T8 -- fetch script, tokens, and the locked design must all be in place first (T5b is satisfied transitively via T6/T7)."
 
 risks:
   - risk: "Without T1, widening postseason ingestion would silently corrupt the rankings model via model/process_data.py's season_type-blind query -- confirmed via plan review, not hypothetical."
@@ -450,19 +544,29 @@ risks:
     mitigation: "T4a is now a standalone task with mandatory SYNTHETIC test validation (a hand-built small conference scenario, since live September 2026 data can't exercise these branches at all) -- this is the real regression test, not just a live-data sanity check. The algorithm's conservative-by-construction property is itself the safety mechanism against false assertions; its known tradeoff (occasional under-reporting) is documented, not hidden."
   - risk: "CFBD's postseason data may not cleanly separate 'regular bowl games' from 'CFP first round' by date/round, or may not expose a usable game-name field for past bowls."
     mitigation: "Substantially de-risked by platform research (see key_decisions' CFBD postseason data research): CFBD's /games response has a confirmed `playoff` object with `bowl_name`/`round_name`/`round_order`/`bracket_slot` for CFP games, plus a separate /playoffs/cfp/games endpoint with the same fields -- real structured data, not date inference. The remaining open item is narrower and empirical: whether `notes` reliably carries real names for non-CFP bowls specifically, which T2 must verify against live 2025 data and has an explicit documented fallback (generic label) if not."
+  - risk: "Naively bucketing regular-season grid columns by the raw games.week value would silently merge real Week-0 games into the Week-1 column, since CFBD itself never distinguishes them (confirmed: games.week is never 0, across all 13 ingested seasons) -- found by a targeted repo-researcher investigation after the user flagged that the existing rankings pipeline also conflates the two."
+    mitigation: "T4b derives display-week-slot per-game from start_date by reusing utils.get_cfb_week() as-is (already accepts an arbitrary date, no modification needed) -- hand-verified against real 2024/2025 Dublin-Ireland opener data to correctly separate Week 0 from Week 1. T4b's validation includes an explicit check against a known Week-0 game."
+  - risk: "schedule_grid (T3) only ever contains rows for games that exist -- without an explicit mechanism, there is no way to produce a bye-week cell for every team at every grid column, which a full-plan review flagged as effectively unbuildable as originally described."
+    mitigation: "T4b now owns building the canonical per-season column list in Python (derived from the data, not hardcoded) and filling every (team, column) combination, defaulting to status='bye' where schedule_grid has no matching row -- a Python-side lookup/fill, not a SQL/view concern. The same mechanism cleanly handles the Army-Navy carve-out (their own normal week column shows 'bye' where the game is displayed exclusively in the dedicated Army-Navy column instead)."
+  - risk: "The B1-must-merge-before-B2-starts rule and the post-merge pipeline-trigger step existed only as prose (ordering_notes, approach.summary) with no structural task dependency enforcing them -- flagged by full-plan review as something an implementer working off the task graph alone could miss."
+    mitigation: "Added T5b (confirm merge, trigger pipeline, verify artifact) as its own task between T5 and B2; T6 and T7 (and transitively T9/T10) now structurally depend on T5b, not just prose in ordering_notes."
 
 open_questions: []
 
 review:
   status: "changes_requested_and_addressed"
-  loop_count: 2
+  loop_count: 3
   notes:
     - "Pass 1 (reviewer) requested changes: (1) T1's original forbidden_scope excluded model/, but model/process_data.py's games query has no season_type filter, so the postseason backfill would silently leak into the rankings model, reversing a previously confirmed non-goal -- fixed by adding a new, ordered-first T1 task scoped narrowly to the guard. (2) Original plan only backfilled postseason once, leaving 2026 Bowl/CFP columns permanently stale -- fixed by adding a recurring weekly postseason fetch to T2. (3) View grain (season, team_id, week) risked collisions between regular and postseason week numbers -- fixed by keying on season_type/slot too, in T3. (4) Minor wording fixes applied: T4's index-builder is new/parallel logic not literal reuse; T9 acknowledges the sticky-header+sticky-column intersection is new work, not scaled-up reuse; T7's theme validation simplified (single dark theme, confirmed, not conditional)."
     - "Plan.yaml's prior open_questions were resolved directly by the user: B2 code work waits strictly for B1 merge (not staging); a design mockup (T8) is wanted before B2 implementation; page placement is now a tabbed toggle on the existing rankings page (tentative, to be locked via the T8 mockup)."
     - "Pass 2 (reviewer, focused on the newly-added postseason column model) requested changes: (1) the JSON contract's status enum was missing 'clinched' despite key_decisions describing it as a required third state -- fixed by adding it as its own status value, explicitly distinguished from 'tbd'. (2) T9 had no rendering spec at all for the clinching team's own 'vs TBD' cell -- fixed. (3) The clinch/elimination algorithm was asserted ('a real algorithm exists') without being specified, including an unacknowledged classic subtlety (other teams' remaining games against each other make naive 'everyone else loses' scenarios jointly infeasible) -- fixed by replacing the vague description with a concrete, deliberately conservative counting algorithm (documented in key_decisions) that only relies on already-banked facts or independent per-team best/worst cases, so it can under-report but never falsely assert eliminated/clinched; explicit fallback added for conferences not confirmed to use a top-2 format (blank, not guessed). (4) T4's validation for this piece could pass trivially since live September 2026 data never exercises the eliminated/clinched branches -- fixed by requiring a synthetic hand-built test scenario. Also split the oversized T4 into T4a (standings/status computation, isolated and unit-testable) and T4b (artifact assembly/publish, consumes T4a's output) per the reviewer's task-sizing finding, and added an explicit guardrail that T4a must never feed into model/ or rankings_games."
     - "Between pass 2 and pass 3: user requested platform research into what CFBD's API actually exposes for postseason/bowl games, to see if real bowl names/logos could be ingested now instead of deferred. Findings folded in: CFBD's /games response has a confirmed `notes` field and a structured `playoff` object (bowl_name/round_name/round_order/bracket_slot) for CFP games, plus a separate /playoffs/cfp/games endpoint with the same fields -- real, ingestable now, and a better source for CFP-round column bucketing than the originally-planned date inference. Bowl/sponsor logos are confirmed to not exist anywhere in CFBD's schema at all (permanent gap, not a timing one) -- team logos remain the only logo source. T2/T3/T4b updated accordingly; a small first schema change to the bronze `games` table (nullable columns) was added to T2 to persist this."
     - "User also renamed the postseason columns from 'Bowl Week 1-4' to 'CFP 1st Round + Other Bowls' / 'CFP Quarterfinals' / 'CFP Semifinals' / 'CFP National Championship' -- label-only change, applied throughout."
-    - "Loop cap note: this is the 2nd correction cycle (pass 1 fixes, pass 2 fixes) -- at the workflow's stated max of 2. A pass-3 (full-plan) review is planned next per the user's explicit request. If pass 3 requests further substantive changes, the orchestrator will stop and bring findings to the user for direction rather than auto-looping a 3rd correction cycle."
+    - "User separately asked for the tab UX: page-level shared season selector (not per-tab), week selector Rankings-only (Season Grid has no week concept, always latest cumulative state), the tab switch redesigned as an iOS-style toggle (not the mockup's pill-button pair), and the tab named 'Season Grid' (not 'Schedule') -- all folded into T7/T9 and key_decisions; T9 now explicitly restructures the existing season/week selector script in index.astro rather than building an isolated new one."
+    - "Pass 3 (full-plan review, top to bottom per user request) requested changes: (1) B1-must-merge-before-B2 was prose-only with no structural dependency -- fixed by adding T5b (confirm merge/trigger pipeline/verify artifact) as its own task, with T6/T7 now depending on it. (2) rankings_games's predicate was worded as 'regular + conference championship,' implying a separate category that doesn't exist -- corrected to a plain season_type='regular' filter (conference championship games are already included today, confirmed via prior repo research). (3) schedule_grid had no mechanism for producing bye-week cells (a bye has no games row at all) -- fixed by giving T4b explicit ownership of building the canonical per-season column list and filling every (team, column) combination, defaulting to 'bye' where no row matches; this also resolved the Army-Navy carve-out alignment question. (4) The recurring postseason fetch's week parameter was unspecified, and naively reusing main.py's regular-season args.week would silently fetch the wrong/empty postseason data every run -- fixed by specifying week=None. (5) The teams.logos array-structure 'open question' was already solved in artifacts/rankings.py's _resolve_logo() helper -- pointed T4b at it directly instead of re-investigating. (6) Minor: dropped a redundant opponent_tbd contract field (status='tbd' + opponent=null already covers it); Independents' conf_record is now explicitly null (not '0-0') with T9 rendering only the overall record for them; added a note that the top-2-championship-format conference list needs annual re-verification given realignment."
+    - "Between pass 3's findings and the fix pass: user separately raised (from their own domain knowledge, not from any review) that the existing rankings pipeline treats Week 0 and Week 1 as the same, which would break the grid's distinct Week 0 / Week 1 columns if schedule_grid's raw games.week value were trusted directly. A targeted repo-researcher investigation confirmed this empirically (games.week is never 0, across all 13 ingested seasons -- CFBD's own numbering conflates Week-0 trope openers like the Dublin-Ireland games into week=1) and found that utils.get_cfb_week(), applied per-game to start_date instead of 'today', correctly separates them (hand-verified against real 2024/2025 data) -- reusable as-is, no modification needed. Folded into T4b."
+    - "Also researched (user request): alternative non-CFBD sources for bowl/sponsor logos, given CFBD has none. Findings: ESPN's public API has no documented bowl-specific logo field; TheSportsDB's college-football coverage has reported reliability gaps; Wikipedia/Wikidata carries real licensing risk (most bowl logos there are non-free/fair-use) on top of data-completeness uncertainty. Recommended path if logos are wanted: lightweight manual curation (~40 bowls, sourced from each bowl's own official site, refreshed roughly annually since sponsor deals are typically multi-year) rather than a second automated ingestion source. Decision on whether to adopt this is still open with the user as of this plan revision."
+    - "Loop cap note: this is the 3rd correction cycle (pass 1, pass 2, pass 3 fixes), beyond the workflow's stated max of 2 -- each cycle was explicitly surfaced to the user with a stop-and-check before proceeding (see chat history), not auto-looped silently. No further review pass is planned; this is intended to be the final state before the pre-execution checkpoint."
 
 checkpoint:
   required_before_execution: true

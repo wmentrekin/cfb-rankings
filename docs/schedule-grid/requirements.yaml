@@ -109,6 +109,10 @@ acceptance_criteria:
   - "The new tab is named \"Season Grid\" (not \"Schedule\"), used everywhere user-facing; underlying technical names (schedule_grid view, schedule/ R2 prefix, artifacts/schedule*.py) are unaffected"
   - "One shared, page-level season selector drives both the Rankings and Season Grid tabs -- not a per-tab selector. The week selector is Rankings-only and hides when Season Grid is active; Season Grid has no week concept at all, it always shows the latest cumulative season state (consistent with the schedule artifact already being season-scoped, not per-week)"
   - "The Rankings/Season Grid tab switch is styled as an iOS-style toggle (oval track, circular thumb sliding left/right), not the two-button pill pair shown in the initial mockup"
+  - "Week 0 and Week 1 are distinct grid columns, correctly separated -- CFBD itself never distinguishes them (games.week is never 0, confirmed empirically across all ingested seasons), so this requires per-game date-based logic (reusing utils.get_cfb_week() as-is), not the raw week column"
+  - "Every team has exactly one cell for every grid column, including bye weeks -- schedule_grid only contains rows for games that exist, so the artifact builder must synthesize the bye-week cells for every (team, column) combination with no matching row"
+  - "rankings_games's filter is a plain season_type='regular' predicate -- conference championship games are already included under that value today, not a separate category needing detection logic"
+  - "conf_record is null (not \"0-0\") for Independents, and the frontend shows only their overall record with no conference suffix"
 
 open_questions: []
 
