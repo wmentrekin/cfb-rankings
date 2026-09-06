@@ -17,9 +17,9 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "Mockup approved; data-contract gaps (record/logo/neutral-site) and remaining pre-execution questions (backfill, ordering, DB-safety, post-merge trigger) resolved. Plan is complete."
-  last_completed: "Closed record/conf_record/logo_url/neutral_site contract gaps; confirmed direct-to-production DB approach and the post-merge manual pipeline trigger step"
-  current_blocker: "Awaiting final user go-ahead at the pre-execution checkpoint"
+  current_focus: "Second reviewer pass in progress on the newly-added postseason column model (Army-Navy, Bowl Weeks 1-4, conference-championship clinch/eliminate, bowl eligibility)"
+  last_completed: "Scoped and documented the postseason column model per user request (plan.yaml + requirements.yaml updated, pushed)"
+  current_blocker: "Awaiting reviewer-2 findings before final pre-execution checkpoint"
 
 artifacts:
   requirements: "docs/schedule-grid/requirements.yaml"
@@ -45,7 +45,15 @@ agents:
     model_guidance: "medium"
     status: "completed"
     stage: "planning"
-    task: "plan critique -- requested changes, addressed in plan.yaml revision"
+    task: "plan critique (pass 1) -- requested changes, addressed in plan.yaml revision"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "reviewer-plan-2"
+    role: "reviewer"
+    model_guidance: "medium"
+    status: "running"
+    stage: "planning"
+    task: "plan critique (pass 2) -- focused on the new postseason column model (clinch/eliminate algorithm, Bowl Week bucketing)"
     last_update: "2026-09-06"
     blocker: ""
   - id: "repo-researcher-cfb-rankings"
