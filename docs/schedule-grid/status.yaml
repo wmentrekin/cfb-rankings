@@ -17,9 +17,9 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "B1 MERGED (PR #7, merge commit c4eeb75). Waiting on the user for T5b: run the real 2025 postseason backfill and manually trigger the pipeline so the schedule artifact actually publishes to R2. B2 (personal-site frontend) cannot start until then."
-  last_completed: "T5: PR #7 opened, went green (GitGuardian pass, no review comments), and was merged into main by the user."
-  current_blocker: "User needs to (1) wherever real CFBD/DB/R2 credentials exist, run scripts/backfill_2025_postseason.py; (2) manually trigger the pipeline once (e.g. test-week-run.yml workflow_dispatch) so main.py's new postseason fetch + publish_schedule_artifact() actually run against real data; (3) confirm the schedule artifact is live in R2. Only then can B2 begin."
+  current_focus: "B1 MERGED (PR #7). User ran the real 2025 postseason backfill successfully (46 games). T5b's remaining step: trigger weekly-update.yml so publish_schedule_artifact() actually publishes to R2 (test-week-run.yml lacks R2 secrets, don't use it for this). B2 (personal-site frontend) cannot start until the artifact is confirmed live in R2."
+  last_completed: "User ran scripts/backfill_2025_postseason.py locally (after a real bug fix -- the script's own sys.path assumption broke when invoked as `python scripts/foo.py`, fixed and pushed to main). Orchestrator independently verified: 46 real 2025 postseason games landed correctly, schedule_grid reflects them automatically, and ran build_schedule_payload() against the real data end-to-end -- CFP-round bucketing, real-bowl-name sourcing from notes, and real-row-overrides-placeholder all confirmed correct against genuine production data (Miami's full CFP run, Georgia Tech's Pop-Tarts Bowl, Indiana's national championship win)."
+  current_blocker: "User needs to trigger weekly-update.yml (workflow_dispatch or gh workflow run) -- it has R2 secrets and calls main.py with no args (auto-computed year/week); test-week-run.yml does NOT have R2 secrets so running it would not actually publish anything. Once triggered, confirm schedule/{season}/latest.json + schedule/index.json exist in R2."
 
 artifacts:
   requirements: "docs/schedule-grid/requirements.yaml"
