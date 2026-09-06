@@ -1,0 +1,75 @@
+artifact: task_handoff
+feature: "schedule-grid"
+mode: "large-initiative"
+execution_batch_id: "B1"
+task_id: "T3"
+assigned_domain: "data-engineer"
+branch: "claude/georgia-tech-schedule-viz-aqy1ay"
+repo: "wmentrekin/cfb-rankings"
+owner_skill: work
+
+objective: >
+  Create a checked-in migration for a new Supabase view, `schedule_grid`,
+  that reshapes the game-centric bronze `games` table (one row per game,
+  home_team/away_team columns) into a TEAM-PERSPECTIVE view (one row per
+  team per game they play in). This is what T4a/T4b will build the Season
+  Grid artifact from.
+
+why_this_matters: >
+  `games` has one row per game with home/away columns; the Season Grid
+  needs "for team X, what happened in week N" -- a fundamentally different
+  shape. This view is the second of two disjoint-predicate silver views
+  over the bronze `games` table (the first, rankings_games, landed in T1).
+
+inputs:
+  requirements: "docs/schedule-grid/requirements.yaml"
+  plan: "docs/schedule-grid/plan.yaml"
+  implementation_report: "docs/schedule-grid/implementation-report.yaml (update it with T3's results when done)"
+  relevant_paths:
+    - "database/migrations/0001_rankings_games_view.sql, 0002_games_postseason_columns.sql (style/header convention to follow, and the exact new column names/types you're selecting from)"
+    - "database/get_games.py (confirms exact column names now on `games`: id, season, week, season_type, start_date, home_team, home_score, away_team, away_score, neutral_site, conference_game, venue, venueid, home_conference, away_conference, margin, winner, alpha, notes, playoff_round_name, playoff_round_order, playoff_bracket_slot, playoff_bowl_name)"
+
+scope:
+  owned:
+    - "database/migrations/0003_schedule_grid_view.sql (new)"
+    - "Supabase schema -- create the schedule_grid view via apply_migration, project id oyqgmbgwohlnrxodvilt"
+  forbidden:
+    - "games/teams table structure -- read-only source data, no column changes (T2 already added everything schedule_grid needs)"
+    - "rankings_games (T1) or model/ -- do not touch"
+
+implementation_notes:
+  - "SHAPE: `games` has ONE row per game (home_team/away_team/home_score/away_score). schedule_grid needs to be a UNION ALL of two SELECTs over `games` -- one treating home_team as 'team' (home_score as team_score, away_team as opponent, away_score as opp_score, home_conference as this row's conference, home_away='home'), the other symmetrically for away_team ('away'). Every game becomes exactly two schedule_grid rows, one per participating team."
+  - "IDENTIFIER: `games` stores teams as TEXT (home_team/away_team, matching teams.school) -- there is no team_id integer column on `games`. Use the team name (text) as the identifying column, not a fabricated numeric id. (plan.yaml's prose says '(season, team_id, ...)' loosely -- that's describing the CONCEPT of a team identifier, not a literal column name; team name text is the correct, actually-available key here.)"
+  - "GRAIN: a query for (season, team, season_type, week) should return at most one row -- this holds naturally since a team plays at most one game per season_type+week in practice. Include season_type in whatever you treat as the view's logical key, since T2/plan.yaml already established that regular-season and postseason week numbers CAN collide on raw week values."
+  - "STATUS DERIVATION (the load-bearing logic here): derive played-vs-upcoming from start_date compared to the current time -- NEVER from score nullness. Confirmed finding from earlier research: CFBD stores unplayed/future games with home_score=away_score=0, not NULL -- a naive 'score present' check would misclassify every future game as a 0-0 tie. status = 'upcoming' if start_date is in the future; otherwise compare team_score vs opp_score for 'win'/'loss'. Do NOT emit 'bye' from this view -- a bye means NO games row exists for that team/slot at all, which is a T4b concern (synthesizing missing rows into 'bye' cells), not something this view can produce, since a view only ever has rows for games that exist."
+  - "'tbd' STATUS EDGE CASE (genuinely uncertain, was not empirically verified against live CFBD data by T2 either): a postseason game row might exist with start_date set but one side not yet a real, resolvable team (e.g. an early playoff-bracket game before both participants are determined). If you find real 2025 data exhibiting this (e.g. a home_team/away_team value that doesn't match any real teams.school), treat that row's status as 'tbd' rather than 'upcoming'. If you don't find evidence of this pattern in the real data available to you, default to 'upcoming' for future games with two real team names and document what you found either way -- do not guess at a specific CFBD placeholder convention (e.g. a literal 'TBD' string) without evidence."
+  - "PASS THROUGH AS-IS (no transformation needed): neutral_site, conference_game, notes, playoff_round_name, playoff_round_order, playoff_bracket_slot, playoff_bowl_name, start_date, week, season_type."
+  - "TIE EDGE CASE: if start_date is in the past AND team_score == opp_score (extremely rare in real CFB, but include a defensive choice rather than an unhandled null): document what you chose (e.g. treat as a distinct case, or note it's effectively impossible in practice) rather than leaving it silently undefined."
+  - "This is currently expected to be empty of postseason rows until the user runs the real backfill (T2's scripts/backfill_2025_postseason.py) -- your validation against real postseason data may need to wait on that, or you may only be able to validate the REGULAR-season reshape end-to-end right now. Report clearly which parts of validation you could and couldn't complete for that reason -- this is expected, not a blocker to escalate."
+
+success_criteria:
+  - "database/migrations/0003_schedule_grid_view.sql exists, is committed, and matches what was actually applied to Supabase"
+  - "schedule_grid exists live in Supabase and returns exactly 2 rows per game in `games` (spot check: total schedule_grid row count == 2x total games row count)"
+  - "For a handful of known 2025 regular-season games, both the home-team-perspective and away-team-perspective rows have the correct opponent, home_away, team_score/opp_score, and status ('win' for the actual winner's row, 'loss' for the other)"
+  - "A known future/unplayed 2026 game (start_date in the future, 0-0 in the raw games table) shows status='upcoming' in schedule_grid, NOT 'loss'/'win' from a false 0-0 read"
+  - "neutral_site and conference_game correctly reflect known real games (spot check at least one of each)"
+
+validation_expected:
+  - "Row count check: schedule_grid count == 2 * games count"
+  - "Spot check at least 3 known 2025 regular-season games from both team perspectives (6 schedule_grid rows total) against known real outcomes"
+  - "Spot check at least 1 known future/unplayed 2026 game to confirm status='upcoming', not a false result from 0-0 scores"
+  - "Confirm season_type + week both being needed to disambiguate is actually reflected correctly if any postseason data exists yet (if not, note that this specific check is deferred until the user's backfill runs)"
+
+output_format:
+  sections:
+    - Changes
+    - Local Validation
+    - Blockers
+    - Notes
+
+escalate_if:
+  - missing_context
+  - conflicting_artifacts
+  - product_or_architecture_guess_required
+  - scope_expansion_required
+  - "you find real evidence of a specific CFBD placeholder convention for undetermined playoff opponents that materially changes the 'tbd' status logic -- report it clearly rather than silently encoding an unverified assumption"
