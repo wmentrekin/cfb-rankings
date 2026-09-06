@@ -17,9 +17,9 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "T5b COMPLETE -- B1 fully done end to end. schedule/2026/latest.json + schedule/index.json confirmed published to R2 by a real weekly-update.yml run. B2 (personal-site frontend) is now unblocked and can begin."
-  last_completed: "User triggered weekly-update.yml for real: rankings published normally, and the new postseason fetch + schedule artifact publish both ran. Caught and fixed one real bug from the run's log: get_games_by_year_week raised KeyError on CFBD's empty-list response for 2026's not-yet-existent postseason (pd.DataFrame([]) has zero columns) -- was being silently caught by main.py's try/except every run, not crashing the pipeline, but a real gap. Fixed with an empty-DataFrame short-circuit, verified locally with a mocked empty response, committed and pushed (ce02d9d). The two WARNING lines in the run's log (ambiguous 2026 conference-championship pick this early in the season; SMU's week-collision shift) are expected, documented behavior working exactly as designed, not bugs."
-  current_blocker: "none -- B1/T5b fully done"
+  current_focus: "B2 starting in wmentrekin/personal-site. T8 (design mockup) already locked. Writing/spawning T6 (fetch script) and T7 (design tokens) in parallel -- independent, no file overlap."
+  last_completed: "Incident response: the same weekly-update.yml run also surfaced a real, more severe pre-existing bug (unrelated to this feature) -- get_games.py's winner computation scored every unplayed 0-0 game as an away-team win, corrupting both displayed records and the QP rating model's actual inputs for 2026 Week 1 (Notre Dame, Washington, Ole Miss, Florida State all affected) and, historically, one real 2024 game (App State/Liberty, cancelled by Hurricane Helene, still 0-0 in the DB). Fixed at the source (winner=null for a 0-0 game; model/process_data.py skips null-winner rows), verified with a mocked test. Also cleaned up the premature 2026 Week 1 publish per the user's explicit request: deleted the bad `ratings` DB rows directly, and gave the user a script (scripts/cleanup_premature_2026_week1_rankings.py) to delete the bad R2 keys and restore rankings/latest.json + index.json to 2025 week 15 -- user ran it successfully."
+  current_blocker: "none"
 
 artifacts:
   requirements: "docs/schedule-grid/requirements.yaml"
@@ -32,6 +32,22 @@ pr:
   status: "merged"
 
 agents:
+  - id: "frontend-engineer-T6"
+    role: "frontend-engineer"
+    model_guidance: "medium"
+    status: "running"
+    stage: "execution"
+    task: "T6 (personal-site): extend fetch-rankings-data.mjs / add a sibling script for schedule/index.json + schedule/{season}/latest.json"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "frontend-engineer-T7"
+    role: "frontend-engineer"
+    model_guidance: "medium"
+    status: "running"
+    stage: "execution"
+    task: "T7 (personal-site): win/loss/upcoming/tbd + iOS-switch design tokens in BaseLayout.astro :root"
+    last_update: "2026-09-06"
+    blocker: ""
   - id: "orchestrator"
     role: "orchestrator"
     model_guidance: "xhigh"

@@ -1,0 +1,69 @@
+artifact: task_handoff
+feature: "schedule-grid"
+mode: "large-initiative"
+execution_batch_id: "B2"
+task_id: "T7"
+assigned_domain: "frontend-engineer"
+branch: "claude/georgia-tech-schedule-viz-aqy1ay"
+repo: "wmentrekin/personal-site"
+owner_skill: work
+
+objective: >
+  Add new CSS custom properties to BaseLayout.astro's :root for (1) the
+  Season Grid's win/loss/upcoming/tbd cell colors, and (2) the Rankings |
+  Season Grid tab switch (an iOS-style toggle -- oval track with a sliding
+  circular thumb, NOT the two-button pill pair from the original T8
+  mockup, which this feature's UX was explicitly redesigned away from
+  after the mockup was locked).
+
+why_this_matters: >
+  T9 (the real Season Grid component) consumes these tokens directly --
+  getting the naming/value convention right here means T9 can just
+  reference var(--...) the same way the rest of the site already does,
+  with no guessing or re-deriving colors mid-component-build.
+
+inputs:
+  requirements: "docs/schedule-grid/requirements.yaml"
+  plan: "docs/schedule-grid/plan.yaml (T7 task block; key_decisions' iOS-switch bullet, which explicitly supersedes the T8 mockup's pill-button toggle)"
+  implementation_report: "docs/schedule-grid/implementation-report.yaml (in cfb-rankings -- update it with T7's results when done)"
+  relevant_paths:
+    - "src/layouts/BaseLayout.astro (read the full :root token block before adding anything -- study the EXISTING --error-bg/--error-text pair specifically, since T7's objective explicitly says to follow that naming convention)"
+
+scope:
+  owned:
+    - "src/layouts/BaseLayout.astro (:root token additions ONLY -- add new custom properties, nothing else in this file)"
+  forbidden:
+    - "Any existing token (no renaming, no value changes, no removal) -- this repo has a single dark theme (color-scheme: dark, no light/dark toggle), so there's no cross-theme variant of these tokens to add either"
+    - "Any component/page markup or styles (this task only touches :root token declarations)"
+
+implementation_notes:
+  - "EXISTING CONVENTION TO FOLLOW (read this in BaseLayout.astro before writing anything): --error-bg: rgba(123, 24, 24, 0.16); --error-text: #f6b1b1; -- a translucent tinted background paired with a legible, higher-contrast text/accent color, both derived from the same hue family. Your new win/loss/upcoming/tbd tokens should follow this exact pattern: a -bg token (translucent, low-alpha, sits behind other content) and a -text token (opaque, legible against --bg-0/--bg-1) per state, not a single flat color per state."
+  - "STATUS COVERAGE: the JSON contract's status enum (plan.yaml contracts.interfaces) is win/loss/bye/upcoming/tbd plus possible/eliminated/clinched/eligible/ineligible. Per the locked UX spec (requirements.yaml/plan.yaml key_decisions): only win and loss get real background-highlight colors (every played-game cell fully background-highlighted, not just alternating rows). upcoming/bye/tbd/possible/eliminated/clinched/eligible/ineligible all render as plain/muted text with NO background highlight and NO logo (these are either an unplayed-but-scheduled real game, or a computed placeholder -- visually the same muted treatment for all of them, T9 keys off the status field to decide which text to show, not off color). So: you only need two real semantic color pairs -- win and loss -- plus reuse of the EXISTING --muted / --text-soft tokens (already in BaseLayout.astro) for every other status's muted text. Do not invent separate colors for upcoming/tbd/possible/etc. -- that would contradict the locked spec's 'plain muted/italic text, not new colors' decision."
+  - "NAMING: suggest --schedule-win-bg / --schedule-win-text and --schedule-loss-bg / --schedule-loss-text (or an equally clear, consistently-prefixed naming scheme of your choice) -- prefixed distinctly from --error-bg/--error-text so there's no ambiguity that these are a different semantic category (a loss isn't an application error), while still visually following the same bg+text pairing convention."
+  - "COLOR CHOICES: pick colors that read clearly as 'win' (a green family) and 'loss' (a red family) against this site's existing dark palette (--bg-0: #0a0f14, --bg-1: #101720, --text: #f3f7fb) -- follow the same alpha/lightness approach --error-bg/--error-text already uses (a low-alpha tinted background, a higher-contrast readable text color) so the new tokens sit naturally alongside the existing ones rather than looking like a different design system. Ensure both meet reasonable text/background contrast for accessibility (this codebase doesn't appear to have an automated contrast check, so use your own judgment -- aim for at least ~4.5:1 for the -text token against its paired -bg token composited over --bg-1)."
+  - "iOS-SWITCH TOKENS: add tokens for the tab-switch control's track (on/off background -- i.e. the color when Rankings is active vs. when Season Grid is active) and thumb color. Per key_decisions: 'a single oval/pill track with a circular thumb that slides left/right ... with static text labels flanking it.' Suggest --tab-switch-track-on / --tab-switch-track-off / --tab-switch-thumb (or similarly clear names). Style/size these consistently with the rest of the site's control language: reuse existing --radius-sm/--radius-md tokens conceptually (the switch's own border-radius will be component-level in T9, not a new token here, since 999px/pill-shaped is standard for this control type and doesn't need its own token) and --shadow-card's general elevation feel for the thumb's shadow if you add a thumb-shadow token (optional, only if you judge T9 will need one distinct from generic box-shadow values already available)."
+  - "This site's :root has NO light-theme variant to also update (color-scheme: dark is the only mode, confirmed in BaseLayout.astro's existing :root) -- do not add any @media (prefers-color-scheme) or [data-theme] blocks, that would be inconsistent with how every other token in this file is declared."
+
+success_criteria:
+  - "New tokens exist in BaseLayout.astro's :root, following the --error-bg/--error-text bg+text pairing convention"
+  - "Win/loss tokens are visually distinct, legible against the site's dark background, and read clearly as 'positive/green' vs. 'negative/red' at a glance"
+  - "No existing token is renamed, removed, or has its value changed"
+  - "Tab-switch tokens (track-on, track-off, thumb) exist and are ready for T9 to consume directly"
+
+validation_expected:
+  - "Visual sanity check: render a simple test snippet (e.g. a scratch HTML file, or a quick temporary element in an existing page you revert before finishing) using the new tokens against the site's actual dark background, confirm win/loss read clearly at a glance and text stays legible"
+  - "Confirm BaseLayout.astro still builds/renders correctly (no syntax errors in the :root block) -- run the dev server or a build if you're able to"
+  - "Diff BaseLayout.astro against its prior state and confirm the ONLY changes are new :root custom property declarations -- nothing else in the file touched"
+
+output_format:
+  sections:
+    - Changes
+    - Local Validation
+    - Blockers
+    - Notes
+
+escalate_if:
+  - missing_context
+  - conflicting_artifacts
+  - product_or_architecture_guess_required
+  - scope_expansion_required
