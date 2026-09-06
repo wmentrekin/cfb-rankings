@@ -1,0 +1,107 @@
+artifact: task_handoff
+feature: "schedule-grid"
+mode: "large-initiative"
+execution_batch_id: "B1"
+task_id: "T2"
+assigned_domain: "data-engineer"
+branch: "claude/georgia-tech-schedule-viz-aqy1ay"
+repo: "wmentrekin/cfb-rankings"
+owner_skill: work
+
+objective: >
+  (1) Add a checked-in migration adding nullable columns to the bronze
+  `games` table: notes, playoff_round_name, playoff_round_order,
+  playoff_bracket_slot, playoff_bowl_name. Apply it via the Supabase MCP
+  apply_migration tool.
+  (2) Widen database/get_games.py's get_games_by_year_week to also select
+  and map these new fields from CFBD's /games response (notes is top-level;
+  the playoff_* fields come from a nested `playoff` object -- see
+  implementation_notes for the exact field names CFBD uses).
+  (3) Add a recurring postseason fetch call to main.py's pipeline, calling
+  load_games_to_db(args.year, week=None, season_type='postseason') --
+  explicitly NOT reusing args.week, which is the regular-season cursor and
+  would fetch the wrong/empty postseason slate.
+  (4) Write a small, standalone, documented backfill script/command for
+  season=2025's postseason games specifically (season=2026's postseason
+  effectively backfills itself the first time the new recurring call in (3)
+  actually runs against production, so no separate 2026 script is needed).
+
+why_this_matters: >
+  This unlocks real postseason data (bowl games, CFP rounds, conference
+  championships) for the Season Grid feature -- T3 (the next task) builds a
+  view on top of this data and needs the new columns and postseason rows to
+  exist. Getting the recurring-call parameter wrong (reusing args.week)
+  would silently corrupt postseason ingestion every week going forward,
+  invisibly, since load_games_to_db swallows exceptions upstream in main.py.
+
+environment_constraint: >
+  CRITICAL -- read this before starting: this sandbox has NO CFBD API key
+  (checked: no API_KEY env var, no .env file) and NO direct Postgres
+  credentials (no DB_HOST/DB_USER/etc). Both exist ONLY as GitHub Actions
+  repository secrets (see .github/workflows/weekly-update.yml and
+  test-week-run.yml). This means get_games_by_year_week() and
+  load_games_to_db() CANNOT actually be executed end-to-end against CFBD or
+  the live DB from this sandbox -- they will fail immediately on missing
+  credentials if you try. Do NOT attempt to run them for real. The user has
+  explicitly decided: you write and push the code + apply the schema
+  migration (which goes through the Supabase MCP tool, not the direct DB
+  connection, so it DOES work here); the user will trigger the actual CFBD
+  fetch/backfill themselves afterward, wherever they have real credentials.
+  Validate what you CAN without live CFBD access -- see validation_expected.
+
+inputs:
+  requirements: "docs/schedule-grid/requirements.yaml"
+  plan: "docs/schedule-grid/plan.yaml"
+  implementation_report: "docs/schedule-grid/implementation-report.yaml (update it -- T1's entry is already there)"
+  relevant_paths:
+    - "database/get_games.py (get_games_by_year_week already accepts season_type; load_games_to_db already accepts season_type and is idempotent via ON CONFLICT DO UPDATE -- read both functions in full before editing)"
+    - "main.py (the 'PULL DATA' section, around load_games_to_db(args.year, args.week) -- add the new postseason call near it, inside the existing try/except pattern that already tolerates exceptions)"
+    - "database/migrations/0001_rankings_games_view.sql (T1's migration, for the file-header/style convention to follow)"
+
+scope:
+  owned:
+    - "database/get_games.py (widen get_games_by_year_week's column selection/mapping only -- do not change load_games_to_db's upsert logic, it already works)"
+    - "database/migrations/0002_games_postseason_columns.sql (new)"
+    - "Supabase schema -- apply the migration via apply_migration, project id oyqgmbgwohlnrxodvilt"
+    - "main.py (add exactly one new call: load_games_to_db(args.year, week=None, season_type='postseason'), wrapped in the same try/except-and-continue pattern as the existing regular-season call directly above it)"
+    - "scripts/backfill_2025_postseason.py (new -- a small, standalone, well-commented script the user can run locally or via a one-off CI job wherever real credentials exist; it should just call load_games_to_db(2025, week=None, season_type='postseason') with a clear docstring/print explaining what it does and that it requires CFBD_API_KEY/DB_* env vars to be set by whoever runs it)"
+  forbidden:
+    - "model/ (T1 already lands the guard; do not touch rating logic)"
+    - "Actually running get_games_by_year_week(), load_games_to_db(), or the new backfill script against real CFBD/Postgres -- you do not have credentials for this, and it is not your job in this task; the user will run it"
+    - "load_games_to_db's upsert/SQL logic (it already works and is already idempotent -- do not modify it)"
+
+implementation_notes:
+  - "CFBD's /games response field names (confirmed via prior platform research, not live-verified from this sandbox): top-level `notes` (string, may or may not reliably carry a real bowl name for non-CFP bowls -- flag this uncertainty in your report, do not assume it works). Nested `playoff` object present on CFP-affiliated games: playoff.round_name, playoff.round_order (or similar -- the research found 'round_order' on the /playoffs/cfp/games endpoint's PlayoffMatchup type specifically; the plain /games endpoint's nested GamePlayoff object was documented with round_name, bracket_slot, bowl_name, and a `round` field -- since you cannot make a live call to confirm the EXACT nested shape, code defensively: use .get()-style safe access for the nested playoff object and every field on it, defaulting to None/null rather than raising if a field is absent or the object itself is absent (true for the vast majority of games, which aren't playoff games at all)."
+  - "Map CFBD's response fields to the new DB columns 1:1: notes -> notes, playoff.round_name -> playoff_round_name, playoff.round_order -> playoff_round_order, playoff.bracket_slot -> playoff_bracket_slot, playoff.bowl_name -> playoff_bowl_name. All five are nullable -- most games (regular season, non-CFP postseason) will have some or all of these as null, and that's correct, not a bug."
+  - "The migration should be a plain ALTER TABLE games ADD COLUMN ... (nullable, no default needed) for all five columns -- this is additive and safe for the 24,873 existing rows regardless of their current season_type."
+  - "load_games_to_db's Table('games', metadata, autoload_with=engine) call auto-discovers columns from the live DB schema -- once the migration lands, no code change is needed there for the upsert to pick up the new columns, AS LONG AS get_games_by_year_week's returned DataFrame includes those column names. Double-check the DataFrame's column list after your changes includes all five new names with the exact same spelling as the migration."
+  - "In main.py, the new postseason call belongs right after the existing 'PULL DATA' try/except block (the one calling load_games_to_db(args.year, args.week)), NOT replacing it -- both calls should run, one for regular season (unchanged), one new one for postseason. Follow the exact same try/except-and-log-warning-and-continue pattern already used for the regular-season call, so a postseason fetch failure never blocks the rest of the run (model, insert, publish)."
+
+success_criteria:
+  - "database/migrations/0002_games_postseason_columns.sql exists, is committed, and matches what was actually applied to Supabase"
+  - "The five new nullable columns exist on the live `games` table (verify via Supabase MCP, e.g. information_schema.columns), and existing rows are unaffected (row count still 24,873, all other column values unchanged for a sample of rows)"
+  - "get_games_by_year_week's column selection/mapping includes all five new fields with defensive (non-raising) access to the nested playoff object"
+  - "main.py has exactly one new call: load_games_to_db(args.year, week=None, season_type='postseason'), wrapped in its own try/except-and-continue, placed after the existing regular-season call"
+  - "scripts/backfill_2025_postseason.py exists, is small and clearly documented, and calls load_games_to_db(2025, week=None, season_type='postseason') -- but is NOT executed by you in this session"
+  - "T1's guard is confirmed unaffected: rankings_games view definition and model/process_data.py are untouched by this task"
+
+validation_expected:
+  - "Confirm via Supabase MCP that the five new columns exist on `games` with the correct nullable types, and that the migration is idempotent-safe (re-describe the table, don't just trust the apply_migration return value)"
+  - "Confirm the existing 24,873 games rows are unaffected: row count unchanged, and a handful of sample rows' existing column values (id, season, week, home_team, home_score, etc.) are unchanged after the ALTER TABLE"
+  - "Since live CFBD calls aren't possible here: construct a realistic MOCK CFBD /games JSON response (matching the documented schema -- a plain game with no playoff object, AND a CFP game with a populated nested playoff object) and run it through get_games_by_year_week's DataFrame-construction/column-mapping logic in isolation (you may need to factor the transformation logic so it's testable without the network call + DB connection, or monkeypatch requests.get similar to how T1's agent monkeypatched the DB layer for its validation -- check T1's validation approach, described in docs/schedule-grid/implementation-report.yaml, for a reusable pattern). Confirm the resulting DataFrame has the right column names/values for both the plain game and the CFP game with a real playoff object, and does NOT raise for the plain game missing a playoff object entirely."
+  - "Read main.py's diff and confirm the new call's placement, parameters (week=None, season_type='postseason'), and error-handling match implementation_notes exactly -- this is the exact bug a prior plan review caught when it was underspecified, so verify it carefully rather than assuming your own code is right"
+  - "Confirm rankings_games (T1's view) and model/process_data.py are unchanged by this task's diff"
+
+output_format:
+  sections:
+    - Changes
+    - Local Validation
+    - Blockers
+    - Notes
+
+escalate_if:
+  - missing_context
+  - conflicting_artifacts
+  - product_or_architecture_guess_required
+  - scope_expansion_required
+  - "you find yourself needing real CFBD/DB credentials to complete something in this task's owned scope -- stop and report it as a Blocker rather than trying to work around it or fabricate credentials"
