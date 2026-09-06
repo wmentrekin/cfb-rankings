@@ -17,9 +17,9 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "Second reviewer pass in progress on the newly-added postseason column model (Army-Navy, Bowl Weeks 1-4, conference-championship clinch/eliminate, bowl eligibility)"
-  last_completed: "Scoped and documented the postseason column model per user request (plan.yaml + requirements.yaml updated, pushed)"
-  current_blocker: "Awaiting reviewer-2 findings before final pre-execution checkpoint"
+  current_focus: "Reviewer pass 2 (postseason logic) and CFBD bowl-data research running in parallel; a full-plan reviewer pass 3 is planned once both land and the plan reaches a final state"
+  last_completed: "Renamed postseason columns to CFP-round names (CFP 1st Round + Other Bowls, CFP Quarterfinals, CFP Semifinals, CFP National Championship)"
+  current_blocker: "Awaiting reviewer-2 and the CFBD bowl-data research before the final full-plan review and pre-execution checkpoint"
 
 artifacts:
   requirements: "docs/schedule-grid/requirements.yaml"
@@ -53,7 +53,15 @@ agents:
     model_guidance: "medium"
     status: "running"
     stage: "planning"
-    task: "plan critique (pass 2) -- focused on the new postseason column model (clinch/eliminate algorithm, Bowl Week bucketing)"
+    task: "plan critique (pass 2) -- focused on the new postseason column model (clinch/eliminate algorithm, CFP-round column bucketing)"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "platform-researcher-cfbd-postseason"
+    role: "platform-researcher"
+    model_guidance: "medium"
+    status: "running"
+    stage: "planning"
+    task: "research whether CFBD's API already exposes real bowl names/logos, to decide if this pass can ingest them now instead of deferring"
     last_update: "2026-09-06"
     blocker: ""
   - id: "repo-researcher-cfb-rankings"
