@@ -33,8 +33,15 @@ def process_game_data(games_df, fbs_teams_df):
         team1, team2 = row['home_team'], row['away_team']
         game_pairs.append((team1, team2))
         team1_score, team2_score = row['home_score'], row['away_score']
-        if pd.isnull(team1_score) or pd.isnull(team2_score):
-            continue  # Skip games without scores
+        # `winner` is null (see database/get_games.py) for a genuinely
+        # unplayed game -- CFBD stores those as home_score=away_score=0, not
+        # NULL, so a score-nullness check alone never actually catches them
+        # (confirmed live: this silently let unplayed games be scored as an
+        # away-team win before this check was added). Skip both cases: a
+        # truly-null score (defensive, shouldn't occur in practice) and an
+        # unplayed game (winner is null).
+        if pd.isnull(team1_score) or pd.isnull(team2_score) or pd.isnull(row['winner']):
+            continue  # Skip games without scores or not yet played
 
         i, j = team1, team2
         key = tuple(sorted([i, j]))  # unordered pair
