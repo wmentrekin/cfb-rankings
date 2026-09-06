@@ -34,14 +34,16 @@ approach:
     - "R2 key layout for the schedule artifact is season-scoped (schedule/{season}/latest.json + schedule/index.json), NOT the rankings artifact's per-week snapshot scheme -- correct given the grid is a cumulative-per-season view, not a discrete weekly snapshot. The index-builder in artifacts/schedule.py is new, parallel logic (same self-healing-via-bucket-listing philosophy as artifacts/r2.py) -- it cannot literally import/reuse rankings' per-week regex indexer."
     - "personal-site placement (per user, still tentative pending the mockup): NOT a new standalone route. The existing /projects/cfb-rankings page gains a switchable tab at the top (defaults to 'Rankings', toggle to 'Schedule'), both views living on the same page/URL. Home page and projects-index links continue to point at the single rankings page."
     - "Per the user: lock UI questions before writing personal-site code. A visual design mockup (conference grouping, tab toggle, win/loss/upcoming coloring, sticky header/first-column corner-cell handling) is produced and shown to the user for reaction BEFORE T9 (the real component) is implemented -- see T8."
+    - "Lightweight bronze/silver/gold, by user request, NOT full medallion: the user asked whether to introduce a layered bronze/silver/gold table structure. Adopted a cheap version -- name the split as two SQL VIEWS, not physical materialized tables. Bronze = the existing `games` table (raw-ish CFBD ingest, all season_types once T2 widens it). Silver = two named, disjoint-predicate views over that one bronze table: `rankings_games` (season_type='regular' + conference championship -- T1) and `schedule_grid` (all games, reshaped per-team-per-week -- T3). Gold = the two R2 JSON artifacts (rankings, schedule). This directly answers 'how do you separate the games in one vs. the other': two named views with explicit predicates, not overlapping ad hoc logic in Python and SQL. Explicitly rejected: materialized silver tables with their own refresh/upsert jobs -- that adds a staleness/idempotency surface that works against the 'renders identically every time' goal, and is disproportionate to this repo's scale (a few thousand games/season, two consumers)."
 
 contracts:
   interfaces:
     - "New artifact schema (JSON): { season, generated_at_utc, conferences: [{ name, teams: [{ team, weeks: [{ slot_id, label, season_type, opponent, opponent_tbd, home_away, status, team_score, opp_score }] }] }] } -- exact shape finalized in B1's artifact-builder task (T4), then treated as a fixed contract for B2 to consume. slot_id/label carries both regular weeks (0..N) and named postseason slots (Bowl, CFP-QF, CFP-SF, CFP-Final) so the frontend never has to re-derive column identity from a possibly-colliding raw week number."
     - "personal-site's fetch-rankings-data.mjs pattern extended (new function or sibling script) to pull schedule/index.json and schedule/{season}/latest.json into public/data/cfb/schedule/, following the exact same prebuild/readFileSync consumption model as rankings -- no direct Supabase or live R2 access from the rendered page."
   schemas:
-    - "New Supabase view schedule_grid (or equivalent name decided in T3), keyed by (season, team_id, season_type/slot, week), documented in a checked-in migration file"
-    - "A defensive season_type='regular' (+ conference championship) filter added to model/process_data.py's games query (T1) -- a schema-consumption contract change, not a schema change itself"
+    - "New Supabase view rankings_games (T1): season_type='regular' + conference championship rows only, from the bronze `games` table. model/process_data.py queries this view instead of `games` directly -- a real schema object, not an inline Python filter."
+    - "New Supabase view schedule_grid (T3): all games (regular + postseason) from the bronze `games` table, reshaped one row per (season, team_id, season_type/slot, week), documented in a checked-in migration file."
+    - "Both views are the repo's 'silver' layer (see key_decisions) -- disjoint predicates over one shared bronze table, no materialized tables or refresh jobs."
   config_changes:
     - "weekly-update.yml: no new workflow, but main.py gains two new steps -- (1) a recurring postseason games fetch alongside the existing regular-season fetch, (2) the new schedule artifact publish -- both in the same job/run as today's pipeline"
     - "personal-site scripts/fetch-rankings-data.mjs (or a new prebuild script) gains the new R2 keys to fetch"
@@ -56,26 +58,35 @@ execution_batches:
     goal: "cfb-rankings: guard the model, widen+backfill postseason ingestion, new grid view, artifact builder, weekly publish, PR"
     tasks:
       - id: "T1"
-        title: "Guard the rankings model against non-regular-season games before any postseason data exists"
+        title: "Create rankings_games silver view and point the model at it (replaces an inline filter)"
         objective: >
-          Add an explicit season_type filter (regular season + conference
-          championship, matching the model's existing documented scope) to
-          model/process_data.py's games query and audit for any other place
-          `games` is read without a season_type guard. This must land and be
-          validated BEFORE T2's postseason backfill runs, since postseason
-          week numbers are expected to collide with regular-season week
-          numbers (see T3), which would otherwise cause postseason rows to
-          satisfy the model's `week <= N` filter for essentially every
-          ranking week.
+          Add a checked-in migration creating a `rankings_games` Supabase
+          view: season_type='regular' + conference championship rows only,
+          selected from the bronze `games` table (matching the model's
+          existing documented scope). Point model/process_data.py's games
+          query at this view instead of `games` directly, and audit for any
+          other place `games` is read without the same guard. This must land
+          and be validated BEFORE T2's postseason backfill runs, since
+          postseason week numbers are expected to collide with regular-season
+          week numbers (see T3), which would otherwise cause postseason rows
+          to satisfy a raw `week <= N` filter for essentially every ranking
+          week. Naming/placing this as a named view (not an inline WHERE
+          clause) is deliberate -- see key_decisions' bronze/silver/gold note
+          -- so the boundary between "games the model sees" and "games the
+          schedule grid sees" is one auditable schema object per consumer,
+          not logic scattered across Python and SQL.
         assigned_domain: "data-engineer"
         owned_scope:
-          - "model/process_data.py (the games-query season_type filter only)"
+          - "database/migrations/0001_rankings_games_view.sql (new)"
+          - "Supabase schema (via apply_migration, for rankings_games only)"
+          - "model/process_data.py (point the games query at rankings_games instead of games)"
         forbidden_scope:
           - "Any other model logic, weighting, or rating computation"
         dependencies: []
         parallelizable: false
         expected_validation:
-          - "Confirm the query now explicitly filters season_type"
+          - "Confirm rankings_games returns only season_type='regular' + conference championship rows"
+          - "Confirm model/process_data.py now reads from rankings_games, not games, directly"
           - "Confirm rankings output for a known past week (e.g. 2025 week 10) is byte-for-byte unchanged before/after this change, since no postseason rows exist yet at this point"
 
       - id: "T2"
@@ -106,21 +117,24 @@ execution_batches:
           - "Confirm the new recurring call is safe to run weekly without duplicating or corrupting rows (upsert behavior verified)"
 
       - id: "T3"
-        title: "Create schedule_grid Supabase view via checked-in migration"
+        title: "Create schedule_grid silver view via checked-in migration"
         objective: >
-          Design and apply a Supabase view (or table, only if the view proves
-          insufficient) producing one row per (season, team_id, season_type,
-          week/slot) with conference, opponent (nullable/TBD-aware for
-          undetermined playoff matchups), home/away, status
-          (win/loss/bye/upcoming/tbd), and scores. Explicitly key by
-          season_type + week (or a named slot) to avoid collisions between
-          regular-season and postseason week numbers. Derive played vs.
-          upcoming vs. TBD from start_date/a completed-indicator, never from
-          score nullness. Commit the migration SQL to the repo.
+          Design and apply a second silver-layer Supabase view (or table,
+          only if the view proves insufficient), schedule_grid, producing one
+          row per (season, team_id, season_type, week/slot) with conference,
+          opponent (nullable/TBD-aware for undetermined playoff matchups),
+          home/away, status (win/loss/bye/upcoming/tbd), and scores --
+          selected from the same bronze `games` table as T1's rankings_games,
+          but with a disjoint predicate (all games, not just regular season).
+          Explicitly key by season_type + week (or a named slot) to avoid
+          collisions between regular-season and postseason week numbers.
+          Derive played vs. upcoming vs. TBD from start_date/a
+          completed-indicator, never from score nullness. Commit the
+          migration SQL to the repo alongside T1's.
         assigned_domain: "data-engineer"
         owned_scope:
-          - "database/migrations/ (new)"
-          - "Supabase schema (via apply_migration)"
+          - "database/migrations/0002_schedule_grid_view.sql (new)"
+          - "Supabase schema (via apply_migration, for schedule_grid only)"
         forbidden_scope:
           - "games/teams table structure (read-only source data, no column changes)"
         dependencies: ["T2"]
