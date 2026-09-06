@@ -17,8 +17,8 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "B1 execution in progress. T1, T2, T3 complete and verified. Starting T4a (standings/status computation)."
-  last_completed: "T3: schedule_grid view (team-perspective reshape of games, UNION ALL home+away) created and applied live, committed and pushed. Row count 49,746 = 2x games' 24,873; status derivation (start_date vs now, never score nullness) validated against known real games and a known future game. 'tbd' status deferred to 'upcoming' after investigating and disproving the proposed detection signal; raw games.week collision (Week 0/1 quirk) confirmed and deferred to T4b's per-game get_cfb_week()."
+  current_focus: "B1 execution in progress. T1, T2, T3, T4a complete and verified. Starting T4b (artifact assembly + R2 publish) -- the largest remaining B1 task."
+  last_completed: "T4a: artifacts/schedule_standings.py (record/conf_record tallies, conference-championship clinch/eliminate via the conservative counting algorithm, bowl eligibility), committed and pushed. Qualifying-conference list derived from live research (SEC/Big Ten/Big 12/ACC/AAC/C-USA/Mountain West/MAC; Sun Belt and Pac-12 explicitly excluded with sourcing). Validated with a hand-built synthetic 5-team conference including a two-other-teams-play-each-other case, brute-force-checked correct; records spot-checked against real 2025 Georgia/Ohio State/Boise State data."
   current_blocker: "User needs to run scripts/backfill_2025_postseason.py (or trigger the pipeline) wherever real CFBD/DB credentials exist -- T3/T4a/T4b's validation needs real postseason rows to check against"
 
 artifacts:
@@ -67,9 +67,17 @@ agents:
   - id: "data-engineer-T4a"
     role: "data-engineer"
     model_guidance: "high"
+    status: "completed"
+    stage: "execution"
+    task: "T4a complete: schedule_standings.py, algorithm verified against a hand-built synthetic conference, records spot-checked against real 2025 data"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "data-engineer-T4b"
+    role: "data-engineer"
+    model_guidance: "high"
     status: "running"
     stage: "execution"
-    task: "T4a: standings/status computation module (record/conf_record, conference-championship clinch/eliminate, bowl-eligibility)"
+    task: "T4b: build and publish the schedule R2 artifact -- logo resolution, conference grouping/sort, postseason bucketing, Week 0/1 disambiguation, bye-week synthesis"
     last_update: "2026-09-06"
     blocker: ""
   - id: "reviewer-plan"
@@ -157,6 +165,6 @@ checkpoint:
 blockers: []
 decisions: []
 
-next_action: "Execute T4a (data-engineer), then T4b through T5b in strict order"
+next_action: "Execute T4b (data-engineer), then T5/T5b in strict order"
 next_recommended_command: "$work"
 user_input_needed: false
