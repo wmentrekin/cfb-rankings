@@ -17,8 +17,8 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "B2 starting in wmentrekin/personal-site. T8 (design mockup) already locked. Writing/spawning T6 (fetch script) and T7 (design tokens) in parallel -- independent, no file overlap."
-  last_completed: "Incident response: the same weekly-update.yml run also surfaced a real, more severe pre-existing bug (unrelated to this feature) -- get_games.py's winner computation scored every unplayed 0-0 game as an away-team win, corrupting both displayed records and the QP rating model's actual inputs for 2026 Week 1 (Notre Dame, Washington, Ole Miss, Florida State all affected) and, historically, one real 2024 game (App State/Liberty, cancelled by Hurricane Helene, still 0-0 in the DB). Fixed at the source (winner=null for a 0-0 game; model/process_data.py skips null-winner rows), verified with a mocked test. Also cleaned up the premature 2026 Week 1 publish per the user's explicit request: deleted the bad `ratings` DB rows directly, and gave the user a script (scripts/cleanup_premature_2026_week1_rankings.py) to delete the bad R2 keys and restore rankings/latest.json + index.json to 2025 week 15 -- user ran it successfully."
+  current_focus: "B2 in progress in wmentrekin/personal-site. T6/T7 complete and pushed (branch not yet PR'd -- T10 opens the PR after T9). Starting T9 (the Season Grid component itself) -- the largest remaining task in the whole feature."
+  last_completed: "T6 (schedule artifact build-time fetch, extending fetch-rankings-data.mjs) and T7 (win/loss + tab-switch design tokens in BaseLayout.astro) both complete, independently verified (clean diffs, correct scope), committed and pushed to personal-site's claude/georgia-tech-schedule-viz-aqy1ay branch (commits 9a76fc1, 4da4630)."
   current_blocker: "none"
 
 artifacts:
@@ -31,21 +31,34 @@ pr:
   url: "https://github.com/wmentrekin/cfb-rankings/pull/7"
   status: "merged"
 
+pr_personal_site:
+  number: null
+  url: null
+  status: "not_opened"
+
 agents:
   - id: "frontend-engineer-T6"
     role: "frontend-engineer"
     model_guidance: "medium"
-    status: "running"
+    status: "completed"
     stage: "execution"
-    task: "T6 (personal-site): extend fetch-rankings-data.mjs / add a sibling script for schedule/index.json + schedule/{season}/latest.json"
+    task: "T6 complete: fetch-rankings-data.mjs extended for schedule/index.json + schedule/{season}/latest.json, verified with a mocked S3 client (no real R2 creds in sandbox)"
     last_update: "2026-09-06"
     blocker: ""
   - id: "frontend-engineer-T7"
     role: "frontend-engineer"
     model_guidance: "medium"
-    status: "running"
+    status: "completed"
     stage: "execution"
-    task: "T7 (personal-site): win/loss/upcoming/tbd + iOS-switch design tokens in BaseLayout.astro :root"
+    task: "T7 complete: 7 new design tokens added to BaseLayout.astro :root (win/loss bg+text pairs, tab-switch track-on/off/thumb), diff confirmed minimal/clean"
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "frontend-engineer-T9"
+    role: "frontend-engineer"
+    model_guidance: "high"
+    status: "pending"
+    stage: "execution"
+    task: "T9: build the Season Grid tab component (largest remaining task in the feature)"
     last_update: "2026-09-06"
     blocker: ""
   - id: "orchestrator"
@@ -189,6 +202,6 @@ checkpoint:
 blockers: []
 decisions: []
 
-next_action: "B1/T5b fully done. Begin B2 in wmentrekin/personal-site: T6 (extend fetch-rankings-data.mjs for the schedule artifact), T7 (design tokens: outcome colors + iOS-style toggle), T8 (design mockup for user sign-off before T9), T9 (Season Grid tab component), T10 (open the personal-site PR)."
+next_action: "T6/T7/T8 all satisfied -- T9's dependencies are clear. Write T9's handoff (Season Grid tab component: full grid rendering, iOS toggle, page-level season selector restructuring) and execute, then T10 (open the personal-site PR)."
 next_recommended_command: "$work"
 user_input_needed: false

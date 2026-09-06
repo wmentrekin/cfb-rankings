@@ -6,17 +6,26 @@ owner_skill: work
 based_on: "docs/schedule-grid/plan.yaml"
 
 summary:
-  scope_executed: "B1 fully complete: T1-T5b. PR #7 merged (c4eeb75); real 2025 postseason backfilled and verified; weekly-update.yml run confirmed schedule/2026/latest.json + schedule/index.json live in R2. B2 not yet started."
+  scope_executed: "B1 fully complete (T1-T5b, merged, live). B2 in progress in wmentrekin/personal-site: T6/T7/T8 done, T9 (Season Grid component) next, then T10 (open PR)."
   outcome: "in_progress"
 
-task_batches_attempted: ["B1"]
+task_batches_attempted: ["B1", "B2"]
 task_batches_completed: ["B1"]
 
-domains_touched: ["data-engineer"]
+domains_touched: ["data-engineer", "frontend-engineer"]
 
 pr:
   number: 7
   url: "https://github.com/wmentrekin/cfb-rankings/pull/7"
+
+pr_personal_site:
+  number: null
+  url: null
+
+incident_response:
+  - "2026-09-06: weekly-update.yml was manually triggered (workflow_dispatch) before 2026 Week 1's Sun/Mon games had finished, bypassing the workflow's own Week-1 delay gate (which only suppresses the scheduled cron trigger, not manual dispatch) and hitting a real, pre-existing, previously-unknown bug: get_games.py's winner column computed home_score > away_score (0 > 0 is False for an unplayed game, CFBD stores these as 0-0 not NULL), so the away team was always declared the winner for any unplayed game -- corrupting both displayed win/loss records and the QP rating model's actual game inputs, not just a display bug. 4 unplayed games (8 teams: Notre Dame, Wisconsin, Washington, Washington State, Ole Miss, Louisville, Florida State, SMU) were affected in the live run. Fixed at the source (database/get_games.py: winner=null for a 0-0 score; model/process_data.py: skip a row whose winner is null, not just a null score), verified with a mocked unplayed-game test, committed and pushed (584eb10)."
+  - "Same investigation found a second, unrelated real instance of the bug already baked into HISTORICAL data: App State @ Liberty (2024-09-28) was cancelled by Hurricane Helene and never played, but sits at 0-0 in the DB -- it had been counted as a Liberty win / App State loss in every 2024 weekly ranking since week 5 under the old code. Flagged to the user as a pre-existing, low-priority historical-accuracy issue (2024 is fully in the books); not recomputed unless the user asks."
+  - "Per the user's explicit request ('there should be no 2026 week1 data in rankings until the run on tuesday'), cleaned up the premature publish: deleted the bad `ratings` DB rows (season=2026, week=1) directly via Supabase MCP (confirmed 0 rows remain), and wrote scripts/cleanup_premature_2026_week1_rankings.py (committed f601cca) for the user to run with real R2 credentials -- deletes rankings/2026/week-01.json + rankings/2026/latest.json, then re-publishes 2025 week 15 (the last real prior week) to restore the global rankings/latest.json + rankings/index.json to their correct pre-incident state. User ran it successfully; DB side independently re-confirmed clean."
 
 changes:
   files:
@@ -30,6 +39,11 @@ changes:
     - "artifacts/schedule_standings.py (new, T4a)"
     - "artifacts/schedule.py (new, T4b -- Season Grid artifact builder + R2 publisher)"
     - "main.py (T4b: added publish_schedule_artifact(args.year) call inside the existing `if not args.staging:` block, alongside publish_rankings_artifact, in its own try/except)"
+    - "database/get_games.py (incident response: winner=null for a 0-0/unplayed game, not a computed away-team win)"
+    - "model/process_data.py (incident response: skip a row whose winner is null, not just a null score)"
+    - "scripts/cleanup_premature_2026_week1_rankings.py (new, incident response -- one-off R2 cleanup script, executed successfully by the user)"
+    - "[wmentrekin/personal-site] scripts/fetch-rankings-data.mjs (T6: extended to also fetch schedule/index.json + schedule/{season}/latest.json into public/data/cfb/schedule/)"
+    - "[wmentrekin/personal-site] src/layouts/BaseLayout.astro (T7: 7 new :root design tokens -- --schedule-win-bg/-text, --schedule-loss-bg/-text, --tab-switch-track-on/-off, --tab-switch-thumb)"
   modules:
     - "rankings_games Supabase view (project oyqgmbgwohlnrxodvilt)"
     - "games table (project oyqgmbgwohlnrxodvilt): 5 new nullable columns via migration 0002 (notes, playoff_round_name, playoff_round_order, playoff_bracket_slot, playoff_bowl_name)"
@@ -105,20 +119,21 @@ resolved_issues:
   - "RESOLVED 2026-09-06: that same real run's log surfaced a genuine bug -- get_games_by_year_week(2026, season_type='postseason') raised KeyError ('None of [Index(...)] are in the [columns]') because CFBD legitimately returns an empty list for 2026's postseason (it doesn't exist yet), and pd.DataFrame([]) has zero columns so the subsequent column-selection failed. This was being silently caught by main.py's broad try/except every run (not crashing the pipeline) but would have logged a spurious warning every week until real 2026 postseason data appears around December. Fixed with an empty-DataFrame short-circuit carrying the correct final columns, verified locally with a mocked empty CFBD response, committed and pushed (ce02d9d). The run's two WARNING lines (an ambiguous 2026 conference-championship pick this early in the season -- many teams still tied at their 'latest' game; SMU's week-collision shift) are separately confirmed as expected, already-documented behavior working as designed, not bugs."
 
 handoff:
-  current_state: ready_for_B2
-  next_owner: "orchestrator (B2: T6-T10 in wmentrekin/personal-site)"
+  current_state: in_progress
+  next_owner: "frontend-engineer (T9, in wmentrekin/personal-site)"
   next_action: >
-    B1 is fully complete, including T5b: PR #7 merged (c4eeb75), 2025
-    postseason backfilled (46 real games, verified), and the user
-    triggered weekly-update.yml for real -- rankings/2026/week-01.json
-    published normally, and schedule/2026/latest.json +
-    schedule/index.json were confirmed published to R2 in the same run.
-    One real bug surfaced by that run's log (get_games_by_year_week
-    crashing on CFBD's empty-list response for 2026's not-yet-existent
-    postseason) was fixed and pushed (ce02d9d) -- it was being silently
-    caught by main.py's try/except so the pipeline wasn't broken, but it
-    would have fired every week until December. Next: begin B2 in
-    wmentrekin/personal-site -- T6 (extend fetch-rankings-data.mjs for
-    the schedule artifact), T7 (design tokens), T8 (design mockup for
-    user sign-off before T9), T9 (Season Grid tab component), T10 (open
-    the personal-site PR).
+    B1 is fully complete and live (see incident_response above for the
+    post-merge bug found and fixed along the way). In B2: T6 (schedule
+    artifact fetch) and T7 (design tokens) are both complete, independently
+    verified, committed and pushed to personal-site's
+    claude/georgia-tech-schedule-viz-aqy1ay branch (9a76fc1, 4da4630). T8
+    (design mockup) was already locked earlier in planning
+    (https://claude.ai/code/artifact/6704edcb-4ca4-419d-9d5b-695badc3175f).
+    Next: T9 -- build the actual Season Grid tab component (the largest
+    remaining task in the whole feature): full grid rendering (conference
+    header rows, sticky header+first-column+corner-cell, win/loss/
+    upcoming/tbd/computed-placeholder cell states), restructuring the
+    existing season/week selector in index.astro into a page-level shared
+    season selector + Rankings-only week selector + iOS-style tab toggle.
+    Then T10 (open the personal-site PR, noting it follows the merged
+    cfb-rankings PR).
