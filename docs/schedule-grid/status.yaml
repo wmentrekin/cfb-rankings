@@ -17,9 +17,9 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "Plan is at final state: pass-3 findings fixed (T5b added for structural B1->B2 gating, bye-week/Week-0-vs-1 mechanism specified in T4b, rankings_games wording corrected, postseason week param fixed, logo-resolution pointed at existing helper). One open item remains: whether to adopt lightweight manual bowl-logo curation (researched, recommended) or leave logos deferred as originally planned."
-  last_completed: "Folded pass-3 fixes, week-0/week-1 research, and bowl-logo research into plan.yaml + requirements.yaml, pushed"
-  current_blocker: "Awaiting user decision on bowl-logo curation, then the pre-execution checkpoint. Loop cap note: this was the 3rd correction cycle (workflow's stated max is 2) -- each cycle was explicitly surfaced to the user with a check-in before proceeding, not silently auto-looped"
+  current_focus: "Plan is complete and at final state. All open questions resolved (bowl logos: deferred, matching original plan)."
+  last_completed: "Recorded the bowl-logo deferral decision; plan.yaml and requirements.yaml reflect the final agreed state"
+  current_blocker: "Awaiting user go-ahead at the pre-execution checkpoint"
 
 artifacts:
   requirements: "docs/schedule-grid/requirements.yaml"
