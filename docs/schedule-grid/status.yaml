@@ -17,8 +17,8 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "B1 execution in progress. T1 and T2 complete and verified. Starting T3 (schedule_grid view)."
-  last_completed: "T2: postseason schema + widened ingestion + main.py wiring + backfill script, committed and pushed. Orchestrator caught and fixed a real bug before commit: playoff_bracket_slot was typed INTEGER with a numeric cast, but CFBD documents it as a string -- would have silently nulled real values. Fixed (TEXT, cast removed) and verified live."
+  current_focus: "B1 execution in progress. T1, T2, T3 complete and verified. Starting T4a (standings/status computation)."
+  last_completed: "T3: schedule_grid view (team-perspective reshape of games, UNION ALL home+away) created and applied live, committed and pushed. Row count 49,746 = 2x games' 24,873; status derivation (start_date vs now, never score nullness) validated against known real games and a known future game. 'tbd' status deferred to 'upcoming' after investigating and disproving the proposed detection signal; raw games.week collision (Week 0/1 quirk) confirmed and deferred to T4b's per-game get_cfb_week()."
   current_blocker: "User needs to run scripts/backfill_2025_postseason.py (or trigger the pipeline) wherever real CFBD/DB credentials exist -- T3/T4a/T4b's validation needs real postseason rows to check against"
 
 artifacts:
@@ -59,9 +59,17 @@ agents:
   - id: "data-engineer-T3"
     role: "data-engineer"
     model_guidance: "high"
+    status: "completed"
+    stage: "execution"
+    task: "T3 complete: schedule_grid view created and verified live (49,746 rows = 2x games). Status derivation validated against real data; 'tbd' edge case investigated and deferred to 'upcoming'; Week 0/1 raw-week collision confirmed and deferred to T4b."
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "data-engineer-T4a"
+    role: "data-engineer"
+    model_guidance: "high"
     status: "running"
     stage: "execution"
-    task: "T3: create schedule_grid silver view via checked-in migration"
+    task: "T4a: standings/status computation module (record/conf_record, conference-championship clinch/eliminate, bowl-eligibility)"
     last_update: "2026-09-06"
     blocker: ""
   - id: "reviewer-plan"
@@ -149,6 +157,6 @@ checkpoint:
 blockers: []
 decisions: []
 
-next_action: "Execute T3 (data-engineer), then T4a through T5b in strict order"
+next_action: "Execute T4a (data-engineer), then T4b through T5b in strict order"
 next_recommended_command: "$work"
 user_input_needed: false
