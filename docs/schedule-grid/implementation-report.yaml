@@ -6,7 +6,7 @@ owner_skill: work
 based_on: "docs/schedule-grid/plan.yaml"
 
 summary:
-  scope_executed: "B1 in progress: T1, T2 complete"
+  scope_executed: "B1 in progress: T1, T2, T3 complete"
   outcome: "in_progress"
 
 task_batches_attempted: ["B1"]
@@ -26,9 +26,11 @@ changes:
     - "database/get_games.py (T2: get_games_by_year_week widened to select/map notes + playoff.round_name/round_order/bracket_slot/bowl_name, defensive .get()-style access, defaulting to null when the playoff object or a field on it is absent)"
     - "main.py (T2: added one new call, load_games_to_db(args.year, week=None, season_type='postseason'), in its own try/except-and-continue directly after the existing regular-season call)"
     - "scripts/backfill_2025_postseason.py (new, T2 -- written but NOT executed; requires real CFBD/DB credentials this sandbox does not have)"
+    - "database/migrations/0003_schedule_grid_view.sql (new, T3)"
   modules:
     - "rankings_games Supabase view (project oyqgmbgwohlnrxodvilt)"
     - "games table (project oyqgmbgwohlnrxodvilt): 5 new nullable columns via migration 0002 (notes, playoff_round_name, playoff_round_order, playoff_bracket_slot, playoff_bowl_name)"
+    - "schedule_grid Supabase view (project oyqgmbgwohlnrxodvilt, T3): UNION ALL of games' home-team and away-team perspectives, one row per team per game, keyed by (game_id, team). Columns: game_id, season, week, season_type, team, opponent, conference, home_away, team_score, opp_score, status, neutral_site, conference_game, start_date, notes, playoff_round_name, playoff_round_order, playoff_bracket_slot, playoff_bowl_name"
   docs_updated: []
 
 local_validation:
@@ -43,10 +45,20 @@ local_validation:
     - "T2: games row count unchanged after migration (24,873 before and after); a 5-row sample's pre-existing column values (id/season/week/season_type/home_team/home_score/away_team/away_score) unchanged, all 5 new columns null as expected"
     - "T2: mock-CFBD-response test (scratchpad script, not committed -- monkeypatches requests.get + create_engine/pd.read_sql_query since get_games_by_year_week also does a live DB read to filter to FBS teams) run against 3 constructed cases -- a plain game with no `playoff` key at all, a CFP game with a fully populated nested playoff object, and a non-CFP bowl with `playoff` explicitly null -- confirms the resulting DataFrame includes all 5 new column names with the exact spelling migration 0002 uses, maps playoff.round_name/round_order/bracket_slot/bowl_name and top-level notes correctly for the CFP case, and does not raise for either case lacking a usable playoff object (fields land as null instead)"
     - "T2: confirmed model/process_data.py's games query still reads rankings_games (unchanged by this task's diff) and model/ directory has no changes in this diff"
+    - "T3: migration 0003 applied via Supabase MCP apply_migration; schedule_grid exists live"
+    - "T3: row count check -- schedule_grid = 49,746, games = 24,873, 49,746 = 2 x 24,873 (exact match)"
+    - "T3: spot-checked 3 known 2025 regular-season games (6 schedule_grid rows) -- Hawai'i 23 def. Stanford 20 (home win/away loss correct); Iowa State 24 def. Kansas State 21 at a neutral site (neutral_site=true, conference_game=true correct on both rows, Big 12 conference correct); UNLV 38 def. Idaho State 31 (neutral_site=false, conference_game=false correct, non-conference game)"
+    - "T3: known future/unplayed 2026 game (Washington vs. Washington State, start_date 2026-09-06, 0-0 in raw games) -- both schedule_grid rows show status='upcoming', NOT a false win/loss from the 0-0 read"
+    - "T3: global check -- 0 rows anywhere in schedule_grid have start_date > now() AND status IN ('win','loss'); full status distribution is win=23,946 / loss=23,946 (symmetric, as expected for a home/away reshape) / upcoming=1,854, summing exactly to 49,746"
+    - "T3: tie/stale-score defensive branch -- found 268 real rows (134 games) with start_date <= now() and team_score = opp_score, all of them 2026-09-06 games whose kickoff time has passed but whose score is still 0-0 (i.e. in-progress/not-yet-synced by CFBD in this static dataset, not a real tie); all correctly land on status='upcoming' rather than a false win/loss, confirming the documented fallback behaves as intended"
+    - "T3: grain check -- (season, team, season_type, week) is NOT always unique using the raw `week` column: 129 (season, team, season_type, week) combinations have 2 rows (e.g. UNC 2022 week 1 played both Florida A&M 8/28 and App State 9/3, both tagged week=1 by CFBD; New Mexico State 2026 week 1 plays both Florida State 8/29 and Mercyhurst 9/6, both tagged week=1). Investigated: this is a genuine, pre-existing CFBD raw-week-numbering characteristic (not a view bug or duplicate-row issue -- each pair has a distinct game_id, start_date, and opponent), and matches plan.yaml's already-documented Week 0 vs. Week 1 disambiguation issue, explicitly scoped to T4b (which resolves it via per-game utils.get_cfb_week(start_date), not raw `week`). schedule_grid exposes start_date per row precisely so T4b can do this; no T3 change needed or made."
+    - "T3: 'tbd' status edge case investigated per the handoff -- (a) 0 postseason rows exist in this sandbox yet (T2's backfill has not been run), so there is no live data to exhibit the pattern either way; (b) the handoff's own suggested detection signal (opponent name absent from teams.school) was tested against the existing 24,873 regular-season rows and found unreliable -- real, legitimate games routinely have a non-FBS opponent absent from teams.school (e.g. Cincinnati vs. UT Martin, Eastern Illinois vs. Western Illinois), which the signal would misclassify as 'tbd'. Given no evidence either way and the one concrete signal disproven, schedule_grid does not emit 'tbd' and defaults all future rows to 'upcoming', per the handoff's explicit fallback. See open_issues -- revisit once the real postseason backfill runs and actual CFP-bracket rows exist to inspect."
+    - "T3: get_advisors (security) run post-migration -- schedule_grid is flagged SECURITY DEFINER, identically to T1's already-landed rankings_games (same pre-existing view-creation convention in this project, not a new issue introduced here); get_advisors (performance) shows only pre-existing table-level RLS warnings on teams/games/ratings/ratings_test, none new or related to schedule_grid"
   failures: []
   skipped:
     - "T2: get_games_by_year_week()/load_games_to_db() were NOT run end-to-end against real CFBD/Postgres -- no CFBD_API_KEY or DB_* credentials exist in this sandbox (GitHub Actions secrets only). Per the T2 handoff's explicit environment_constraint, this is deliberate scoping, not an omission: the user will run the actual 2025 backfill (scripts/backfill_2025_postseason.py) and trigger the pipeline (which now includes the new recurring postseason call) wherever real credentials exist. See open_issues."
     - "T2: whether CFBD's `notes` field reliably carries real bowl names for non-CFP bowls was NOT empirically verified (no live CFBD access from this sandbox) -- flagged, not assumed, per the handoff's implementation_notes"
+    - "T3: postseason-specific validation (season_type + week disambiguation for real postseason rows, TBD-opponent CFP bracket slots, playoff_round_name/order/bracket_slot/bowl_name pass-through against real values) could NOT be run -- 0 postseason rows exist in this sandbox (T2's backfill has not been executed). Only the regular-season reshape was validated end-to-end. Must be re-verified once the user runs the real 2025/2026 postseason backfill."
 
 review_summary:
   status: not_started
@@ -59,11 +71,13 @@ test_summary:
   gaps: []
 
 open_issues:
-  - "T2's actual 2025 postseason backfill (scripts/backfill_2025_postseason.py) has not been run -- requires real CFBD/DB credentials not available in this sandbox. Must be run by the user before T3's schedule_grid view will have real postseason rows to expose."
+  - "T2's actual 2025 postseason backfill (scripts/backfill_2025_postseason.py) has not been run -- requires real CFBD/DB credentials not available in this sandbox. Must be run by the user before schedule_grid (T3) will have real postseason rows to expose, and before T3's postseason-specific validation (season_type+week disambiguation, TBD-opponent handling, playoff_* pass-through) can be completed."
   - "T2's new recurring postseason call in main.py has not been exercised against a live run -- verify on the next real pipeline run (manual trigger or scheduled) that it completes without error and upserts postseason rows idempotently."
   - "Whether CFBD's `notes` field reliably carries real bowl names for non-CFP bowls is still unconfirmed -- verify against real 2025 data once the backfill runs; fall back to a generic label in a later task (T4b) if it doesn't."
+  - "T3: schedule_grid does not emit status='tbd' -- no live evidence of a placeholder-opponent postseason pattern exists yet (0 postseason rows in this sandbox), and the handoff's suggested detection signal (opponent not in teams.school) was tested and found unreliable against real regular-season data (legitimate non-FBS opponents trigger it too). Once the real postseason backfill runs, inspect actual early-CFP-bracket rows for a genuine undetermined-opponent pattern and revisit schedule_grid's status CASE if one is found (would need a decision-agnostic signal, not the teams.school join tried here)."
+  - "T3: raw games.week is not a unique key within (season, team, season_type) -- 129 real (season, team, season_type, week) combinations currently collide (the Week 0 vs. Week 1 CFBD numbering quirk plan.yaml already documents). Not a schedule_grid defect -- start_date is exposed per row precisely so T4b's per-game utils.get_cfb_week() call can disambiguate, per plan.yaml's key_decisions. Flagging here so T4a/T4b don't assume (season, team, season_type, week) is a safe dedup/join key against schedule_grid."
 
 handoff:
   current_state: in_progress
-  next_owner: "data-engineer (T3)"
-  next_action: "Execute T3: create schedule_grid silver view via checked-in migration, keyed by season_type + week/slot to avoid regular/postseason week-number collisions, selecting T2's new playoff_* columns. Also: the user needs to run scripts/backfill_2025_postseason.py (or trigger the pipeline) wherever real CFBD/DB credentials exist so T3/T4a/T4b have real postseason rows to validate against."
+  next_owner: "data-engineer (T4a)"
+  next_action: "Execute T4a: build artifacts/schedule_standings.py (record/conf_record tallies, conference-championship clinch/eliminate, bowl-eligibility) as pure functions over schedule_grid rows, validated primarily against a synthetic conference scenario per plan.yaml's expected_validation (live 2025/2026 data can't exercise the eliminated/clinched branches this early in the season). Also still pending: the user needs to run scripts/backfill_2025_postseason.py (or trigger the pipeline) wherever real CFBD/DB credentials exist so T3's postseason reshape and T4a/T4b can be validated against real postseason rows -- see open_issues."
