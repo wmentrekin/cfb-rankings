@@ -41,7 +41,10 @@ approach:
     - "Conference record and overall record are NOT stored anywhere as of-a-date aggregates -- they must be computed by T4a from schedule_grid rows (already has per-game results) at artifact-build time: overall win/loss = tally all played rows for the team/season; conference win/loss = tally only rows where conference_game=true. This requires schedule_grid (T3) to expose conference_game and neutral_site per row, which the original T3 scope did not list -- added below."
     - "New view is added via a versioned SQL migration file committed to the repo (e.g. database/migrations/0001_schedule_grid_view.sql) and applied with the Supabase MCP tool -- the repo's first checked-in schema artifact."
     - "R2 key layout for the schedule artifact is season-scoped (schedule/{season}/latest.json + schedule/index.json), NOT the rankings artifact's per-week snapshot scheme -- correct given the grid is a cumulative-per-season view, not a discrete weekly snapshot. The index-builder in artifacts/schedule.py is new, parallel logic (same self-healing-via-bucket-listing philosophy as artifacts/r2.py) -- it cannot literally import/reuse rankings' per-week regex indexer."
-    - "personal-site placement (per user, still tentative pending the mockup): NOT a new standalone route. The existing /projects/cfb-rankings page gains a switchable tab at the top (defaults to 'Rankings', toggle to 'Schedule'), both views living on the same page/URL. Home page and projects-index links continue to point at the single rankings page."
+    - "personal-site placement (locked): NOT a new standalone route. The existing /projects/cfb-rankings page gains a switchable tab at the top (defaults to 'Rankings', toggle to 'Season Grid' -- see the tab-naming decision below), both views living on the same page/URL. Home page and projects-index links continue to point at the single rankings page."
+    - "Tab name (added per user request, resolved with the user): the new tab is called 'Season Grid', not 'Schedule' -- it combines standings (record/conf record, within-conference sort), scores (W/L + final score per cell), and schedule (opponent per week), and 'Schedule' alone undersold that. This label is used everywhere user-facing (tab chip, any page copy); it does NOT rename the underlying technical names already in use (Supabase view schedule_grid, R2 key prefix schedule/, artifact module names like artifacts/schedule.py/schedule_standings.py) -- those stay as-is, this is a display-label-only change."
+    - "Page-level shared season selector, tab-specific week selector (added per user request): the Rankings and Season Grid tabs share ONE season selector living at the page level, above/outside both tab panels -- not two independent per-tab selectors. Changing season re-fetches whichever tab is currently active (rankings/{season}/week-{NN}.json for Rankings, schedule/{season}/latest.json for Season Grid). The week selector applies ONLY to the Rankings tab (rankings publishes a distinct, browsable snapshot per week) and is hidden/inactive whenever the Season Grid tab is active. The Season Grid tab has NO week concept at all -- it always shows the latest cumulative schedule_grid state for the selected season, since each weekly publish only adds new results on top of prior weeks, never replaces or loses them (this is exactly why T4b's R2 key layout is season-scoped schedule/{season}/latest.json rather than a per-week snapshot scheme like rankings -- no artifact-shape change needed here, just frontend behavior). This requires T9 to integrate with and restructure the EXISTING season/week selector script already in personal-site/src/pages/projects/cfb-rankings/index.astro (lift the season control out to page level, make it tab-aware), not just add new isolated markup alongside it -- RankingsTable.astro itself still isn't touched, only the selector/switching logic around it."
+    - "Tab-toggle control redesigned as an iOS-style switch (added per user request): NOT the two-button pill pair shown in the T8 mockup -- a single oval/pill track with a circular thumb that slides left/right (the familiar iOS light/dark-mode-style toggle), with static text labels flanking it (left = 'Rankings', right = 'Season Grid'). A written spec is sufficient here (no new mockup round) given how unambiguous the user's own reference point is; T7 gains new design tokens for the switch's track (on/off background) and thumb, following the same CSS-custom-property convention as the rest of BaseLayout.astro's :root."
     - "Per the user: lock UI questions before writing personal-site code. A visual design mockup (conference grouping, tab toggle, win/loss/upcoming coloring, sticky header/first-column corner-cell handling) is produced and shown to the user for reaction BEFORE T9 (the real component) is implemented -- see T8."
     - "Lightweight bronze/silver/gold, by user request, NOT full medallion: the user asked whether to introduce a layered bronze/silver/gold table structure. Adopted a cheap version -- name the split as two SQL VIEWS, not physical materialized tables. Bronze = the existing `games` table (raw-ish CFBD ingest, all season_types once T2 widens it). Silver = two named, disjoint-predicate views over that one bronze table: `rankings_games` (season_type='regular' + conference championship -- T1) and `schedule_grid` (all games, reshaped per-team-per-week -- T3). Gold = the two R2 JSON artifacts (rankings, schedule). This directly answers 'how do you separate the games in one vs. the other': two named views with explicit predicates, not overlapping ad hoc logic in Python and SQL. Explicitly rejected: materialized silver tables with their own refresh/upsert jobs -- that adds a staleness/idempotency surface that works against the 'renders identically every time' goal, and is disproportionate to this repo's scale (a few thousand games/season, two consumers)."
 
@@ -270,10 +273,10 @@ execution_batches:
           - "PR opened against the correct base branch with a clear description"
 
   - id: "B2"
-    goal: "personal-site: lock the visual design, then fetch new artifact and render a switchable Rankings/Schedule tab (code work starts only after B1 MERGES)"
+    goal: "personal-site: lock the visual design, then fetch new artifact and render a switchable Rankings/Season Grid tab (code work starts only after B1 MERGES)"
     tasks:
       - id: "T8"
-        title: "Design mockup: schedule grid + Rankings/Schedule tab toggle"
+        title: "Design mockup: schedule grid + Rankings/Season Grid tab toggle (mockup itself predates the 'Season Grid' name and iOS-switch decisions -- T9 implements the current spec, not the mockup's literal toggle label/style)"
         objective: >
           Before any personal-site code is written, produce a visual mockup
           of: the tab toggle on the existing rankings page (defaults to
@@ -314,13 +317,17 @@ execution_batches:
           - "npm run prebuild succeeds locally against the real published B1 artifact and populates public/data/cfb/schedule/"
 
       - id: "T7"
-        title: "New design tokens for outcome colors"
+        title: "New design tokens for outcome colors and the tab-switch control"
         objective: >
           Add win/loss/upcoming/tbd color custom properties to
           BaseLayout.astro's :root, following the --error-bg/--error-text
           naming convention. personal-site has a single dark theme (no
           light/dark toggle) -- confirm tokens render correctly against the
-          current dark palette only, no cross-theme validation needed.
+          current dark palette only, no cross-theme validation needed. Also
+          add tokens for the iOS-style tab-switch control (per
+          key_decisions): track background (on/off state) and thumb color,
+          sized/styled consistently with the rest of the site's control
+          language (radius tokens, shadow-card).
         assigned_domain: "frontend-engineer"
         owned_scope:
           - "src/layouts/BaseLayout.astro (:root token additions only)"
@@ -329,23 +336,36 @@ execution_batches:
         dependencies: ["T8"]
         parallelizable: false
         expected_validation:
-          - "Tokens match the locked mockup's color choices"
+          - "Tokens match the locked mockup's color choices for the grid; switch tokens are new (not in the mockup, which showed the old pill-button toggle) but follow the same naming/value conventions"
 
       - id: "T9"
-        title: "Build the Schedule tab: grid page/component on the existing rankings page"
+        title: "Build the Season Grid tab: grid page/component on the existing rankings page"
         objective: >
-          Add a switchable tab (Rankings | Schedule, defaulting to Rankings)
-          on the existing /projects/cfb-rankings page, rendering the full
-          grouped/color-coded grid per the locked T8 mockup: conference
-          header rows in the fixed order, teams sorted per the standings
-          heuristic within each conference, one column per week plus named
-          postseason slots, sticky header row AND sticky first (team name)
-          column with a properly handled sticky corner cell (z-index/
-          background, since no existing component in this codebase combines
-          both) -- horizontally scrollable. General/team-agnostic, no team
+          Add a switchable tab (Rankings | Season Grid, defaulting to
+          Rankings, styled as an iOS-style switch per key_decisions -- an
+          oval track with a circular thumb sliding left/right, NOT the
+          pill-button pair shown in the T8 mockup) on the existing
+          /projects/cfb-rankings page, rendering the full grouped/
+          color-coded grid per the locked T8 mockup: conference header rows
+          in the fixed order, teams sorted per the standings heuristic
+          within each conference, one column per week plus named postseason
+          slots, sticky header row AND sticky first (team name) column with
+          a properly handled sticky corner cell (z-index/background, since
+          no existing component in this codebase combines both) --
+          horizontally scrollable. General/team-agnostic, no team
           special-cased in markup or styling. Tab-switch interactivity
           follows the existing vanilla-JS/astro:page-load pattern (no
-          framework). Per the locked mockup: each team row shows its logo
+          framework). Per key_decisions: the season selector moves to the
+          PAGE level (shared by both tabs, not duplicated per-tab); the week
+          selector stays Rankings-only and hides/disables when Season Grid
+          is active; Season Grid never shows a week selector at all -- it
+          always renders schedule/{season}/latest.json for whichever season
+          is currently selected. This requires restructuring the existing
+          season/week selector script already in index.astro (the one
+          driving RankingsTable.astro's client-side re-fetch), not building
+          an isolated parallel one -- RankingsTable.astro's own
+          markup/logic still isn't touched, only the selector/switching
+          logic around it. Per the locked mockup: each team row shows its logo
           (team.logo_url), overall + conference record (e.g. "4-1, 1-0
           ACC"); every played-game cell is fully background-highlighted
           (not just alternating rows -- this was a real CSS-specificity bug
@@ -389,6 +409,8 @@ execution_batches:
           - "Confirm team/opponent logo <img> tags have real alt text and a sane fallback (e.g. the existing placeholder-initial style) for any team missing a teams.logos entry -- do not let a broken image silently blank a cell"
           - "Confirm the default tab is Rankings and switching preserves/restores correctly across client-side navigation (astro:page-load)"
           - "Confirm the Army-Navy Game Week column shows a real game only for Army/Navy and is blank for every other team; confirm CFP 1st Round + Other Bowls, CFP Quarterfinals, CFP Semifinals, CFP National Championship columns render real game_name labels where determined and possible/eligible/ineligible/eliminated text states (no background highlight, no logo) where not"
+          - "Confirm the season selector is a single page-level control affecting both tabs (not duplicated per-tab); confirm the week selector is visible/usable only on the Rankings tab and hidden/disabled on Season Grid; confirm switching season while on Season Grid re-fetches schedule/{season}/latest.json with no week selector ever appearing"
+          - "Confirm the tab switch renders and behaves as an iOS-style toggle (oval track, circular thumb sliding left/right) with 'Rankings' and 'Season Grid' as flanking labels, not the mockup's pill-button pair"
 
       - id: "T10"
         title: "Open personal-site PR"
