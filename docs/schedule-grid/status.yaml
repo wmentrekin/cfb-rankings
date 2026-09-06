@@ -17,9 +17,9 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "B1 execution in progress. T1 complete and verified (view live in Supabase, model output byte-identical before/after). Starting T2."
-  last_completed: "T1: rankings_games guard view created, model/process_data.py repointed, validated, committed and pushed"
-  current_blocker: ""
+  current_focus: "B1 execution in progress. T1 and T2 complete and verified. Starting T3 (schedule_grid view)."
+  last_completed: "T2: postseason schema + widened ingestion + main.py wiring + backfill script, committed and pushed. Orchestrator caught and fixed a real bug before commit: playoff_bracket_slot was typed INTEGER with a numeric cast, but CFBD documents it as a string -- would have silently nulled real values. Fixed (TEXT, cast removed) and verified live."
+  current_blocker: "User needs to run scripts/backfill_2025_postseason.py (or trigger the pipeline) wherever real CFBD/DB credentials exist -- T3/T4a/T4b's validation needs real postseason rows to check against"
 
 artifacts:
   requirements: "docs/schedule-grid/requirements.yaml"
@@ -51,9 +51,17 @@ agents:
   - id: "data-engineer-T2"
     role: "data-engineer"
     model_guidance: "high"
+    status: "completed"
+    stage: "execution"
+    task: "T2 complete: schema migration + widened get_games.py + main.py recurring-call wiring + backfill script. Orchestrator caught/fixed a playoff_bracket_slot type bug (INTEGER+numeric-cast vs CFBD's documented string type) before commit."
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "data-engineer-T3"
+    role: "data-engineer"
+    model_guidance: "high"
     status: "running"
     stage: "execution"
-    task: "T2 (rescoped for sandbox credential limits): schema migration + widened get_games.py + main.py recurring-call wiring + a documented backfill script. Actual CFBD fetch/backfill deferred to the user (no CFBD API key or DB credentials exist in this sandbox -- only in GitHub Actions secrets)."
+    task: "T3: create schedule_grid silver view via checked-in migration"
     last_update: "2026-09-06"
     blocker: ""
   - id: "reviewer-plan"
@@ -141,6 +149,6 @@ checkpoint:
 blockers: []
 decisions: []
 
-next_action: "Execute T2 (data-engineer), then T3 through T5b in strict order"
+next_action: "Execute T3 (data-engineer), then T4a through T5b in strict order"
 next_recommended_command: "$work"
 user_input_needed: false
