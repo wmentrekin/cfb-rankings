@@ -1,0 +1,66 @@
+artifact: status
+feature: "schedule-grid"
+mode: "investigation"
+stage: "discovery"
+owner_skill: work
+
+objective: >
+  Investigate adding a season schedule grid view (teams x weeks, color-coded by
+  outcome) to the CFB-Rankings section of personal-site, replicating/replacing the
+  user's manually-maintained "Georgia Tech Football" Google Sheet ("2026 Season" tab)
+  with a live, database-backed feature. Research only in this pass: repo architecture
+  in cfb-rankings and personal-site, current Supabase schema, and the Google Sheet's
+  exact data/visual model. Produce an architecture proposal and open questions;
+  no code changes yet.
+
+branching:
+  branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
+
+summary:
+  current_focus: "Discovery: repo architecture (both repos), Supabase schema, Google Sheet data model"
+  last_completed: ""
+  current_blocker: ""
+
+artifacts:
+  requirements: "docs/schedule-grid/requirements.yaml"
+  plan: null
+  implementation_report: null
+
+pr:
+  number: null
+  url: null
+  status: "not_opened"
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    model_guidance: "xhigh"
+    status: "active"
+    stage: "discovery"
+    task: "coordinating discovery across cfb-rankings, personal-site, Supabase, Google Sheet"
+    last_update: ""
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: pending
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+decisions: []
+
+next_action: "Spawn repo-researcher agents for both repos; inspect Google Sheet and Supabase schema directly"
+next_recommended_command: "$work"
+user_input_needed: false
