@@ -17,9 +17,9 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "User requested one more review pass (4th) -- not a new scope concern, but a consistency check after so much incremental editing. Running now, focused specifically on stale references/contradictions from the edit history, not new scope."
-  last_completed: "Recorded the bowl-logo deferral decision; plan.yaml and requirements.yaml reflect the final agreed state"
-  current_blocker: "Awaiting reviewer pass 4 before the pre-execution checkpoint"
+  current_focus: "Reviewer pass 4 (consistency check) findings fixed: Conference Championship column identity reconciled across contracts.interfaces/key_decisions/T4b/requirements.yaml (previously inconsistent), plus stale migration filename, T4/T4a-T4b reference, playoff-field naming, and T4a's conditional_opponent output. Plan is at final state."
+  last_completed: "Fixed all pass-4 findings, pushed"
+  current_blocker: "Awaiting user go-ahead at the pre-execution checkpoint"
 
 artifacts:
   requirements: "docs/schedule-grid/requirements.yaml"
