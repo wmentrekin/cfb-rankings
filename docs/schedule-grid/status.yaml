@@ -17,8 +17,8 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "B1 execution in progress. T1, T2, T3, T4a complete and verified. Starting T4b (artifact assembly + R2 publish) -- the largest remaining B1 task."
-  last_completed: "T4a: artifacts/schedule_standings.py (record/conf_record tallies, conference-championship clinch/eliminate via the conservative counting algorithm, bowl eligibility), committed and pushed. Qualifying-conference list derived from live research (SEC/Big Ten/Big 12/ACC/AAC/C-USA/Mountain West/MAC; Sun Belt and Pac-12 explicitly excluded with sourcing). Validated with a hand-built synthetic 5-team conference including a two-other-teams-play-each-other case, brute-force-checked correct; records spot-checked against real 2025 Georgia/Ohio State/Boise State data."
+  current_focus: "B1 execution complete (T1-T5). PR #7 open. T5b (confirm merge, trigger pipeline, verify artifact) requires user action -- $work agents never merge."
+  last_completed: "T4b: artifacts/schedule.py (Season Grid artifact assembly + R2 publish), committed and pushed. Caught and fixed two real bugs beyond the handoff's own scope: (1) the conference-championship-game heuristic mis-selects Army-Navy for American Athletic once a 2025+ Army-Navy row exists, since Army joined the AAC for football in 2024 -- fixed by excluding the Army/Navy pairing from every conference's candidate pool, re-verified 16/16 across 2024+2025; (2) get_cfb_week()'s fixed 7-day window can still collide two of a team's real games (confirmed live: UNC 2025's TCU/Charlotte games) -- fixed by shifting the later game forward rather than dropping it. Orchestrator independently re-ran the assembly logic against a live slice of real 2025 ACC data and reproduced both findings."
   current_blocker: "User needs to run scripts/backfill_2025_postseason.py (or trigger the pipeline) wherever real CFBD/DB credentials exist -- T3/T4a/T4b's validation needs real postseason rows to check against"
 
 artifacts:
@@ -27,9 +27,9 @@ artifacts:
   implementation_report: "docs/schedule-grid/implementation-report.yaml"
 
 pr:
-  number: null
-  url: null
-  status: "not_opened"
+  number: 7
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/7"
+  status: "open"
 
 agents:
   - id: "orchestrator"
@@ -75,9 +75,17 @@ agents:
   - id: "data-engineer-T4b"
     role: "data-engineer"
     model_guidance: "high"
-    status: "running"
+    status: "completed"
     stage: "execution"
-    task: "T4b: build and publish the schedule R2 artifact -- logo resolution, conference grouping/sort, postseason bucketing, Week 0/1 disambiguation, bye-week synthesis"
+    task: "T4b complete: artifacts/schedule.py assembles and publishes the Season Grid artifact. Found/fixed two real bugs (Army-Navy/AAC championship-game misidentification, get_cfb_week window collision) beyond the handoff's specified scope."
+    last_update: "2026-09-06"
+    blocker: ""
+  - id: "generalist-developer-T5"
+    role: "generalist-developer"
+    model_guidance: "medium"
+    status: "completed"
+    stage: "execution"
+    task: "T5 complete: PR #7 opened against main with a full description of T1-T4b and the post-merge credential-gated steps"
     last_update: "2026-09-06"
     blocker: ""
   - id: "reviewer-plan"
@@ -165,6 +173,6 @@ checkpoint:
 blockers: []
 decisions: []
 
-next_action: "Execute T4b (data-engineer), then T5/T5b in strict order"
+next_action: "T5b requires the user: merge PR #7, then run scripts/backfill_2025_postseason.py and manually trigger the pipeline (real credentials needed, not available in this sandbox) so the schedule artifact is actually published to R2. B2 (personal-site frontend) cannot start until then."
 next_recommended_command: "$work"
-user_input_needed: false
+user_input_needed: true

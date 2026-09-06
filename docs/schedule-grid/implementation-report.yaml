@@ -6,7 +6,7 @@ owner_skill: work
 based_on: "docs/schedule-grid/plan.yaml"
 
 summary:
-  scope_executed: "B1 in progress: T1, T2, T3, T4a, T4b complete"
+  scope_executed: "B1 complete: T1-T5. PR #7 opened against main."
   outcome: "in_progress"
 
 task_batches_attempted: ["B1"]
@@ -15,8 +15,8 @@ task_batches_completed: []
 domains_touched: ["data-engineer"]
 
 pr:
-  number: null
-  url: null
+  number: 7
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/7"
 
 changes:
   files:
@@ -100,6 +100,21 @@ open_issues:
   - "T4b: playoff_round_name/playoff_bowl_name keyword-matching for CFP-round bucketing has never been exercised against real CFBD-shaped values (0 postseason rows exist in this sandbox) -- re-verify once T2's real postseason backfill runs and actual round_name/bowl_name strings can be inspected."
 
 handoff:
-  current_state: in_progress
-  next_owner: "generalist-developer (T5)"
-  next_action: "T4b complete -- artifacts/schedule.py (new) assembles and publishes the Season Grid JSON artifact; main.py wires publish_schedule_artifact(args.year) into the existing pipeline. Next: T5 (open the cfb-rankings PR for B1). Also still pending, unrelated to T4b's own scope: the user needs to run scripts/backfill_2025_postseason.py (or trigger the pipeline) wherever real CFBD/DB/R2 credentials exist so (a) T3's postseason reshape, (b) T4b's CFP-round bucketing/game_name sourcing, and (c) the actual R2 upload step can all be validated against real data/credentials for the first time -- see open_issues."
+  current_state: blocked_on_user
+  next_owner: "user (T5b)"
+  next_action: >
+    B1 (all of T1-T5) is complete and PR #7 is open:
+    https://github.com/wmentrekin/cfb-rankings/pull/7 -- $work agents never
+    merge PRs, per branch-and-pr-workflow.md, so a human must merge this.
+    After merging, T5b requires the user to, wherever real CFBD/DB/R2
+    credentials exist: (1) run scripts/backfill_2025_postseason.py (or
+    trigger the pipeline) to backfill 2025 postseason games; (2) manually
+    trigger the pipeline once (e.g. the existing test-week-run.yml
+    workflow_dispatch) rather than waiting for the next scheduled Sunday
+    run, so main.py's new recurring postseason fetch and
+    publish_schedule_artifact() both actually execute against real data;
+    (3) verify the resulting schedule artifact is live in R2
+    (schedule/{season}/latest.json + schedule/index.json). Only once this
+    is done can B2 (the personal-site frontend PR) begin -- it needs real
+    published artifact data to build against, per the user's own explicit
+    preference to lock backend data before starting frontend work.
