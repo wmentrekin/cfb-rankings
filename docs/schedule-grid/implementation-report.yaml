@@ -1,0 +1,46 @@
+artifact: implementation_report
+feature: "schedule-grid"
+mode: "large-initiative"
+status: draft
+owner_skill: work
+based_on: "docs/schedule-grid/plan.yaml"
+
+summary:
+  scope_executed: "Execution starting: B1 (cfb-rankings) T1"
+  outcome: "in_progress"
+
+task_batches_attempted: ["B1"]
+task_batches_completed: []
+
+domains_touched: ["data-engineer"]
+
+pr:
+  number: null
+  url: null
+
+changes:
+  files: []
+  modules: []
+  docs_updated: []
+
+local_validation:
+  checks_run: []
+  failures: []
+  skipped: []
+
+review_summary:
+  status: not_started
+  key_findings: []
+
+test_summary:
+  status: not_started
+  checks_run: []
+  failures: []
+  gaps: []
+
+open_issues: []
+
+handoff:
+  current_state: in_progress
+  next_owner: "data-engineer (T1)"
+  next_action: "Execute T1: create rankings_games view, repoint model/process_data.py, validate byte-for-byte rankings output"
