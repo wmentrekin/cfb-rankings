@@ -4,6 +4,7 @@ from database.model_to_db import ratings_to_df, insert_model_results_to_db
 from database.get_games import load_games_to_db
 from database.get_teams import load_teams_to_db
 from artifacts.r2 import publish_rankings_artifact
+from artifacts.schedule import publish_schedule_artifact
 from utils import get_cfb_week, setup_logging
 import pandas as pd #type: ignore
 from datetime import datetime, date
@@ -165,6 +166,17 @@ def main():
             logger.exception("Rankings artifact publish step failed unexpectedly: %s", ex)
     else:
         logger.info("Skipping rankings artifact publish because --staging was set.")
+
+    # PUBLISH SCHEDULE (SEASON GRID) ARTIFACT
+    # Season-scoped, not per-week -- no `week` argument. Own try/except so a schedule-publish
+    # failure never affects (or is affected by) the rankings publish above.
+    if not args.staging:
+        try:
+            publish_schedule_artifact(args.year)
+        except Exception as ex:
+            logger.exception("Schedule artifact publish step failed unexpectedly: %s", ex)
+    else:
+        logger.info("Skipping schedule artifact publish because --staging was set.")
 
     logger.info("Run finished successfully for year=%s week=%s", args.year, args.week)
 
