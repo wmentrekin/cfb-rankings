@@ -17,9 +17,9 @@ branching:
   branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
 
 summary:
-  current_focus: "Plan revised after reviewer request-changes + user's B2-timing/placement/mockup answers; ready to present pre-execution checkpoint"
-  last_completed: "Reviewer critique addressed (model-guard task added, recurring postseason refresh added, view-grain collision fixed); requirements.yaml updated with B2 timing/placement/design-pass decisions"
-  current_blocker: "Awaiting user go/no-go at the pre-execution checkpoint"
+  current_focus: "Holding at user's request -- plan and requirements are complete and reviewed, execution has not started"
+  last_completed: "Reviewer critique addressed; pre-execution checkpoint presented"
+  current_blocker: "User chose Stop at the checkpoint; awaiting their reason/direction before any execution begins"
 
 artifacts:
   requirements: "docs/schedule-grid/requirements.yaml"
@@ -75,7 +75,7 @@ loops:
 
 checkpoint:
   pre_execution_required: true
-  pre_execution_status: pending
+  pre_execution_status: stopped_by_user
   options:
     - proceed
     - revise_plan
@@ -85,6 +85,6 @@ checkpoint:
 blockers: []
 decisions: []
 
-next_action: "User decides: proceed / revise plan / narrow scope / stop"
+next_action: "Awaiting user's reason for stopping / further direction"
 next_recommended_command: "$work"
 user_input_needed: true
