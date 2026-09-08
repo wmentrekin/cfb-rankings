@@ -45,13 +45,13 @@ branching:
     pipeline run republishes the artifact.
 
 summary:
-  current_focus: "Planning. All three researchers reported; requirements.yaml written with 9 goals, 14 acceptance criteria and 4 open questions. plan.yaml next, then the pre-execution checkpoint."
-  last_completed: "Discovery complete. Notably: the standings defect reproduces exactly (a -1.0 sentinel, not a .000 percentage), Pac-12 needs no algorithm change, Sun Belt division winners use overall conference record not division-only, and the conference filter would have failed for 7 of 11 conferences on name mismatch."
+  current_focus: "Planning complete. plan.yaml holds B1 (cfb-rankings, T1-T9) and B2 (personal-site, T10-T17), each task routed to a model tier. Stopped at the pre-execution checkpoint awaiting explicit direction."
+  last_completed: "requirements.yaml and plan.yaml written. Discovery findings: Notably: the standings defect reproduces exactly (a -1.0 sentinel, not a .000 percentage), Pac-12 needs no algorithm change, Sun Belt division winners use overall conference record not division-only, and the conference filter would have failed for 7 of 11 conferences on name mismatch."
   current_blocker: "none"
 
 artifacts:
   requirements: "docs/season-grid-refinement/requirements.yaml"
-  plan: null
+  plan: "docs/season-grid-refinement/plan.yaml"
   implementation_report: null
 
 pr:
@@ -200,6 +200,6 @@ model_routing:
       "unverified" for every spawned agent rather than asserting enforcement the provider does
       not expose.
 
-next_action: "Spawn the three discovery researchers, then write requirements.yaml from their findings."
+next_action: "Awaiting the pre-execution checkpoint answer. On proceed: execute B1 (T1/T2/T7 in parallel, then T3 -> T4/T5/T6), open the PR, run mandatory verification, then B2 after a pipeline run lands."
 next_recommended_command: "$work"
-user_input_needed: false
+user_input_needed: true
