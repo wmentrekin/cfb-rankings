@@ -3,7 +3,7 @@
 artifact: status
 feature: "season-grid-refinement"
 mode: "large-initiative"
-stage: "planning"
+stage: "execution"
 owner_skill: work
 
 objective: >
@@ -45,7 +45,7 @@ branching:
     pipeline run republishes the artifact.
 
 summary:
-  current_focus: "Planning complete. plan.yaml holds B1 (cfb-rankings, T1-T9) and B2 (personal-site, T10-T17), each task routed to a model tier. Stopped at the pre-execution checkpoint awaiting explicit direction."
+  current_focus: "Executing B1. Wave 1: T1+T2 (sort sentinel and Pac-12 dict entry) and T7a (FCS logo ingest, database/ only) in parallel. schedule.py work is sequenced because agents share one working tree."
   last_completed: "requirements.yaml and plan.yaml written. Discovery findings: Notably: the standings defect reproduces exactly (a -1.0 sentinel, not a .000 percentage), Pac-12 needs no algorithm change, Sun Belt division winners use overall conference record not division-only, and the conference filter would have failed for 7 of 11 conferences on name mismatch."
   current_blocker: "none"
 
@@ -136,7 +136,7 @@ loops:
 
 checkpoint:
   pre_execution_required: true
-  pre_execution_status: pending
+  pre_execution_status: proceed
   options:
     - proceed
     - revise_plan
@@ -176,6 +176,17 @@ decisions:
       opponents). This contradicts the natural assumption and is the single most important
       finding of discovery: assuming division-only record would produce wrong Clinched/Eliminated
       labels for the one conference this work exists to support.
+  - question: "Pre-execution checkpoint"
+    answer: "User answered proceed. Execution began with B1 wave 1."
+  - question: "T7 model tier"
+    answer: >
+      DOWNGRADED frontier -> balanced, recorded rather than silent. The plan routed the FCS
+      logo work frontier because choosing the wrong storage approach corrupts the model's team
+      universe. That risk lived in the design decision, which is now made (separate table,
+      `teams` untouched) and enforced by scope. Splitting it into T7a (ingest + migration,
+      database/ only) and T7b (the schedule.py lookup) makes each half bounded and
+      deterministic. The routing policy explicitly permits downgrading after decomposition
+      narrows a task.
   - question: "Does the reported standings symptom reproduce?"
     answer: >
       YES, verified directly against _sort_conference_teams. repo-researcher-standings reported
@@ -202,4 +213,4 @@ model_routing:
 
 next_action: "Awaiting the pre-execution checkpoint answer. On proceed: execute B1 (T1/T2/T7 in parallel, then T3 -> T4/T5/T6), open the PR, run mandatory verification, then B2 after a pipeline run lands."
 next_recommended_command: "$work"
-user_input_needed: true
+user_input_needed: false
