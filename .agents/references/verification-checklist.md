@@ -9,4 +9,5 @@ Use this checklist during verification.
 - [ ] `docs/<feature>/implementation-report.yaml` reflects the current state
 - [ ] Pre-commit or equivalent final checks were run when appropriate
 - [ ] Remaining caveats are explicit
+- [ ] Requested and actual model routing, retries, and escalations are reflected in the report
 - [ ] The next step is clear: complete, loop back once, or stop and ask the user

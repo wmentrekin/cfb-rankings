@@ -16,6 +16,24 @@ task_batches_completed: []
 
 domains_touched: []
 
+model_usage:
+  tasks:
+    - task_id: ""
+      role: ""
+      requested_tier: ""
+      requested_model: ""
+      actual_model: ""
+      requested_reasoning: ""
+      actual_reasoning: ""
+      accepted_first_attempt: null
+      escalation_count: 0
+      tool_calls: null
+      input_tokens: null
+      output_tokens: null
+      wall_time_seconds: null
+      cost_or_quota: null
+  routing_notes: []
+
 pr:
   number: null
   url: null

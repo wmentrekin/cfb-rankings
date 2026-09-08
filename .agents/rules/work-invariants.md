@@ -10,6 +10,13 @@
 This project uses the `$work` workflow (`.agents/skills/work/SKILL.md`). Re-anchor to these
 invariants every turn, and especially after any compaction or long gap in the session.
 
+## Synchronize all repositories first
+
+Before repository research, artifacts, branch creation, or edits, inventory every repository
+involved and run `.agents/references/repository-sync.md`. Fetch and fast-forward the relevant base
+branches only when safe. Stop on dirty or diverged states; ask before proceeding with unverified
+remote state. Sandboxes and worktrees are not exemptions.
+
 ## Never commit directly to the base/main branch
 
 All code and doc changes — including `$work`'s own `docs/<feature>/*.yaml` artifacts — land via
@@ -42,6 +49,13 @@ it.
 
 Never move from planning into execution without an explicit user decision (proceed / revise plan
 / narrow scope / stop) recorded in status.yaml's `checkpoint` block.
+
+## Route model capacity per task
+
+Use `.agents/references/model-routing.md`. Reserve frontier/high capacity for ambiguity,
+cross-cutting decisions, and high-consequence work; use balanced or fast capacity for bounded and
+deterministic tasks. Record requested and actual configurations and allow at most one evidenced
+tier escalation within the workflow loop cap.
 
 See `.agents/AGENTS.md` and `.agents/skills/work/SKILL.md` for the full process — this file is a
 condensed reminder, not a replacement for either.

@@ -1,0 +1,87 @@
+artifact: plan
+feature: model-routing-preflight
+mode: bounded-feature
+status: approved
+owner_skill: work
+based_on: "docs/model-routing-preflight/requirements.yaml"
+
+objective: "Make synchronization and efficient model routing enforceable throughout $work."
+
+approach:
+  summary: "Add provider-neutral policy references, wire them into entry points, agents, checklists, and YAML contracts, then validate the complete framework and review the PR."
+  key_decisions:
+    - "Separate stable capability tiers from dated provider model names."
+    - "Route per task instance rather than per role."
+    - "Stop on dirty/diverged repository state and ask on unverified remote state."
+
+contracts:
+  interfaces:
+    - "repository synchronization preflight"
+    - "task model-routing handoff"
+  schemas:
+    - "status.repository_sync"
+    - "plan.execution_batches.tasks.model_routing"
+    - "task_handoff.model_routing"
+    - "implementation_report.model_usage"
+  config_changes: []
+
+branching:
+  strategy: single-branch
+  branch_name: "work/model-routing-preflight"
+  worktrees: []
+
+execution_batches:
+  - id: B1
+    goal: "Implement and verify the framework contracts."
+    tasks:
+      - id: T1
+        title: "Add synchronization and routing architecture"
+        objective: "Update all workflow surfaces and templates with the approved behavior."
+        assigned_domain: generalist-developer
+        model_routing:
+          task_profile: implementation
+          uncertainty: medium
+          consequence: medium
+          scope_size: cross_cutting
+          determinism: interpretive
+          requested_tier: balanced
+          requested_reasoning: medium
+          provider_model: "runtime default"
+          routing_enforced: false
+          escalation_tier: frontier
+          escalation_condition: "Conflicting workflow contracts require an architecture decision."
+        owned_scope:
+          - AGENTS.md
+          - skills/work/SKILL.md
+          - agents/
+          - references/
+          - templates/
+          - rules/work-invariants.md
+        forbidden_scope:
+          - scripts/link-claude-skills.sh
+        dependencies: []
+        parallelizable: false
+        expected_validation:
+          - "YAML templates parse after placeholder normalization."
+          - "All referenced project-local paths exist."
+          - "Diff review finds no conflicting process order."
+
+ordering_notes: []
+risks:
+  - "Provider model names may become stale; mitigated by a dated mapping and runtime resolution."
+  - "Some providers cannot enforce requested routing; mitigated by recording actual capability."
+
+model_routing_notes:
+  - "Current runtime model identity and reasoning controls are not exposed."
+
+open_questions: []
+
+review:
+  status: approved
+  loop_count: 0
+  notes:
+    - "User approved the research findings and proposed changes on 2026-09-07."
+
+checkpoint:
+  required_before_execution: true
+  status: approved

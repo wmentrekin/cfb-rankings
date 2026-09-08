@@ -1,0 +1,95 @@
+artifact: implementation_report
+feature: model-routing-preflight
+mode: bounded-feature
+status: verified
+owner_skill: work
+based_on: "docs/model-routing-preflight/plan.yaml"
+
+summary:
+  scope_executed: "Synchronization preflight, model routing, provider mappings, evaluation guidance, agent contracts, and templates."
+  outcome: "The workflow now gates work on safe repository synchronization and routes model capacity per task with explicit provider resolution and evaluation guidance."
+
+task_batches_attempted:
+  - B1
+task_batches_completed:
+  - B1
+
+domains_touched:
+  - generalist-developer
+
+model_usage:
+  tasks:
+    - task_id: T1
+      role: generalist-developer
+      requested_tier: balanced
+      requested_model: "provider-resolved balanced tier"
+      actual_model: "runtime default; not exposed"
+      requested_reasoning: medium
+      actual_reasoning: "not exposed"
+      accepted_first_attempt: true
+      escalation_count: 0
+      tool_calls: null
+      input_tokens: null
+      output_tokens: null
+      wall_time_seconds: null
+      cost_or_quota: null
+  routing_notes:
+    - "The current runtime did not expose per-task model selection or actual model metadata."
+
+pr:
+  number: 3
+  url: "https://github.com/wmentrekin/agent-skills/pull/3"
+
+changes:
+  files:
+    - AGENTS.md
+    - skills/work/SKILL.md
+    - agents/
+    - references/
+    - templates/
+    - rules/work-invariants.md
+  modules:
+    - workflow orchestration
+    - artifact contracts
+    - provider guidance
+  docs_updated:
+    - README.md
+    - references/repository-sync.md
+    - references/model-routing.md
+    - references/provider-model-map.md
+    - references/model-evaluation.md
+
+local_validation:
+  checks_run:
+    - "All YAML templates and feature artifacts parsed with Ruby Psych."
+    - "git diff --check passed."
+    - "All agent role briefs explicitly reference the model-routing contract."
+    - "Project-local workflow reference coverage was checked; only intentional examples were excluded."
+  failures: []
+  skipped:
+    - "No executable application tests exist in this documentation-only repository."
+
+review_summary:
+  status: passed
+  key_findings:
+    - "Correction cycle 1: made stage, execution, role, planning, and implementation fields valid for generalized subagent handoffs."
+    - "Correction cycle 1: added auditable local-before, fetched-remote, and local-after commit evidence to repository synchronization."
+    - "Final review found no remaining actionable findings."
+
+test_summary:
+  status: passed
+  checks_run:
+    - "Parsed all YAML contracts and feature artifacts."
+    - "Asserted required synchronization and generalized handoff schema keys."
+    - "Confirmed every agent role references the model-routing contract."
+    - "GitGuardian Security Checks passed on PR #3."
+  failures: []
+  gaps:
+    - "Repository has no executable application test suite; verification is contract- and documentation-focused."
+
+open_issues: []
+
+handoff:
+  current_state: ready_for_user_review
+  next_owner: user
+  next_action: "Review PR #3 and confirm whether it should be merged."
