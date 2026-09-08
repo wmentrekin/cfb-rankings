@@ -1,0 +1,77 @@
+artifact: requirements
+feature: model-routing-preflight
+mode: bounded-feature
+status: approved
+owner_skill: work
+
+summary:
+  problem: "The workflow can begin from stale repository state and routes subagents with broad role-level model guidance that wastes quota or obscures quality risk."
+  motivation: "Keep work based on current branches while preserving quality with lower-cost subagents where tasks are bounded or deterministic."
+  requested_outcome: "Mandatory safe repository synchronization plus provider-neutral, task-instance model routing with dated provider mappings and evaluation guidance."
+
+goals:
+  - "Synchronize or explicitly block on every repository involved before workflow work begins."
+  - "Route models by task uncertainty, consequence, scope, and determinism."
+  - "Record requested and actual model configurations in handoffs and reports."
+  - "Support one evidenced tier escalation within the existing loop cap."
+  - "Document current Codex, Claude Code, and Antigravity mappings and refresh practices."
+
+non_goals:
+  - "Guarantee provider controls that a runtime does not expose."
+  - "Treat vendor benchmark scores as a permanent routing policy."
+  - "Build an automated benchmark runner in this change."
+
+constraints:
+  technical:
+    - "Retain portable Markdown role briefs and YAML artifact contracts."
+    - "Use project-local .agents paths."
+  product:
+    - "Keep the orchestrator as the outward-facing agent."
+    - "Optimize cost or quota per accepted task rather than raw per-token price."
+  process:
+    - "No automatic stash, rebase, merge, or destructive repository cleanup."
+    - "Maximum correction loops remain capped at two."
+
+assumptions:
+  - "Provider model availability and pricing will change and must be re-verified."
+  - "Not every host can enforce per-subagent model or reasoning selection."
+
+repository_sync:
+  source: "docs/model-routing-preflight/status.yaml"
+  repositories_confirmed:
+    - "/Users/wentrekin/dev/agent-skills"
+  accepted_unverified_states: []
+
+repo_context:
+  relevant_paths:
+    - AGENTS.md
+    - skills/work/SKILL.md
+    - agents/
+    - references/
+    - templates/
+    - rules/work-invariants.md
+  systems_in_scope:
+    - workflow orchestration
+    - subagent handoffs
+    - provider compatibility guidance
+  prior_artifacts: []
+
+research:
+  repo_findings:
+    - "Existing model guidance was role-based and did not record actual runtime selection."
+    - "Existing branch workflow did not require remote synchronization before branch creation."
+  platform_findings:
+    - "Official provider guidance supports lower effort for bounded work and evaluation-driven escalation."
+    - "Claude Code supports model selection but inherits extended-thinking state for subagents."
+    - "Antigravity model availability should be resolved dynamically with agy models."
+
+acceptance_criteria:
+  - "Core workflow requires safe synchronization before any repository research, artifacts, branches, or edits."
+  - "Templates carry repository evidence and task-level model routing fields."
+  - "Every agent role reads and obeys the model-routing contract."
+  - "Dated provider mappings cite official sources and state enforcement limitations."
+  - "Evaluation guidance measures accepted-task efficiency and includes a refresh cadence."
+
+open_questions: []
+ready_for_planning: true
+planning_blockers: []

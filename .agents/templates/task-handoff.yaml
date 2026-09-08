@@ -1,21 +1,41 @@
-# Contract: developer handoff created by $work during execution
+# Contract: bounded subagent handoff created by $work in any internal stage
 
 artifact: task_handoff
 feature: "<feature-slug>"
 mode: "bounded-feature"
-execution_batch_id: ""
+stage: "discovery"
+execution_batch_id: null
 task_id: ""
-assigned_domain: ""
+assigned_role: ""
+assigned_domain: null
 branch: ""
 owner_skill: work
+
+model_routing:
+  task_profile: "implementation"
+  uncertainty: "medium"
+  consequence: "medium"
+  scope_size: "bounded"
+  determinism: "interpretive"
+  requested_tier: "balanced"
+  requested_reasoning: "medium"
+  provider: ""
+  provider_model: ""
+  routing_enforced: false
+  actual_model: ""
+  actual_reasoning: ""
+  escalation_tier: "frontier"
+  escalation_condition: ""
+  escalation_count: 0
 
 objective: ""
 why_this_matters: ""
 
 inputs:
-  requirements: "docs/<feature>/requirements.yaml"
-  plan: "docs/<feature>/plan.yaml"
-  implementation_report: "docs/<feature>/implementation-report.yaml"
+  status: "docs/<feature>/status.yaml"
+  requirements: null
+  plan: null
+  implementation_report: null
   relevant_paths: []
 
 scope:
@@ -40,3 +60,4 @@ escalate_if:
   - conflicting_artifacts
   - product_or_architecture_guess_required
   - scope_expansion_required
+  - selected_model_insufficient_with_evidence

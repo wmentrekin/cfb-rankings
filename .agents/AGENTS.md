@@ -42,6 +42,9 @@ When starting in a project repo, read in this order:
 4. any referenced template in `.agents/templates/`
 5. any referenced checklist or guide in `.agents/references/`
 
+Before this read order leads to repository research or changes, run the synchronization preflight
+in `.agents/references/repository-sync.md` for every repository involved.
+
 Do not rely on memory of the workflow. Re-anchor to these files explicitly.
 
 ## Re-Anchor at Every Stage Transition
@@ -128,6 +131,10 @@ Expected project-local outputs:
 - `docs/<feature>/plan.yaml`
 - `docs/<feature>/implementation-report.yaml`
 
+Every subagent receives the contract in `.agents/templates/task-handoff.yaml` or an equivalent
+in-memory handoff. Persist a task handoff under `docs/<feature>/` only when another agent needs a
+durable transfer.
+
 These outputs are ephemeral: they are `$work`'s own live coordination scratch state, not
 project deliverables. Once the user explicitly confirms they are merging the feature's PR,
 `docs/<feature>/` is deleted from the branch (`git rm -r`) and that removal is pushed as the
@@ -146,6 +153,10 @@ updated in place.
 - `.agents/references/engineering-standards.md`
 - `.agents/references/branch-and-pr-workflow.md`
 - `.agents/references/provider-notes.md`
+- `.agents/references/repository-sync.md`
+- `.agents/references/model-routing.md`
+- `.agents/references/provider-model-map.md`
+- `.agents/references/model-evaluation.md`
 
 ## Root Instruction Strategy
 
@@ -160,6 +171,9 @@ reliability on tools that always load their root instruction file as context.
 
 ## Core Rules
 
+- Before any workflow work, inventory and synchronize every repository involved using
+  `.agents/references/repository-sync.md`; blocked or unverified states must be surfaced before
+  continuing.
 - Never commit directly to the base/main branch, under any mode — all code and doc changes,
   including `$work`'s own `docs/<feature>/` artifacts, land via a feature branch and PR. See
   `.agents/references/branch-and-pr-workflow.md`.
@@ -225,16 +239,17 @@ Every subagent handoff should be explicit about:
 - forbidden scope
 - required output format
 - escalation conditions
+- task profile, uncertainty, consequence, scope size, and determinism
+- requested model tier and reasoning level
+- provider-resolved model, or an explicit note that the runtime cannot enforce it
 
 ## Model Guidance
 
-Recommended defaults:
+Route per task instance using `.agents/references/model-routing.md`, then resolve the tier through
+the dated `.agents/references/provider-model-map.md`. Do not assign one permanent model to an
+agent role.
 
-- orchestrator: highest reasoning
-- execution roles (data-engineer, analytics-engineer, data-scientist, mlops-engineer,
-  platform-engineer, frontend-engineer, generalist-developer): medium to high reasoning based on
-  task size
-- repo-researcher: medium reasoning
-- platform-researcher: medium or high reasoning based on ambiguity
-- reviewer: medium reasoning
-- tester: medium reasoning
+Defaults are `frontier/high` for orchestration and cross-cutting decisions, `balanced/medium` for
+most implementation, research, review, test design, and debugging, and `fast/low` for narrow
+repository scans, deterministic transformations, and test execution. Maximum reasoning is an
+exception justified by task evidence, not a default.

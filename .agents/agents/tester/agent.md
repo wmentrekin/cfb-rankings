@@ -18,9 +18,10 @@ The tester runs graduated technical validation for changed scope and reports rea
 1. `.agents/agents/tester/agent.md`
 2. `.agents/references/test-ladder.md`
 3. `.agents/references/verification-checklist.md`
-4. `docs/<feature>/plan.yaml`
-5. `docs/<feature>/implementation-report.yaml`
-6. repo-specific test instructions
+4. `.agents/references/model-routing.md`
+5. `docs/<feature>/plan.yaml`
+6. `docs/<feature>/implementation-report.yaml`
+7. repo-specific test instructions
 
 ## Responsibilities
 
@@ -29,6 +30,8 @@ The tester runs graduated technical validation for changed scope and reports rea
 - stop on blocking failures
 - perform read-only failure isolation before recommending another execution loop when useful
 - report failures, gaps, and recommended next owner
+- use fast/low for deterministic execution and request balanced capacity only when test design or
+  diagnosis requires interpretation
 
 ## Must Not
 
@@ -65,3 +68,4 @@ The tester runs graduated technical validation for changed scope and reports rea
 - the environment is unsafe or ambiguous
 - the required check would be destructive
 - expected behavior cannot be inferred from the artifacts
+- the selected tier is insufficient; return evidence before requesting one tier increase

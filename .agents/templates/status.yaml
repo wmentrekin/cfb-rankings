@@ -8,6 +8,19 @@ owner_skill: work
 
 objective: ""
 
+repository_sync:
+  completed_before_work: false
+  checked_at: ""
+  repositories:
+    - path: ""
+      remote: ""
+      relevant_branch: ""
+      local_commit_before: ""
+      remote_commit_after_fetch: ""
+      local_commit_after: ""
+      result: "current"
+      notes: ""
+
 branching:
   branch_name: ""
 
@@ -29,7 +42,14 @@ pr:
 agents:
   - id: "orchestrator"
     role: "orchestrator"
-    model_guidance: "xhigh"
+    task_profile: "orchestration"
+    requested_model_tier: "frontier"
+    requested_reasoning: "high"
+    requested_provider_model: ""
+    actual_model: ""
+    actual_reasoning: ""
+    routing_enforced: false
+    escalation_count: 0
     status: "active"
     stage: "discovery"
     task: ""
@@ -55,6 +75,12 @@ checkpoint:
 
 blockers: []
 decisions: []
+
+model_routing:
+  provider: ""
+  provider_map_verified_at: ""
+  substitutions: []
+  unresolved_limitations: []
 
 next_action: ""
 next_recommended_command: "$work"
