@@ -192,6 +192,13 @@ def _display_conference_name(raw_conference: Optional[str]) -> str:
 # oyqgmbgwohlnrxodvilt): every real title game is still identified for both
 # completed seasons, 2024's two-team Pac-12 remnant correctly identifies nothing,
 # and 2026 identifies nothing for every conference.
+#
+# RE-VERIFIED for T4b (default `qualifying_conferences` widened to the union of
+# QUALIFYING_CHAMPIONSHIP_CONFERENCES and DIVISIONAL_CHAMPIONSHIP_CONFERENCES,
+# see the in-function comment below): 2024 and 2025 Sun Belt and Pac-12 title
+# games are now identified where they previously were not, the rest of the
+# 2024/2025 real-data picture is unchanged, and 2026 still identifies nothing
+# for every conference.
 # ---------------------------------------------------------------------------
 def identify_conference_championship_games(
     rows: List[Dict[str, Any]],
@@ -204,23 +211,50 @@ def identify_conference_championship_games(
     this season. A qualifying conference with no conference_game=true rows
     this season (e.g. incomplete data) simply has no entry.
     """
-    # Deliberately gated to the confirmed-top-2-format list, NOT every conference in the data.
+    # Deliberately gated to the UNION of the two curated format lists -- flat-format
+    # QUALIFYING_CHAMPIONSHIP_CONFERENCES plus divisional-format
+    # DIVISIONAL_CHAMPIONSHIP_CONFERENCES -- NOT either list alone, and NOT every
+    # conference in the data. This is a deliberate middle ground:
     #
-    # Widening this to all conferences was tried and REVERTED. The motivation was real -- a
-    # Sun Belt or Pac-12 title game is not diverted, so it mints a near-empty week column next
-    # to the Conference Championship column, which is the same phantom-column class this pass
-    # fixes. But the gate doubles as a safety rail: widening it also widens the surface for the
-    # rule's known false positive (a make-up game alone in a late bucket gets identified as a
-    # championship), and the default set built from raw `conference` values carries no FBS
-    # filter, so an FCS conference appearing in the rows becomes eligible too.
+    #   - The flat list alone UNDER-covers: it gates the CLINCH/ELIMINATE status math,
+    #     which only models the flat top-2-of-one-pool shape, so it has no entry for the
+    #     Sun Belt (divisional). Using it to gate DIVERSION too meant a real Sun Belt
+    #     title game was never pulled out of its week column -- the Sun Belt now gets a
+    #     computed status in the Conference Championship column (via
+    #     DIVISIONAL_CHAMPIONSHIP_CONFERENCES) AND its actual title game sitting in a
+    #     week column, plus the near-empty week column that game creates. That is
+    #     exactly the phantom-column bug this project already fixed once, recurring for
+    #     a conference the earlier fix didn't cover.
     #
-    # Reverted because the widened form was never re-verified against live data, and this
-    # function runs on every publish. The Sun Belt column is a December problem; a fabricated
-    # championship cell is a tonight problem. Tracked as an open issue -- the fix likely belongs
-    # in column derivation (drop a week bucket whose only occupant is a diverted title game)
-    # rather than in identification.
+    #   - Widening to EVERY conference in the data was tried and REVERTED in a previous
+    #     pass, for two reasons that still apply: (1) the default set built from raw
+    #     `conference` values carries no FBS filter, so an FCS conference appearing in
+    #     the rows would become eligible; (2) it widens the surface for this rule's
+    #     known false positive -- a make-up or postponed game sitting alone in a late
+    #     bucket gets identified as a championship game (see ACCEPTED LIMITATION above).
+    #
+    #   - The union of the two curated lists is the set of conferences that actually
+    #     HAVE a championship game. It cannot admit an FCS conference, because both
+    #     lists are hand-maintained FBS-only. It extends the make-up-game false-positive
+    #     exposure only to the Pac-12 and Sun Belt (the two conferences newly added by
+    #     using the union), which is proportionate -- that exposure already exists today
+    #     for the eight conferences the flat list covers.
+    #
+    #   - REJECTED ALTERNATIVE: a `neutral_site` discriminator. It's tempting because
+    #     "every FBS conference title game is neutral-site" sounds like a clean, format-
+    #     agnostic signal -- but it's false. The Sun Belt, Mountain West and Conference
+    #     USA all host their title game at a division/top-seed campus site, and the
+    #     Pac-12's 2026 game is at the top seed's home stadium. Gating on neutral_site
+    #     would silently un-divert exactly the conferences this task is fixing. Do not
+    #     reintroduce it.
+    #
+    # Built as a fresh dict merge (not hardcoded) so it stays correct if either curated
+    # list gains a member in a future offseason re-verification pass.
     if qualifying_conferences is None:
-        qualifying_conferences = schedule_standings.QUALIFYING_CHAMPIONSHIP_CONFERENCES
+        qualifying_conferences = {
+            **schedule_standings.QUALIFYING_CHAMPIONSHIP_CONFERENCES,
+            **schedule_standings.DIVISIONAL_CHAMPIONSHIP_CONFERENCES,
+        }
 
     candidates: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for row in rows:
@@ -242,6 +276,30 @@ def identify_conference_championship_games(
 
     result: Dict[str, int] = {}
     for conf, crows in candidates.items():
+        # MEMBER-COUNT GATE. A conference too small to hold a championship game cannot have
+        # one, however its schedule happens to be shaped. Without this, the 2025 Pac-12 --
+        # a two-team remnant of Oregon State and Washington State that played each other
+        # TWICE (Nov 1 and Nov 29) -- satisfies every structural test below: the second
+        # meeting sits alone in a bucket, strictly later than the first. The rule cannot
+        # tell a title game from a rematch, so it would publish a Pac-12 championship that
+        # never existed. That is the same fabrication class as the "Wake Forest vs Duke"
+        # matchup this rule was written to eliminate, just reached by a different route.
+        #
+        # Reuses schedule_standings.MIN_QUALIFYING_MEMBERS, the threshold the clinch/
+        # eliminate math already applies for the same reason, rather than inventing a
+        # second number that could drift from it. Members are counted from the rows
+        # themselves so this function keeps its "schedule_grid rows only" input contract.
+        conf_members = {r.get("team") for r in crows if r.get("team")}
+        if len(conf_members) < schedule_standings.MIN_QUALIFYING_MEMBERS:
+            logger.info(
+                "schedule.py: conference %r season=%s has only %d member(s) with conference "
+                "games (%s) -- too few to hold a championship game, so none is identified. "
+                "A small conference's teams can meet twice, which otherwise looks exactly "
+                "like a title game separated from the slate.",
+                conf, season, len(conf_members), sorted(conf_members),
+            )
+            continue
+
         # POSITIVE SIGNAL, not "latest game". A conference championship game is
         # structurally distinctive: it is the LONE conference game sitting in a week
         # bucket by itself, strictly later than the bucket holding that conference's

@@ -60,11 +60,23 @@ SUN_BELT_DIVISIONS.update({t: "West" for t in WEST})
 # ---------------------------------------------------------------------------
 # Fixture helpers
 # ---------------------------------------------------------------------------
-def _row(game_id, team, opponent, status, conference=SUN_BELT):
+def _row(game_id, team, opponent, status, conference=SUN_BELT, week_offset=None):
     """One team-oriented schedule_grid row -- only the columns
     compute_team_records actually reads are populated. Each game_id gets its
-    own Saturday so build_schedule_payload can bucket them into distinct week
-    columns (championship status itself is date-independent)."""
+    own Saturday by default so build_schedule_payload can bucket them into
+    distinct week columns (championship status itself is date-independent).
+
+    week_offset lets a caller collide two game_ids into the SAME week bucket
+    (see _played's same_bucket_as) -- needed since T4b: identify_conference_-
+    championship_games' default now includes the Sun Belt, and this module's
+    schedule_standings.py ignores start_date entirely, so nothing here is
+    testing date placement -- but a fixture with every game_id in its own
+    solo bucket accidentally satisfies identify_conference_championship_-
+    games' "lone game, latest bucket" shape and gets a game misidentified as
+    a real championship game, which then overrides the computed status this
+    test is actually checking. Defaults to the old game_id-based spacing.
+    """
+    offset = game_id - 1 if week_offset is None else week_offset
     return dict(
         game_id=game_id,
         season=SEASON,
@@ -74,15 +86,22 @@ def _row(game_id, team, opponent, status, conference=SUN_BELT):
         conference=conference,
         conference_game=True,
         status=status,
-        start_date=(date(2026, 9, 5) + timedelta(days=7 * (game_id - 1))).isoformat() + " 19:00:00",
+        start_date=(date(2026, 9, 5) + timedelta(days=7 * offset)).isoformat() + " 19:00:00",
         home_away="home",
         neutral_site=False,
     )
 
 
-def _played(game_id, winner, loser):
-    """Both team-oriented rows for one completed conference game."""
-    return [_row(game_id, winner, loser, "win"), _row(game_id, loser, winner, "loss")]
+def _played(game_id, winner, loser, same_bucket_as=None):
+    """Both team-oriented rows for one completed conference game.
+
+    same_bucket_as: an earlier game_id to share a week bucket with, so this
+    game does not sit alone in the latest bucket (see _row's docstring)."""
+    week_offset = None if same_bucket_as is None else same_bucket_as - 1
+    return [
+        _row(game_id, winner, loser, "win", week_offset=week_offset),
+        _row(game_id, loser, winner, "loss", week_offset=week_offset),
+    ]
 
 
 def _record(conference, conf_wins, conf_losses, conf_games_remaining):
@@ -121,7 +140,18 @@ def _overall_vs_division_only_rows():
     rows += _played(3, "App State", "South Alabama")
     rows += _played(4, "Coastal Carolina", "Georgia Southern")
     rows += _played(5, "Coastal Carolina", "Georgia State")
-    rows += _played(6, "Arkansas State", "Coastal Carolina")
+    # game 6 deliberately shares game 9's (below) week bucket, via
+    # same_bucket_as, rather than keeping its own solo earlier one -- see
+    # _row's docstring: since T4b, a lone game in the LATEST bucket now gets
+    # identified as a REAL championship game (the Sun Belt is in the widened
+    # default), which would divert that game and override the computed
+    # status this module tests. Paired with game 6 rather than game 8
+    # specifically because neither Arkansas State nor Coastal Carolina (game
+    # 6's teams) plays again in game 9's bucket -- game 8's own team, Georgia
+    # State, already plays in game 9, so pairing 8+9 into one bucket would
+    # double-book Georgia State in the same week and trip the schedule
+    # grid's separate same-week-collision handling instead.
+    rows += _played(6, "Arkansas State", "Coastal Carolina", same_bucket_as=9)
     rows += _played(7, "Louisiana", "Coastal Carolina")
     rows += _played(8, "Georgia Southern", "Georgia State")
     rows += _played(9, "Troy", "Georgia State")
