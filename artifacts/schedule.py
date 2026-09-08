@@ -800,6 +800,8 @@ def _sort_conference_teams(entries: List[Dict[str, Any]], rows: List[Dict[str, A
         # not -1.0 (which sorts worse than any real percentage, even 0-1).
         # This ensures: team with 1-0 record > team with 0-0 record > team with 0-1 record.
         e["_overall_pct"] = (w / (w + l)) if (w + l) > 0 else 0.5
+        # Whether any conference game has been played, used only as a sort tiebreak below.
+        e["_conf_played"] = bool(e["conf_record"] and (e["conf_record"]["wins"] + e["conf_record"]["losses"]) > 0)
         if e["conf_record"] is not None:
             cw, cl = e["conf_record"]["wins"], e["conf_record"]["losses"]
             # Use 0.5 as sentinel for unplayed conference record (neutral between win and loss),
@@ -818,15 +820,30 @@ def _sort_conference_teams(entries: List[Dict[str, Any]], rows: List[Dict[str, A
         # False and we take the else branch below -- or no Independents at all. The two
         # groups are never sorted against each other, so the fallback's value cannot affect
         # any real ordering. Left as -1.0 rather than 0.5 to keep it obviously a sentinel.
-        entries.sort(key=lambda e: (-(e["_conf_pct"] if e["_conf_pct"] is not None else -1.0), -e["_overall_pct"], e["team"]))
+        # `-e["_conf_played"]` places a team that has actually played conference games above an
+        # unplayed one at the SAME percentage. That is not cosmetic: the head-to-head tiebreak
+        # below only fires on a group of exactly two, and giving an unplayed record 0.5 makes it
+        # tie with every 1-1, 2-2, 3-3 team. Without this term a single 0-0 team joining two
+        # tied teams grows the group to three and silently disables their head-to-head swap,
+        # displaying the loser of that game above the winner. Ordering among played teams is
+        # unchanged, since _conf_played is True for all of them.
+        entries.sort(key=lambda e: (-(e["_conf_pct"] if e["_conf_pct"] is not None else -1.0),
+                                    -e["_conf_played"], -e["_overall_pct"], e["team"]))
         i, n = 0, len(entries)
         while i < n:
             j = i
+            # Group on percentage AND whether the team has played. Percentage alone is not
+            # enough: an unplayed record scores 0.5, which ties it with every 1-1, 2-2 and
+            # 3-3 team, so one 0-0 team joining two genuinely tied teams grows the group to
+            # three and silently cancels their head-to-head swap -- displaying the loser of
+            # that game above the winner. A team that has played nobody cannot be part of a
+            # head-to-head tie by definition, so it must never join the group.
             while j + 1 < n and entries[j + 1]["_conf_pct"] is not None and entries[i]["_conf_pct"] is not None \
-                    and abs(entries[j + 1]["_conf_pct"] - entries[i]["_conf_pct"]) < 1e-9:
+                    and abs(entries[j + 1]["_conf_pct"] - entries[i]["_conf_pct"]) < 1e-9 \
+                    and entries[j + 1]["_conf_played"] == entries[i]["_conf_played"]:
                 j += 1
             group = entries[i:j + 1]
-            if len(group) == 2 and group[0]["_conf_pct"] is not None:
+            if len(group) == 2 and group[0]["_conf_pct"] is not None and group[0]["_conf_played"]:
                 t1, t2 = group[0]["team"], group[1]["team"]
                 winner = _head_to_head_winner(rows, season, t1, t2)
                 if winner == t2:
@@ -838,6 +855,7 @@ def _sort_conference_teams(entries: List[Dict[str, Any]], rows: List[Dict[str, A
     for e in entries:
         del e["_overall_pct"]
         del e["_conf_pct"]
+        del e["_conf_played"]
     return entries
 
 
@@ -856,8 +874,11 @@ def build_schedule_payload(
         rows: schedule_grid rows as dicts (all season_types) for `season`.
         teams_meta: Dict[school -> {"conference": str|None, "division": str|None, "logos": list|None}]
                     from the `teams` table for `season` -- the FBS team universe. `division` is
-                    populated only for divisional conferences (currently just the Sun Belt); null
-                    elsewhere. It drives both the division grouping below and, injected into
+                    populated for divisional conferences and null elsewhere. In 2026 the Sun Belt
+                    is the only one, but this is NOT a constant: eight conferences carry divisions
+                    in `teams` for seasons between 2014 and 2023, so republishing an older season
+                    will group those by division too, while the championship maths still treats
+                    them as flat top-2. Do not assume "Sun Belt only". It drives both the division grouping below and, injected into
                     compute_standings(), the per-division championship status.
         season: the season to build the artifact for.
         team_ranks: Dict[school -> rank] from _fetch_team_ranks -- this season's current rank
@@ -899,7 +920,8 @@ def build_schedule_payload(
         # concept at all -- schedule_grid has no division column, per the task's background --
         # so there is no schedule_grid-derived source to prefer or fall back from. teams_meta
         # (sourced from the `teams` table) is the ONLY source. Populated today only for the Sun
-        # Belt (East/West); null for every other conference and for Independents.
+        # Belt (East/West), but eight conferences carry divisions in older seasons -- see
+        # build_schedule_payload's docstring. Null for non-divisional conferences and Independents.
         return teams_meta.get(team, {}).get("division")
 
     conferences_out = []
@@ -994,8 +1016,24 @@ def _fetch_schedule_grid_rows(engine, season: int) -> List[Dict[str, Any]]:
 
 def _fetch_teams_meta(engine, season: int) -> Dict[str, Dict[str, Any]]:
     df = pd.read_sql_query(f"SELECT school, conference, division, logos FROM teams WHERE season = {int(season)};", engine)
+
+    def _null_to_none(value):
+        # teams.division is NULL for every team outside a divisional conference, and
+        # teams.conference can be NULL too. How pandas represents that NULL depends on the
+        # version: 2.x yields None, but 3.x yields float('nan') for an object/text column.
+        # nan is poison here -- `nan is None` is False and `nan == nan` is False -- so the
+        # division grouping below silently matches NOTHING and every non-divisional
+        # conference publishes with an empty teams list. No exception, no log, just a
+        # vanished conference. Normalising at the boundary is the same thing _resolve_logo
+        # already does for the logos column.
+        return None if pd.isnull(value) else value
+
     return {
-        row["school"]: {"conference": row["conference"], "division": row["division"], "logos": row["logos"]}
+        row["school"]: {
+            "conference": _null_to_none(row["conference"]),
+            "division": _null_to_none(row["division"]),
+            "logos": row["logos"],
+        }
         for row in df.to_dict("records")
     }
 
