@@ -45,7 +45,7 @@ branching:
     pipeline run republishes the artifact.
 
 summary:
-  current_focus: "Discovery: three parallel researchers on championship formats, the standings/clinch algorithm, and the rankings table."
+  current_focus: "Discovery: rankings-table researcher reported; championship-format and standings researchers still running."
   last_completed: "Repository sync preflight (both repos current). Mode classified large-initiative. Feature branches created in both repos."
   current_blocker: "none"
 
@@ -120,7 +120,7 @@ agents:
     actual_reasoning: "unverified"
     routing_enforced: false
     escalation_count: 0
-    status: "pending"
+    status: "complete"
     stage: "discovery"
     task: "Map RankingsTable.astro and the rankings artifact: column structure, delta field, the client-side render mirror, and what the column reorder and delta-triangle change would touch"
     last_update: "2026-09-08"
