@@ -1,0 +1,223 @@
+# Contract: durable execution and handoff report maintained by $work
+
+artifact: implementation_report
+feature: "season-grid-refinement"
+mode: "large-initiative"
+status: in_progress
+owner_skill: work
+based_on: "docs/season-grid-refinement/plan.yaml"
+
+summary:
+  scope_executed: >
+    B1 complete: all nine cfb-rankings tasks plus T4b, added mid-execution at the user's
+    direction. PR #11 open, independently reviewed, and every should-fix finding addressed.
+    B2 (personal-site frontend, T10-T17) not started.
+  outcome: >
+    Tests 18 -> 53. The review found one latent defect that would have silently emptied
+    every non-divisional conference under a future pandas upgrade, one regression the
+    sentinel fix introduced in the head-to-head tiebreak, one uncovered mutation, and a
+    docstring contradicted by historical data. All four fixed and pinned with tests.
+
+task_batches_attempted: ["B1"]
+task_batches_completed: ["B1"]
+
+domains_touched:
+  - "data-engineering (artifacts/schedule.py, artifacts/schedule_standings.py, database/)"
+  - "production data (non_fbs_teams migration applied)"
+
+model_usage:
+  tasks:
+    - task_id: "orchestration"
+      role: "orchestrator"
+      requested_tier: "frontier"
+      requested_model: "claude-opus-5"
+      actual_model: "claude-opus-5 (session-configured; serving model not independently verifiable)"
+      requested_reasoning: "high"
+      actual_reasoning: "high"
+      accepted_first_attempt: true
+      escalation_count: 0
+    - task_id: "T1+T2"
+      role: "data-engineer"
+      requested_tier: "fast"
+      requested_model: "claude-haiku-4-5-20251001"
+      actual_model: "unverified -- per-subagent selection is advisory in this runtime"
+      requested_reasoning: "medium"
+      accepted_first_attempt: false
+      escalation_count: 0
+      notes: >
+        Code correct; its explanatory comment was wrong (claimed the None fallback kept
+        Independents sorting below conference teams -- they are never sorted together, and
+        the branch is unreachable). Corrected before commit.
+    - task_id: "T7a"
+      role: "data-engineer"
+      requested_tier: "balanced"
+      requested_model: "claude-sonnet-5"
+      actual_model: "unverified"
+      requested_reasoning: "medium"
+      accepted_first_attempt: true
+      escalation_count: 0
+      notes: "Tier downgraded from the plan's frontier after decomposition narrowed it; recorded in status.yaml decisions."
+    - task_id: "T3"
+      role: "data-engineer"
+      requested_tier: "balanced"
+      requested_model: "claude-sonnet-5"
+      actual_model: "unverified"
+      requested_reasoning: "medium"
+      accepted_first_attempt: true
+      escalation_count: 0
+      notes: >
+        Independently identified a correctness point the handoff only suspected: the
+        head-to-head tiebreak has no division awareness, so sorting a divisional conference
+        in one pass could swap teams from opposite divisions on a game irrelevant to either
+        division race.
+    - task_id: "T4"
+      role: "data-engineer"
+      requested_tier: "frontier"
+      requested_model: "claude-opus-5"
+      actual_model: "unverified"
+      requested_reasoning: "high"
+      accepted_first_attempt: true
+      escalation_count: 0
+      tool_calls: 38
+      wall_time_seconds: 1541
+      notes: >
+        Strongest execution of the pass. Mutation-tested its own key test (re-tallied the
+        fixture division-only and confirmed statuses flip), and proved flat-conference
+        equivalence against the pre-change module rather than asserting it.
+    - task_id: "T4b"
+      role: "data-engineer"
+      requested_tier: "balanced"
+      requested_model: "claude-sonnet-5"
+      actual_model: "unverified"
+      requested_reasoning: "medium"
+      accepted_first_attempt: false
+      escalation_count: 0
+      notes: >
+        Correct implementation, but classified a real fabrication as an accepted limitation.
+        The member-count gate was added by the orchestrator after re-deriving the claim.
+    - task_id: "T5+T6"
+      role: "data-engineer"
+      requested_tier: "balanced"
+      requested_model: "claude-sonnet-5"
+      actual_model: "unverified"
+      requested_reasoning: "medium"
+      accepted_first_attempt: true
+      escalation_count: 0
+    - task_id: "T9 verification"
+      role: "reviewer"
+      requested_tier: "frontier"
+      requested_model: "claude-opus-5"
+      actual_model: "unverified"
+      requested_reasoning: "high"
+      accepted_first_attempt: true
+      escalation_count: 0
+      tool_calls: 73
+      wall_time_seconds: 1311
+      notes: >
+        Justified its tier. Found a latent silent-data-loss defect no test covered, ran a
+        10-mutation sweep that exposed an uncovered sentinel, and brute-forced 4000 pools to
+        confirm the division conservatism property rather than reasoning about it.
+  routing_notes:
+    - >
+      Implementation was delegated this pass, unlike the previous one. The orchestrator
+      verified every agent's central claim rather than relaying it, which is what caught the
+      three mischaracterisations below.
+    - >
+      Per-subagent model selection is advisory in this runtime; actual_model is recorded as
+      unverified rather than asserting enforcement the provider does not expose.
+
+pr:
+  number: 11
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/11"
+
+changes:
+  files:
+    - "artifacts/schedule.py -- sort sentinel + played-tiebreak, division plumbing, diversion gate + member-count gate, rank, flex week, null normalisation"
+    - "artifacts/schedule_standings.py -- Pac-12 entry, DIVISIONAL_CHAMPIONSHIP_CONFERENCES, pool/top_n generalisation, cross-division conditional_opponent"
+    - "database/ -- non_fbs_teams migration and ingest"
+    - "tests/ -- five new files"
+  docs_updated:
+    - "docs/season-grid-refinement/{status,requirements,plan,implementation-report}.yaml"
+    - "removed docs/season-grid-touchups/ (last pass's leftover)"
+
+local_validation:
+  checks_run:
+    - "Full suite: 53 tests across 9 files, all passing"
+    - "4000 randomized flat-conference trials against the pre-change module: 0 mismatches"
+    - "Real 2026 Sun Belt: all 14 teams 'possible', correct one week in"
+    - "Adversarial fixture proving division race follows overall conference record"
+    - "Real 2026 ranks contiguous 1..138 (Indiana 1, Miami 10, Hawai'i 138; the one tie breaks alphabetically)"
+    - "End-to-end flex week: 8 Pac-12 teams tbd, SEC byes stay byes"
+    - "Production member counts confirming the Pac-12 gate suppresses nothing real"
+    - "Mutation check on the new overall-sentinel test: reverting fails it, restoring passes"
+  failures: []
+  skipped:
+    - "The non-FBS ingest end to end -- no CFBD API key and no .env in this sandbox. Stated rather than glossed."
+    - "The R2 publish path -- no credentials here."
+    - "Upstream facts (Pac-12 format, Sun Belt tiebreaker order) -- egress blocked the primary sources; only that the code implements the stated facts was verified."
+
+review_summary:
+  status: complete
+  reviewer: "delegated subagent, frontier tier, independent of implementation"
+  posted_to_pr: true
+  key_findings:
+    - severity: should-fix
+      finding: >
+        teams.division NULL becomes float('nan') under pandas 3.x (2.x gives None). nan
+        breaks both `is None` and `==`, so the division grouping matched nothing and EVERY
+        non-divisional conference published with an empty teams list -- no exception, no log.
+        uv.lock pins 2.3.3 so production was never exposed; latent until a pandas upgrade.
+        All 50 tests passed because every one built teams_meta from synthetic dicts with real
+        None, never touching the DataFrame path.
+      resolution: "FIXED. Normalised at the _fetch_teams_meta boundary, as _resolve_logo already does for logos. Reproduced (ACC teams=0) before and after."
+    - severity: should-fix
+      finding: >
+        The 0.5 sentinel silently disabled the head-to-head tiebreak: an unplayed record ties
+        at .500 with every 1-1/2-2/3-3 team, and the tiebreak only fires on a group of exactly
+        two, so one 0-0 team joining two tied teams cancelled their swap and displayed the
+        head-to-head loser above the winner.
+      resolution: >
+        FIXED. Unplayed teams are excluded from both the sort tie and the group scan. Fixing
+        only the sort key was insufficient -- the scan walked on percentage alone and had to
+        be fixed too, which the first attempt missed and re-testing caught.
+    - severity: should-fix
+      finding: "The overall-record sentinel had zero coverage -- reverting 0.5 to -1.0 left all 50 tests green while changing output. One of ten mutations escaped."
+      resolution: "FIXED. New test pins it via Independents, who sort purely on overall percentage. The test is itself mutation-checked."
+    - severity: should-fix
+      finding: "A docstring claimed division is populated only for the Sun Belt. False for 2014-2023, where eight conferences carry divisions."
+      resolution: "FIXED in both places that repeated the claim."
+    - severity: nit
+      finding: "A null classification passes the != 'fbs' filter in the non-FBS ingest."
+      resolution: "ACCEPTED, not fixed. The logo lookup reads `teams` first and only falls back, so a stray row cannot shadow a real FBS logo."
+    - severity: nit
+      finding: "Win counts stand in for win percentage; the 2026 ACC and Mountain West have uneven conference game counts."
+      resolution: "ACCEPTED. Pre-existing and already documented as a condition to re-check."
+  verified_by_reviewer_not_relayed:
+    - "top_n=1 conservatism sound -- brute-forced 4000 four-team pools with full outcome enumeration: 0 false eliminations, 0 false clinches"
+    - "Two teams provably cannot both clinch a top_n=1 pool, so every cross-division conditional_opponent case resolves"
+    - "The division race genuinely ranks by overall conference record; mutating it is caught"
+    - "The 2025 Pac-12 fabrication is real and the member gate fixes it, suppressing nothing legitimate"
+    - "Flex week is not masking a real bye -- all 8 Pac-12 teams need a 12th game"
+    - "`teams` untouched; the four consumers unaffected"
+
+test_summary:
+  status: complete
+  checks_run: ["53 tests across 9 files, all passing", "10-mutation sweep: 9 caught before the review, 10 after"]
+  failures: []
+  gaps:
+    - "No CI job runs tests/ -- they only run when invoked by hand. Carried over from the previous pass, still real."
+    - "pytest is not a declared dependency; the files are runnable standalone, which is how they were run."
+
+open_issues:
+  - "B2 (personal-site, T10-T17) not started. Only T15 depends on B1 merging and a pipeline run."
+  - "No CI runs tests/."
+  - "Eight older docs/<feature>/ directories remain in main; removing them was outside this plan's scope."
+  - "The 2025 Season Grid artifact in R2 is still unverified and excluded from the frontend selector."
+  - "Cloudflare pushes to personal-site main do not appear to trigger production builds; needs dashboard access."
+
+handoff:
+  current_state: awaiting_review_and_merge
+  next_owner: "user"
+  next_action: >
+    Review and merge PR #11, then a pipeline run must land before B2's T15 can be verified.
+    B2's other seven tasks can start immediately.

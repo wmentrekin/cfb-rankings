@@ -3,7 +3,7 @@
 artifact: status
 feature: "season-grid-refinement"
 mode: "large-initiative"
-stage: "execution"
+stage: "verification"
 owner_skill: work
 
 objective: >
@@ -45,19 +45,19 @@ branching:
     pipeline run republishes the artifact.
 
 summary:
-  current_focus: "Executing B1. T1, T2, T3, T4 and T7a landed. T4b (narrow the championship-game diversion gate) running. T5 and T6 remain."
-  last_completed: "T4 division-aware championship status for the Sun Belt, verified with 4000 randomized trials showing flat conferences unchanged and an adversarial fixture proving overall conference record drives the division race. Tests 18 -> 37. Earlier: Notably: the standings defect reproduces exactly (a -1.0 sentinel, not a .000 percentage), Pac-12 needs no algorithm change, Sun Belt division winners use overall conference record not division-only, and the conference filter would have failed for 7 of 11 conferences on name mismatch."
+  current_focus: "B1 complete and verified. PR #11 open with an independent review whose four should-fix findings are all addressed. B2 (personal-site) not started."
+  last_completed: "Review findings addressed: a latent pandas-3 NULL defect that would have silently emptied every non-divisional conference, a head-to-head tiebreak the sentinel fix had disabled, an uncovered sentinel mutation, and a false docstring. Tests 18 -> 53. Earlier: Notably: the standings defect reproduces exactly (a -1.0 sentinel, not a .000 percentage), Pac-12 needs no algorithm change, Sun Belt division winners use overall conference record not division-only, and the conference filter would have failed for 7 of 11 conferences on name mismatch."
   current_blocker: "none"
 
 artifacts:
   requirements: "docs/season-grid-refinement/requirements.yaml"
   plan: "docs/season-grid-refinement/plan.yaml"
-  implementation_report: null
+  implementation_report: "docs/season-grid-refinement/implementation-report.yaml"
 
 pr:
-  number: null
-  url: null
-  status: "not_opened"
+  number: 11
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/11"
+  status: "open_reviewed_findings_addressed"
 
 pr_personal_site:
   number: null
@@ -131,7 +131,7 @@ loops:
     count: 0
     max: 2
   execution_verification:
-    count: 0
+    count: 1
     max: 2
 
 checkpoint:
@@ -213,4 +213,4 @@ model_routing:
 
 next_action: "Awaiting the pre-execution checkpoint answer. On proceed: execute B1 (T1/T2/T7 in parallel, then T3 -> T4/T5/T6), open the PR, run mandatory verification, then B2 after a pipeline run lands."
 next_recommended_command: "$work"
-user_input_needed: false
+user_input_needed: true
