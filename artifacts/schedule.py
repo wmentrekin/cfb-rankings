@@ -717,8 +717,10 @@ def build_schedule_payload(rows: List[Dict[str, Any]], teams_meta: Dict[str, Dic
     """
     Args:
         rows: schedule_grid rows as dicts (all season_types) for `season`.
-        teams_meta: Dict[school -> {"conference": str|None, "logos": list|None}]
-                    from the `teams` table for `season` -- the FBS team universe.
+        teams_meta: Dict[school -> {"conference": str|None, "division": str|None, "logos": list|None}]
+                    from the `teams` table for `season` -- the FBS team universe. `division` is
+                    populated only for divisional conferences (currently just the Sun Belt); null
+                    elsewhere.
         season: the season to build the artifact for.
     Returns:
         The full Season Grid JSON payload per plan.yaml's contracts.interfaces.
@@ -739,6 +741,15 @@ def build_schedule_payload(rows: List[Dict[str, Any]], teams_meta: Dict[str, Dic
         if not conf:
             conf = teams_meta.get(team, {}).get("conference")
         return conf
+
+    def team_division(team: str) -> Optional[str]:
+        # Asymmetric with team_conference() above by necessity: standings (derived from
+        # schedule_grid rows via schedule_standings.compute_standings) carries no division
+        # concept at all -- schedule_grid has no division column, per the task's background --
+        # so there is no schedule_grid-derived source to prefer or fall back from. teams_meta
+        # (sourced from the `teams` table) is the ONLY source. Populated today only for the Sun
+        # Belt (East/West); null for every other conference and for Independents.
+        return teams_meta.get(team, {}).get("division")
 
     conferences_out = []
     for raw_conf in CONFERENCE_ORDER:
@@ -783,10 +794,31 @@ def build_schedule_payload(rows: List[Dict[str, Any]], teams_meta: Dict[str, Dic
                 "logo_url": logo,
                 "record": record,
                 "conf_record": conf_record,
+                "division": team_division(team),
                 "weeks": weeks,
             })
 
-        sorted_entries = _sort_conference_teams(entries, rows, season)
+        # Group by division before sorting, rather than adding division as a leading sort
+        # key inside _sort_conference_teams: the head-to-head tiebreak in that function
+        # (_head_to_head_winner, invoked when exactly two teams are tied on conf win%) should
+        # only ever compare teams competing for the SAME division title. Verified against the
+        # function body above -- it pairs up adjacent teams after sorting by conf_pct with no
+        # awareness of division, so if it saw a full divisional conference in one pass, two
+        # teams from OPPOSITE divisions that happen to tie on conf win% could be swapped based
+        # on a head-to-head game that has nothing to do with either team's own division race.
+        # Sorting each division's members through the existing, unmodified function in its own
+        # call keeps that tiebreak scoped correctly and needs no change to the function itself.
+        #
+        # Divisions are ordered alphabetically (so "East" precedes "West"), matching the task's
+        # requirement and today's only real case. For a conference with no divisions at all,
+        # every team's division is None, so there is exactly one group (key None) and this is
+        # a single _sort_conference_teams call over the full member list -- byte-identical to
+        # the pre-existing behavior.
+        divisions_present = sorted({e["division"] for e in entries}, key=lambda d: (d is None, d))
+        sorted_entries: List[Dict[str, Any]] = []
+        for division in divisions_present:
+            group = [e for e in entries if e["division"] == division]
+            sorted_entries.extend(_sort_conference_teams(group, rows, season))
         conferences_out.append({"name": _display_conference_name(raw_conf), "teams": sorted_entries})
 
     return {
@@ -806,9 +838,9 @@ def _fetch_schedule_grid_rows(engine, season: int) -> List[Dict[str, Any]]:
 
 
 def _fetch_teams_meta(engine, season: int) -> Dict[str, Dict[str, Any]]:
-    df = pd.read_sql_query(f"SELECT school, conference, logos FROM teams WHERE season = {int(season)};", engine)
+    df = pd.read_sql_query(f"SELECT school, conference, division, logos FROM teams WHERE season = {int(season)};", engine)
     return {
-        row["school"]: {"conference": row["conference"], "logos": row["logos"]}
+        row["school"]: {"conference": row["conference"], "division": row["division"], "logos": row["logos"]}
         for row in df.to_dict("records")
     }
 

@@ -45,8 +45,8 @@ branching:
     pipeline run republishes the artifact.
 
 summary:
-  current_focus: "Executing B1. Wave 1: T1+T2 (sort sentinel and Pac-12 dict entry) and T7a (FCS logo ingest, database/ only) in parallel. schedule.py work is sequenced because agents share one working tree."
-  last_completed: "requirements.yaml and plan.yaml written. Discovery findings: Notably: the standings defect reproduces exactly (a -1.0 sentinel, not a .000 percentage), Pac-12 needs no algorithm change, Sun Belt division winners use overall conference record not division-only, and the conference filter would have failed for 7 of 11 conferences on name mismatch."
+  current_focus: "Executing B1. T1, T2 and T7a landed and pushed. T3 (division plumbing) running; it gates T4, T5 and T6."
+  last_completed: "T1 sentinel fix (verified against the reported case), T2 Pac-12 dict entry, T7a non_fbs_teams table + ingest + pipeline wiring. Tests 18 -> 25. Earlier: Notably: the standings defect reproduces exactly (a -1.0 sentinel, not a .000 percentage), Pac-12 needs no algorithm change, Sun Belt division winners use overall conference record not division-only, and the conference filter would have failed for 7 of 11 conferences on name mismatch."
   current_blocker: "none"
 
 artifacts:
