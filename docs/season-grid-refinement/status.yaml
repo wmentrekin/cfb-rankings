@@ -45,7 +45,7 @@ branching:
     pipeline run republishes the artifact.
 
 summary:
-  current_focus: "Discovery: rankings-table researcher reported; championship-format and standings researchers still running."
+  current_focus: "Discovery: two of three researchers reported. Waiting on repo-researcher-standings before writing requirements.yaml."
   last_completed: "Repository sync preflight (both repos current). Mode classified large-initiative. Feature branches created in both repos."
   current_blocker: "none"
 
@@ -90,7 +90,7 @@ agents:
     actual_reasoning: "unverified"
     routing_enforced: false
     escalation_count: 0
-    status: "pending"
+    status: "complete"
     stage: "discovery"
     task: "Verify live the 2026 championship-game format for the Pac-12 and Sun Belt, and confirm CFBD's teams endpoint returns non-FBS teams with logos"
     last_update: "2026-09-08"
@@ -145,7 +145,37 @@ checkpoint:
 
 blockers: []
 
+research_caveats:
+  - >
+    This session's egress policy blocked direct fetches of pac-12.com, sunbeltsports.org,
+    Wikipedia, ESPN and the CFBD API. The Pac-12 and Sun Belt format findings rest on search
+    snippets quoting those primary sources rather than direct reads. Format claims are
+    corroborated across several independent results; the fine-grained tiebreaker ordering is
+    less so, and the Sun Belt tiebreaker page carries a 2018 slug that may have been superseded
+    by recent realignment. Recorded rather than presented as fully verified.
+  - >
+    CFBD's Team model declares both `classification` and `logos`, and unfiltered GET /teams
+    returns all D-I (~265 teams for 2026: 138 FBS + 127 FCS). But `/teams` exposes NO
+    classification query parameter, so filtering is client-side, and it could NOT be confirmed
+    that FCS records actually carry populated logos arrays -- no CFBD API key exists in this
+    sandbox. Any FCS-logo task must therefore be written defensively and verified on its first
+    real run, not assumed to work.
+
 decisions:
+  - question: "Can the Pac-12 simply be added to QUALIFYING_CHAMPIONSHIP_CONFERENCES?"
+    answer: >
+      YES. Verified: the 2026 Pac-12 is an 8-team round robin with no divisions, top 2 by
+      conference record, championship game Dec 4 2026 at the top seed's stadium. That is exactly
+      the shape the existing clinch/eliminate algorithm models -- a dict entry, no algorithm
+      change. The game buckets to week 14, so it lands in the championship column.
+  - question: "How are Sun Belt division winners determined?"
+    answer: >
+      By highest winning percentage across ALL conference games, divisional AND non-divisional --
+      NOT by a division-only record. Division record enters only as a tiebreaker (head-to-head
+      first, then divisional pct, then cascading vs next-highest, then common non-divisional
+      opponents). This contradicts the natural assumption and is the single most important
+      finding of discovery: assuming division-only record would produce wrong Clinched/Eliminated
+      labels for the one conference this work exists to support.
   - question: "Mode classification"
     answer: "large-initiative -- 15 items, two repos, multiple task batches, and genuinely new algorithmic work (division-winner championship modelling), well past bounded-feature."
   - question: "One integration PR or one per repo?"
