@@ -3,7 +3,7 @@
 artifact: implementation_report
 feature: "season-grid-touchups"
 mode: "large-initiative"
-status: in_progress
+status: complete
 owner_skill: work
 based_on: "docs/season-grid-touchups/plan.yaml"
 
@@ -201,6 +201,53 @@ review_summary:
         column is the conservative direction; asserting an undetermined matchup is the failure
         this rule exists to prevent.
 
+review_summary_personal_site:
+  status: complete
+  reviewer: "delegated subagent, independent of the implementation"
+  posted_to_pr: true
+  rounds: 2
+  key_findings:
+    - severity: blocker
+      finding: >
+        schedulePayload was read from defaultSeason (the RANKINGS default) while the client
+        seeded loadedScheduleSeason from defaultScheduleSeason. With divergent indexes,
+        switching to Season Grid saw the selector already matching, skipped the fetch, and
+        left one season's grid under a selector naming another -- unrecoverable when the
+        dropdown has a single option.
+      resolution: >
+        FIXED and re-verified by the reviewer against a forced divergence: Season Grid shows
+        and renders 2026, zero data requests, stable across round-trips.
+    - severity: should-fix
+      finding: "statusMutedText returned '' for any (slot_id, status) outside the two mapped slots, silently blanking the cell."
+      resolution: "FIXED. Generic per-status fallback in both the component and the mirror; reviewer re-verified with patched cells."
+    - severity: should-fix
+      finding: "An empty schedule season list requested schedule//latest.json and 404'd, wiping a good server-rendered grid."
+      resolution: "FIXED. Guarded; reviewer confirmed zero data requests and a correct empty state."
+    - severity: should-fix
+      finding: "A 245 KB unreferenced screenshot was committed at the repo root."
+      resolution: "FIXED. Removed and gitignored."
+    - severity: nit
+      finding: "Server and client markup differed on bye cells by template whitespace."
+      resolution: "FIXED. Reviewer confirms serverHTML === clientHTML with NO whitespace normalisation, 144 rows x 22 columns."
+    - severity: nit
+      finding: "Mobile toggle still shifted 25px, then 12.8px after the first attempt -- the reservation was on a column-flex container, which pads below its last child."
+      resolution: "FIXED properly. Moved to the title as min-height: 2lh. Measured 0.00px drift at 390x844."
+    - severity: nit
+      finding: "A single seasonChosenByUser flag lost the user's pick on a tab round-trip -- the opposite of what its own comment promised."
+      resolution: "FIXED. Replaced with lastSeasonByTab. Verified: pick 2025 on Rankings, pass through Season Grid, return reads 2025."
+    - severity: withdrawn-by-reviewer
+      finding: "Accessibility contrast was raised, then withdrawn after measurement against real composited backgrounds."
+      resolution: >
+        No action. Measured 7.46:1 (record), 7.36:1 (muted), 6.67:1 (prefix), 7.96:1 (header)
+        -- nothing fails AA. Recorded because the reviewer retracting its own finding is part
+        of an honest review record.
+  deferred:
+    - "max-width on the sticky <td> does not cap an auto-layout cell, so the ellipsis is unreachable. Cosmetic; the column is no longer the constraint."
+    - "min-width: 46rem never binds (natural width 2239px)."
+    - "Dead sg-badge--w/--l classes and unread conditional_opponent field."
+    - ".sg-conf-header--sticky is translucent during horizontal scroll."
+    - "Empty-state guards do not mirror (columns.length > 0 vs conferences.length === 0)."
+
 test_summary:
   status: complete
   checks_run:
@@ -230,6 +277,18 @@ open_issues:
     at a time, so for a season never bulk-loaded up front, week k+1 is empty -> step back ->
     publish k -> forever. Not reachable for 2026 (793 future rows already loaded); aimed at
     next season.
+  - >
+    The excluded 2025 schedule artifact is still fetched into public/ and served at its URL --
+    hidden from the selector, not from the internet. The durable fix is deleting
+    schedule/2025/latest.json from R2 so the index stops listing it; no R2 credentials exist
+    in this sandbox.
+  - >
+    Nothing trips when the UNVERIFIED_SCHEDULE_SEASONS condition clears -- the exclusion must
+    be removed by hand once 2025 is regenerated and checked.
+  - >
+    With 2025 excluded the Season Grid selector has one option, so a change event can never
+    fire and the client-side render mirror is unreachable in production. It is still exercised
+    by the Rankings tab and was verified by temporarily un-excluding 2025.
   - "B0 (Cloudflare Preview env vars) is still not done -- PR previews will show empty states until the user makes that dashboard change."
   - "No CI runs tests/. Worth a follow-up PR adding a workflow."
   - "PR #8's Sept-8 date-pin in weekly-update.yml is now redundant but deliberately left in place; removing it is a follow-up once T1b is proven in a live run."
@@ -239,8 +298,12 @@ open_issues:
   - "Eleven FBS teams carry no logo in the published artifact despite all 138 having a logos-dark/32 URL in the teams table -- a stale teams snapshot at generation time. Regeneration resolves it; no code change made."
 
 handoff:
-  current_state: awaiting_review_and_merge
+  current_state: awaiting_merge
   next_owner: "user"
   next_action: >
-    Review and merge PR #9 (cfb-rankings) before the 07:00 UTC run if the reviewer's
-    conditions are met, then PR #18 (personal-site). B2's review is still in flight.
+    PR #18 (personal-site) is approved by its reviewer and ready to merge. PR #9
+    (cfb-rankings) should NOT be merged before the 07:00 UTC run -- reviewer and orchestrator
+    agree independently that merging tonight buys nothing (the run is pinned to --week 1, so
+    main.py is inert) while putting the schedule-artifact path, the only path that does run,
+    through an un-re-verified change. Merge #9 after tonight's run. Remove
+    docs/season-grid-touchups/ before merging either.
