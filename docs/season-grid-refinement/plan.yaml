@@ -190,6 +190,45 @@ execution_batches:
           - "The conservative property holds: no team is asserted clinched or eliminated when the outcome is not yet determined"
           - "Every other conference's statuses are byte-identical to before the change"
           - "A team's division standing is driven by overall conference record, demonstrated by a test where division-only record would give a different answer"
+      - id: "T4b"
+        repo: "wmentrekin/cfb-rankings"
+        title: "Divert real championship games for every conference that has one"
+        objective: >
+          identify_conference_championship_games gates on QUALIFYING_CHAMPIONSHIP_CONFERENCES,
+          which exists to gate the flat-pool CLINCH math -- a different question from which
+          conferences HAVE a title game. T4 gave the Sun Belt statuses but left its real title
+          game undiverted, so from December it would show a computed status in the championship
+          column AND its actual game in a week column, plus the near-empty week column that
+          creates. Default the gate to the UNION of the flat-format and divisional-format lists.
+          Deliberately narrower than the "every conference in the data" widening tried and
+          reverted in the previous pass, which admitted FCS conferences and widened the
+          make-up-game false-positive surface. Do NOT add a neutral_site discriminator: the Sun
+          Belt, Mountain West and Conference USA host title games at campus sites, so it would
+          break the conferences this fixes.
+        assigned_domain: "data-engineer"
+        task_profile: "implementation"
+        uncertainty: "low"
+        consequence: "medium"
+        scope_size: "narrow"
+        determinism: "deterministic"
+        requested_model_tier: "balanced"
+        requested_reasoning: "medium"
+        requested_provider_model: "claude-sonnet-5"
+        escalation_condition: "Escalate if the union cannot be built without hardcoding a third list that would drift from the two sources."
+        owned_scope: ["artifacts/schedule.py", "artifacts/schedule_standings.py (union helper only)", "tests/"]
+        forbidden_scope: ["the clinch/eliminate math", "_sort_conference_teams", "the identification rule itself"]
+        dependencies: ["T4"]
+        parallelizable: false
+        expected_validation:
+          - "Sun Belt and Pac-12 title games are identified where they previously were not"
+          - "A conference in neither list is still not identified"
+          - "2026 still identifies nothing for every conference -- the in-progress property must not regress"
+          - "A diverted Sun Belt title game leaves no near-empty week column behind"
+        provenance: >
+          Added mid-execution, not present at the checkpoint. Surfaced by T4's own report as a
+          consequence of making the Sun Belt non-blank. The user chose this narrow form over
+          deferring it or redoing the full widening.
+
       - id: "T5"
         repo: "wmentrekin/cfb-rankings"
         title: "Add each team's current rank to the artifact"
