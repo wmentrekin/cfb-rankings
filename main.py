@@ -33,6 +33,40 @@ def teams_exist_for_year(year):
     engine.dispose()
     return int(count_df['n'].iloc[0]) > 0
 
+def non_fbs_logos_exist_for_year(year):
+    """
+    Check whether non_fbs_teams already holds usable logo data for the given season.
+
+    "Usable" means at least one row with a non-empty logos array, not merely at least one
+    row. A season whose ingest ran before CFBD had logos for it would otherwise be locked
+    into the empty state by a rows-exist check, with no way back short of a manual delete;
+    this way the next run retries it and a season already carrying logos is skipped.
+    Args:
+        year (int): Season year to check.
+    Returns:
+        bool: True if at least one non_fbs_teams row for that season has a non-empty logos
+              array. False on any failure -- the caller then re-ingests, which is the safe
+              direction for a check whose only purpose is skipping redundant work.
+    """
+    load_dotenv()
+    db_url = (
+        f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+        "?sslmode=require"
+    )
+    engine = create_engine(db_url)
+    try:
+        count_df = pd.read_sql_query(
+            "SELECT COUNT(*) AS n FROM non_fbs_teams "
+            f"WHERE season = {int(year)} AND logos IS NOT NULL AND array_length(logos, 1) > 0;",
+            engine,
+        )
+        return int(count_df['n'].iloc[0]) > 0
+    except Exception:
+        return False
+    finally:
+        engine.dispose()
+
 # A run delayed past more than this many week boundaries is an operational anomaly, not
 # something to silently resolve: walking back arbitrarily far lets a single stale
 # future-dated row drag the published week backwards. Beyond the cap the run keeps the
@@ -226,17 +260,29 @@ def main():
     # LOAD NON-FBS TEAM LOGO DATA (supplementary, not a model input)
     # `non_fbs_teams` is a separate table from `teams` -- it does NOT feed the
     # model's team list or the games/schedule-grid ingestion, so a failure
-    # here must never block the pipeline. Always attempted (not gated behind
-    # an existence check like the FBS teams block above) since the upsert on
-    # (season, school) is idempotent and cheap, mirroring how postseason
-    # games are always re-fetched below.
+    # here must never block the pipeline.
+    #
+    # Gated behind an existence check, like the FBS teams block above. This is
+    # reference data, not weekly data: a team's logo does not change between
+    # weeks, so re-fetching all ~545 non-FBS teams and re-upserting every row
+    # on every single weekly run bought nothing. The check looks for rows that
+    # actually carry logos rather than merely existing, so a season ingested
+    # while CFBD had no logo data for it is retried rather than locked in.
+    # To force a refresh (a corrected logo upstream, say), delete the season's
+    # rows and let the next run repopulate them.
     try:
-        logger.info("Loading non-FBS Division-I team logo data for year=%s", args.year)
-        non_fbs_result = load_non_fbs_teams_to_db(args.year)
-        logger.info(
-            "Non-FBS teams for year=%s: %s stored, %s with a non-empty logos array.",
-            args.year, non_fbs_result.get('stored'), non_fbs_result.get('with_logos'),
-        )
+        if non_fbs_logos_exist_for_year(args.year):
+            logger.info(
+                "Non-FBS team logo data already present for year=%s; skipping re-ingest.",
+                args.year,
+            )
+        else:
+            logger.info("Loading non-FBS Division-I team logo data for year=%s", args.year)
+            non_fbs_result = load_non_fbs_teams_to_db(args.year)
+            logger.info(
+                "Non-FBS teams for year=%s: %s stored, %s with a non-empty logos array.",
+                args.year, non_fbs_result.get('stored'), non_fbs_result.get('with_logos'),
+            )
     except Exception as e:
         logger.warning("Non-FBS team logo loading raised an exception. Continuing. Exception: %s", e)
 
