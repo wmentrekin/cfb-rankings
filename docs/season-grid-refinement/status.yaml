@@ -3,7 +3,7 @@
 artifact: status
 feature: "season-grid-refinement"
 mode: "large-initiative"
-stage: "discovery"
+stage: "planning"
 owner_skill: work
 
 objective: >
@@ -45,12 +45,12 @@ branching:
     pipeline run republishes the artifact.
 
 summary:
-  current_focus: "Discovery: two of three researchers reported. Waiting on repo-researcher-standings before writing requirements.yaml."
-  last_completed: "Repository sync preflight (both repos current). Mode classified large-initiative. Feature branches created in both repos."
+  current_focus: "Planning. All three researchers reported; requirements.yaml written with 9 goals, 14 acceptance criteria and 4 open questions. plan.yaml next, then the pre-execution checkpoint."
+  last_completed: "Discovery complete. Notably: the standings defect reproduces exactly (a -1.0 sentinel, not a .000 percentage), Pac-12 needs no algorithm change, Sun Belt division winners use overall conference record not division-only, and the conference filter would have failed for 7 of 11 conferences on name mismatch."
   current_blocker: "none"
 
 artifacts:
-  requirements: null
+  requirements: "docs/season-grid-refinement/requirements.yaml"
   plan: null
   implementation_report: null
 
@@ -105,7 +105,7 @@ agents:
     actual_reasoning: "unverified"
     routing_enforced: false
     escalation_count: 0
-    status: "pending"
+    status: "complete"
     stage: "discovery"
     task: "Map compute_standings and the clinch/eliminate algorithm: locate the 0-0 sort bug, assess how divisions would extend it, and how per-team rank could reach the artifact"
     last_update: "2026-09-08"
@@ -176,6 +176,14 @@ decisions:
       opponents). This contradicts the natural assumption and is the single most important
       finding of discovery: assuming division-only record would produce wrong Clinched/Eliminated
       labels for the one conference this work exists to support.
+  - question: "Does the reported standings symptom reproduce?"
+    answer: >
+      YES, verified directly against _sort_conference_teams. repo-researcher-standings reported
+      it did NOT reproduce, but its synthetic test modelled 1-0/0-0/0-1 as CONFERENCE records
+      while the reported case is a 1-0 OVERALL record with an 0-0 conference record. Re-tested
+      with the user's exact inputs: NC State (0-1, conf 0-1) sorts above Duke (1-0, conf 0-0).
+      Recorded because a subagent's negative finding was wrong and was caught only by re-testing
+      rather than relaying it.
   - question: "Mode classification"
     answer: "large-initiative -- 15 items, two repos, multiple task batches, and genuinely new algorithmic work (division-winner championship modelling), well past bounded-feature."
   - question: "One integration PR or one per repo?"
