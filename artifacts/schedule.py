@@ -664,15 +664,28 @@ def _head_to_head_winner(rows: List[Dict[str, Any]], season: int, team_a: str, t
 def _sort_conference_teams(entries: List[Dict[str, Any]], rows: List[Dict[str, Any]], season: int) -> List[Dict[str, Any]]:
     for e in entries:
         w, l = e["record"]["wins"], e["record"]["losses"]
-        e["_overall_pct"] = (w / (w + l)) if (w + l) > 0 else -1.0
+        # Use 0.5 as sentinel for unplayed overall record (neutral between win and loss),
+        # not -1.0 (which sorts worse than any real percentage, even 0-1).
+        # This ensures: team with 1-0 record > team with 0-0 record > team with 0-1 record.
+        e["_overall_pct"] = (w / (w + l)) if (w + l) > 0 else 0.5
         if e["conf_record"] is not None:
             cw, cl = e["conf_record"]["wins"], e["conf_record"]["losses"]
-            e["_conf_pct"] = (cw / (cw + cl)) if (cw + cl) > 0 else -1.0
+            # Use 0.5 as sentinel for unplayed conference record (neutral between win and loss),
+            # matching the overall record logic. This fixes the NC State vs Duke case where
+            # a team with 0-1 conference record should sort below a team with 0-0.
+            e["_conf_pct"] = (cw / (cw + cl)) if (cw + cl) > 0 else 0.5
         else:
             e["_conf_pct"] = None
 
     has_conf_records = any(e["_conf_pct"] is not None for e in entries)
     if has_conf_records:
+        # The None branch here is DEFENSIVE AND UNREACHABLE in practice, not a live rule.
+        # conf_record is None only for Independents (schedule_standings sets conf_wins to
+        # None for them and only for them), and this function is called once per conference,
+        # so a single call sees either all-Independents -- in which case has_conf_records is
+        # False and we take the else branch below -- or no Independents at all. The two
+        # groups are never sorted against each other, so the fallback's value cannot affect
+        # any real ordering. Left as -1.0 rather than 0.5 to keep it obviously a sentinel.
         entries.sort(key=lambda e: (-(e["_conf_pct"] if e["_conf_pct"] is not None else -1.0), -e["_overall_pct"], e["team"]))
         i, n = 0, len(entries)
         while i < n:

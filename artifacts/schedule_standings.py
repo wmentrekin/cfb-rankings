@@ -89,12 +89,11 @@ logger = logging.getLogger("cfb_lp")
 #     2025 Sun Belt Championship Game participants (James Madison, East
 #     champion, vs. Troy, West champion). Does not match the top-2/no-
 #     divisions shape this algorithm assumes.
-#   - Pac-12: live schedule_grid query (season=2025) shows only 2 distinct
-#     teams with conference='Pac-12' and conference_game=true -- below the
-#     >= 4 member floor regardless of format. (The conference is
-#     rebuilding via 2025-2026 Mountain West defections; by the time it
-#     has >= 4 football members again its format should be re-checked,
-#     not assumed from this list.)
+#   - Pac-12 (2026): 8 members, 7-game full round robin with no divisions.
+#     Top 2 by conference record play in championship game on Dec 4, 2026.
+#     Verified via web-search snippets quoting pac-12.com and Wikipedia,
+#     NOT from direct read of primary source (this environment's egress
+#     policy blocked those domains). Re-verify the format for future seasons.
 #   - FBS Independents: not a conference -- no championship game exists to
 #     model. Also excluded structurally: compute_team_records() always
 #     sets conf_wins/conf_losses to None for Independents, and this
@@ -117,6 +116,7 @@ QUALIFYING_CHAMPIONSHIP_CONFERENCES: Dict[str, str] = {
     "Conference USA": "top-2, single division",
     "Mountain West": "top-2 by conference record",
     "Mid-American": "top-2 by conference win pct (see MAC caveat above)",
+    "Pac-12": "top-2, no divisions (7-game full round robin as of 2026)",
 }
 
 MIN_QUALIFYING_MEMBERS = 4
