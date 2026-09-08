@@ -25,7 +25,8 @@ FOOTBALL_DAY_ROLLOVER_HOURS = 4
 
 
 def football_day(start: datetime) -> date:
-    """The calendar day a kickoff belongs to, rolling over at 06:00 UTC rather than midnight."""
+    """The calendar day a kickoff belongs to, rolling over FOOTBALL_DAY_ROLLOVER_HOURS after
+    midnight UTC rather than at midnight. See that constant for why the window is 4 hours."""
     return (start - timedelta(hours=FOOTBALL_DAY_ROLLOVER_HOURS)).date()
 
 

@@ -205,6 +205,7 @@ test_summary:
   status: complete
   checks_run:
     - "tests/test_schedule_columns.py -- 7 tests, all pass (week boundary, championship identification on 2024/2025, no invention mid-season, single-bucket conference, phantom column, derived labels, diverted championship)"
+    - "tests/test_entry_point_resolves.py -- 2 tests, static guard that every name each pipeline function calls actually exists"
     - "tests/test_week_resolution.py -- 9 tests, all pass (delayed Tuesday run, six normal Sundays unchanged, latest-kickoff case, walk-back cap, empty-week guard, Monday-night grouping, TBD-placeholder guard, empty schedule, pre-season)"
     - "astro check / astro build -- clean"
     - "Headless browser measurement and full neutral-site cross-check"
@@ -215,6 +216,20 @@ test_summary:
     - "The R2 publish path and the live pipeline run remain unexercised in this sandbox."
 
 open_issues:
+  - >
+    A non-qualifying conference's real title game (Sun Belt, Pac-12) is not diverted, so it
+    mints a near-empty week column beside the Conference Championship column -- the same
+    phantom-column class this pass fixes. Widening identification to all conferences was
+    tried and REVERTED (it widened the make-up-game false-positive surface and admitted FCS
+    conferences, on the one code path that runs every publish). The fix likely belongs in
+    column derivation instead: drop a week bucket whose only occupant is a diverted title
+    game. December problem, not a tonight problem.
+  - >
+    The 'has games' requirement in resolve_week_from_starts assumes the forward schedule is
+    loaded when week selection runs. It runs BEFORE load_games_to_db, which fetches one week
+    at a time, so for a season never bulk-loaded up front, week k+1 is empty -> step back ->
+    publish k -> forever. Not reachable for 2026 (793 future rows already loaded); aimed at
+    next season.
   - "B0 (Cloudflare Preview env vars) is still not done -- PR previews will show empty states until the user makes that dashboard change."
   - "No CI runs tests/. Worth a follow-up PR adding a workflow."
   - "PR #8's Sept-8 date-pin in weekly-update.yml is now redundant but deliberately left in place; removing it is a follow-up once T1b is proven in a live run."

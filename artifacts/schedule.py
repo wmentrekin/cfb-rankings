@@ -204,18 +204,23 @@ def identify_conference_championship_games(
     this season. A qualifying conference with no conference_game=true rows
     this season (e.g. incomplete data) simply has no entry.
     """
-    # Defaults to EVERY conference in the data, not just the confirmed-top-2-format list.
-    # This function decides which rows get DIVERTED out of the week columns; the computed
-    # clinched/eliminated STATUSES are gated separately in schedule_standings. Gating
-    # diversion too would leave a real title game (Sun Belt, Pac-12) sitting in a week
-    # bucket of its own and minting a near-empty week column right next to the
-    # Conference Championship column -- the exact phantom-column bug this pass fixes.
+    # Deliberately gated to the confirmed-top-2-format list, NOT every conference in the data.
+    #
+    # Widening this to all conferences was tried and REVERTED. The motivation was real -- a
+    # Sun Belt or Pac-12 title game is not diverted, so it mints a near-empty week column next
+    # to the Conference Championship column, which is the same phantom-column class this pass
+    # fixes. But the gate doubles as a safety rail: widening it also widens the surface for the
+    # rule's known false positive (a make-up game alone in a late bucket gets identified as a
+    # championship), and the default set built from raw `conference` values carries no FBS
+    # filter, so an FCS conference appearing in the rows becomes eligible too.
+    #
+    # Reverted because the widened form was never re-verified against live data, and this
+    # function runs on every publish. The Sun Belt column is a December problem; a fabricated
+    # championship cell is a tonight problem. Tracked as an open issue -- the fix likely belongs
+    # in column derivation (drop a week bucket whose only occupant is a diverted title game)
+    # rather than in identification.
     if qualifying_conferences is None:
-        qualifying_conferences = {
-            row.get("conference")
-            for row in rows
-            if row.get("season") == season and row.get("conference")
-        }
+        qualifying_conferences = schedule_standings.QUALIFYING_CHAMPIONSHIP_CONFERENCES
 
     candidates: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for row in rows:

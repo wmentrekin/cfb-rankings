@@ -103,6 +103,53 @@ def resolve_week_from_starts(candidate: int, start_dates, now: datetime, season_
     return candidate
 
 
+def resolve_target_week(year: int, today: date, season_start_override=None) -> int:
+    """The week this run should publish: the last one whose games have all kicked off.
+
+    get_cfb_week(today) answers "which week is it now", which is only the same question as
+    "which week should we publish" because the cron happens to fire on a Sunday. A run that
+    slips past a week boundary mislabels the rankings -- the delayed 2026 Week 1 run (Tue
+    Sep 8, after a Mon Sep 7 game) computed week 2 and would have published Week 1's slate
+    as Week 2, which is why that one run was hand-pinned with --week 1.
+
+    Never raises: week selection is a convenience, and a failure here must not stop the run.
+    Any problem falls back to the date-derived week, which is today's behavior.
+    """
+    candidate = get_cfb_week(today=today, season_start_override=season_start_override)
+    if candidate < 1:
+        return candidate
+
+    try:
+        load_dotenv()
+        db_url = (
+            f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+            f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+            "?sslmode=require"
+        )
+        engine = create_engine(db_url)
+        try:
+            games_df = pd.read_sql_query(
+                f"SELECT start_date FROM games WHERE season = {int(year)} AND season_type = 'regular';",
+                engine,
+            )
+        finally:
+            engine.dispose()
+
+        if games_df.empty:
+            print(f"resolve_target_week: no {year} games loaded yet; using date-derived week={candidate}.")
+            return candidate
+
+        # Naive UTC to match games.start_date -- datetime.now() is naive LOCAL time, which is
+        # only correct by accident on a UTC CI runner.
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        return resolve_week_from_starts(
+            candidate, list(games_df["start_date"]), now_utc, season_start_override
+        )
+    except Exception as exc:  # noqa: BLE001 -- never let week selection break the run
+        print(f"resolve_target_week: week selection failed ({exc}); falling back to week={candidate}.")
+        return candidate
+
+
 def main():
     """
     Main function to run the model and handle data loading and saving.
@@ -141,7 +188,7 @@ def main():
             print("Invalid --season-start format; expected YYYY-MM-DD. Ignoring override.")
             season_start_override = None
     if args.week is None:
-        today = datetime.now().date()
+        today = datetime.now(timezone.utc).date()
         args.week = resolve_target_week(args.year, today, season_start_override)
         print(f"No --week provided: computed week={args.week} (last week whose games have all started).")
 
