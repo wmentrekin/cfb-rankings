@@ -1,0 +1,136 @@
+# Contract: live coordination artifact maintained by $work
+
+artifact: status
+feature: "season-grid-touchups"
+mode: "large-initiative"
+stage: "discovery"
+owner_skill: work
+
+objective: >
+  Act on 12 items of user feedback gathered from using the merged Season Grid
+  feature live. Structured as three sequential PRs per the user's explicit
+  choice: (1) INFRA -- make Cloudflare PR preview builds pull real R2
+  artifacts so visual verification is possible before merge; (2) BACKEND
+  (cfb-rankings) -- artifact/data correctness: the phantom empty week column,
+  the missing week, mid-season conference-championship matchup prediction,
+  and the get_cfb_week Monday boundary (changed globally); (3) FRONTEND
+  (personal-site) -- control layout, per-tab season dropdowns, a much denser
+  table, cell format, neutral-site handling, and label renames.
+
+branching:
+  branch_name: "work/season-grid-touchups"
+  note: >
+    TWO repos, same branch name in each (wmentrekin/cfb-rankings and
+    wmentrekin/personal-site), each with its own checkout and PR -- the same
+    structure the previous schedule-grid pass used. Both branches were created
+    immediately after mode classification, BEFORE this file was first written,
+    per branch-and-pr-workflow.md. Deviation from the workflow's default
+    "one integration PR per feature": the user explicitly chose a three-PR
+    sequence (infra -> backend -> frontend) so each step can be visually
+    verified before the next builds on it. Recorded as a deliberate,
+    user-directed deviation rather than an oversight.
+
+summary:
+  current_focus: "Discovery: two open questions must be answered before planning -- (a) whether Cloudflare preview builds can be given R2 access in-repo or only via the dashboard, and (b) the actual root cause of the phantom empty week column and missing week."
+  last_completed: "Pre-work: shipped and merged cfb-rankings PR #8, pinning the delayed 2026 Week 1 cron run to --week 1 so it publishes week-01.json rather than mislabeling Week 1's slate as Week 2. Cron fires 2026-09-08 07:00 UTC."
+  current_blocker: "none"
+
+artifacts:
+  requirements: "docs/season-grid-touchups/requirements.yaml"
+  plan: null
+  implementation_report: null
+
+pr:
+  number: null
+  url: null
+  status: "not_opened"
+
+pr_personal_site:
+  number: null
+  url: null
+  status: "not_opened"
+
+process_commitments:
+  - >
+    EVERY PR in this pass gets an independent reviewer pass before being
+    handed to the user, and the tester agent runs where there is anything
+    executable to test. The previous schedule-grid pass ran four review
+    cycles on the PLAN document and zero on the CODE, leaving
+    review_summary/test_summary at "not_started" through both PRs merging --
+    that imbalance is the most direct explanation for the bugs the user hit
+    live. review_summary and test_summary in implementation-report.yaml must
+    be genuinely filled in, not left at not_started.
+  - >
+    Reviewer and tester findings post as real PR review comments, not only
+    to chat, per branch-and-pr-workflow.md's "Verification on the PR".
+  - >
+    Never commit to main in either repo. The previous pass pushed follow-up
+    fixes and doc updates directly to cfb-rankings main, which the workflow
+    explicitly prohibits.
+  - >
+    Commits are authored as the user (wmentrekin <wmentrekin@gmail.com>,
+    configured 2026-09-08 at their request), retaining the Co-Authored-By
+    Claude trailer for transparency.
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    model_guidance: "xhigh"
+    status: "active"
+    stage: "discovery"
+    task: "coordinating the touch-up pass; branches created, discovery starting"
+    last_update: "2026-09-08"
+    blocker: ""
+  - id: "repo-researcher-cloudflare-preview"
+    role: "repo-researcher"
+    model_guidance: "medium"
+    status: "pending"
+    stage: "discovery"
+    task: "Determine whether personal-site's Cloudflare Pages preview builds can be given R2 read access in-repo, or whether it requires dashboard-only configuration the user must do"
+    last_update: "2026-09-08"
+    blocker: ""
+  - id: "repo-researcher-week-columns"
+    role: "repo-researcher"
+    model_guidance: "high"
+    status: "pending"
+    stage: "discovery"
+    task: "Root-cause the phantom empty week column and the missing week in the published schedule artifact, against real data"
+    last_update: "2026-09-08"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: pending
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+
+decisions:
+  - question: "Team column content, given the user asked for 'only team names' but also said they like the logos"
+    answer: "Keep logo + name + record, compressed typography/spacing. User chose this over dropping the record or going name-only."
+  - question: "How far should the get_cfb_week Monday-boundary fix reach, given it also drives the rankings pipeline?"
+    answer: "Change it globally, so rankings and Season Grid agree. De-risked by a finding during discussion: the rating model reads CFBD's own games.week column (WHERE week <= N), NOT the date-derived week -- so this changes the auto-computed week and Season Grid column bucketing, but not which games enter the model."
+  - question: "What should the conference championship column header say?"
+    answer: "'Week 14 (CCG)' -- numeric sequence with a short semantic hint."
+  - question: "How should the work be split into PRs?"
+    answer: "Three sequential PRs: infra -> backend -> frontend. User chose this explicitly so each step is verifiable before the next, directly addressing the verification gap that caused the previous pass's bugs."
+  - question: "How to handle the delayed 2026 Week 1 run labeling Week 1's slate as Week 2?"
+    answer: "Shipped as standalone cfb-rankings PR #8 (merged): a date-conditional pinning that one run to --week 1, plus a workflow_dispatch week input as a general escape hatch. The general 'last completed week' fix is queued for the backend PR."
+  - question: "Retroactive review of the already-merged Season Grid code?"
+    answer: "User declined -- no retroactive pass. Review applies to future PRs only."
+
+next_action: "Run discovery: spawn the Cloudflare-preview and week-column researchers, then write requirements.yaml and plan.yaml, then stop at the pre-execution checkpoint."
+next_recommended_command: "$work"
+user_input_needed: false

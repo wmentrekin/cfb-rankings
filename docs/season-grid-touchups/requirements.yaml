@@ -1,0 +1,117 @@
+# Contract: durable task-definition handoff created by $work when the selected mode needs explicit requirements
+
+artifact: requirements
+feature: "season-grid-touchups"
+mode: "large-initiative"
+status: draft
+owner_skill: work
+
+summary:
+  problem: >
+    The Season Grid feature shipped and is live, but using it against real data
+    surfaced 12 issues spanning three distinct layers: page controls that shift
+    position, a season dropdown offering a season with no data, a table too
+    sparse to serve its actual purpose (replacing a spreadsheet), several
+    artifact-generation errors (a phantom empty week column, a missing week,
+    predicted conference-championship matchups that aren't determined yet, an
+    off-by-one week boundary), and an inability to visually verify any of it on
+    a PR preview before merging.
+  motivation: >
+    The feature's whole point is to replace a manually-maintained spreadsheet
+    the user actually reads. Density and correctness are not polish here -- at
+    ~9-10 visible rows and with wrong week columns, it does not yet do the job
+    the spreadsheet does. The preview-build gap is what allowed most of the
+    other issues to reach production unseen.
+  requested_outcome: >
+    Three sequential PRs -- infra, then backend correctness, then frontend
+    density/labels -- each independently reviewed before handoff, so the user
+    can visually verify each step before the next builds on it.
+
+goals:
+  - "Make Cloudflare PR preview builds render real artifact data, so visual verification happens before merge rather than after"
+  - "Fix the artifact's week columns: no phantom empty column, no missing week, correct week boundary"
+  - "Stop asserting conference-championship matchups that have not been determined"
+  - "Make the grid dense enough to read a full conference vertically (>18 rows) and 6-8 weeks horizontally on a laptop, and materially better on mobile"
+  - "Correct cell semantics: neutral-site games read 'vs' for both teams; cells lead with the @/vs prefix then the opponent logo"
+  - "Rename statuses and columns to the user's vocabulary"
+  - "Every PR gets an independent code review before handoff -- the process gap that let the previous pass's bugs ship"
+
+non_goals:
+  - "Backfilling the 2025 season grid artifact -- user explicitly deferred this to a later PR"
+  - "Visual treatment of the CFP columns (quarterfinals/semifinals/national championship) -- user explicitly deferred until the 2025 backfill exists to design against"
+  - "Retroactive code review of the already-merged Season Grid code -- user explicitly declined"
+  - "Rewriting the ~20 existing commits authored as Claude rather than the user -- they are in merged history; not worth a force-push"
+
+constraints:
+  technical:
+    - "get_cfb_week() is shared: it drives both the pipeline's auto-computed week and the Season Grid's column bucketing. Changing it globally is the user's explicit decision, de-risked by the finding that the rating model reads CFBD's own games.week column (WHERE week <= N), not the date-derived week -- so model inputs are unaffected."
+    - "Backend changes are invisible until weekly-update.yml runs again (scheduled, or manual workflow_dispatch). Frontend review of week-column changes depends on a pipeline run landing first."
+    - "This sandbox has no CFBD/DB/R2 credentials. Real-data validation happens via Supabase MCP queries feeding the pure assembly functions; the R2 publish step itself cannot be exercised here."
+    - "A pre-existing dev-mode-only bug makes `astro dev` unable to read public/data/cfb (import.meta.url-relative paths resolve one level too shallow); validate via `astro build && astro preview` instead. Queued separately as task_3988dbda."
+  product:
+    - "Conference championship column, current season, has exactly four presentations: 'Still in the Hunt', 'Clinched', 'Eliminated', or -- once the real matchup is determined -- a normal game cell for the two participants and blank for everyone else."
+    - "Independents (Notre Dame, UConn) get a blank conference-championship cell, treated like a regular-season bye."
+    - "Bowls column statuses: 'Not Yet Eligible', 'Eligible', 'Ineligible'."
+    - "Column renames: Conference Championship -> 'Week 14 (CCG)'; Army-Navy Game Week -> 'Week 15'; 'CFP 1st Round + Other Bowls' -> 'Bowls'."
+    - "Team column keeps logo + name + record, compressed -- not reduced to name only."
+    - "Each tab's season dropdown offers only seasons that tab actually has data for, and defaults to that tab's most recent."
+  process:
+    - "Never commit to main in either repo -- all changes via feature branch and PR."
+    - "Every PR gets an independent reviewer pass before handoff; tester runs where anything is executable. review_summary/test_summary must be genuinely filled in."
+    - "Reviewer/tester findings post as real PR review comments, not only chat."
+    - "Commits authored as wmentrekin <wmentrekin@gmail.com>, retaining the Co-Authored-By Claude trailer."
+
+assumptions:
+  - "Dropping the 'possible vs {conditional_opponent}' rendering: the user's four specified states don't include it, and it was only ever a projection. Stated as an assumption, not asked."
+  - "Real conference-championship games still render for conferences NOT in the qualifying top-2-format list (e.g. Sun Belt) once the matchup is genuinely determined -- only the COMPUTED statuses stay limited to confirmed-format conferences. Otherwise Sun Belt teams would show blank even after their title game is played."
+  - "Density targets are for a typical laptop viewport (~1440x900); mobile gets the same compression and is improved but not held to the same row/column counts."
+
+repo_context:
+  relevant_paths:
+    - "[cfb-rankings] artifacts/schedule.py -- canonical column derivation, slot classification, conference-championship identification, cell assembly"
+    - "[cfb-rankings] artifacts/schedule_standings.py -- computed championship/bowl statuses"
+    - "[cfb-rankings] utils.py -- get_cfb_week(), the shared week-bucketing function"
+    - "[cfb-rankings] main.py -- pipeline entry; derives its week from today's date"
+    - "[cfb-rankings] .github/workflows/weekly-update.yml -- the scheduled run; already carries PR #8's --week override"
+    - "[personal-site] src/components/ScheduleGrid.astro -- the grid component"
+    - "[personal-site] src/pages/projects/cfb-rankings/index.astro -- tab toggle, selectors, client-side re-render mirror"
+    - "[personal-site] src/layouts/BaseLayout.astro -- design tokens"
+    - "[personal-site] scripts/fetch-rankings-data.mjs -- build-time R2 fetch"
+  systems_in_scope:
+    - "Cloudflare Pages preview deployments (personal-site)"
+    - "Cloudflare R2 (schedule + rankings artifacts)"
+    - "Supabase (schedule_grid view, games table)"
+    - "GitHub Actions (weekly-update.yml)"
+  prior_artifacts:
+    - "docs/schedule-grid/ in cfb-rankings main -- the previous pass's requirements/plan/implementation-report, still present (the workflow expects these deleted pre-merge; that step was missed last time and is noted, not retroactively fixed)"
+    - "Design mockup: https://claude.ai/code/artifact/6704edcb-4ca4-419d-9d5b-695badc3175f"
+
+research:
+  repo_findings:
+    - "PENDING: repo-researcher-cloudflare-preview -- whether preview builds can be given R2 access in-repo or only via the Cloudflare dashboard"
+    - "PENDING: repo-researcher-week-columns -- root cause of the phantom empty week and the missing week"
+    - "CONFIRMED (during discussion, verified live): CFBD's week 1 for 2026 spans 2026-08-29 16:00 to 2026-09-07 23:30 (99 games) -- Week 0's Saturday through Monday night. Week 2 begins 2026-09-11. This is why --week 1 was the correct pin for the delayed Tuesday run."
+    - "CONFIRMED: the rating model queries rankings_games WHERE season = N AND week <= W using CFBD's own week column, so get_cfb_week() changes do not alter model inputs."
+  platform_findings: []
+
+acceptance_criteria:
+  - "A PR preview deployment on personal-site renders the real Rankings table and Season Grid with real data -- or, if that proves dashboard-only, the user has precise instructions for the one-time setup"
+  - "The 2026 Season Grid shows no empty week column and no gap in the week sequence"
+  - "For an in-progress season, no conference-championship matchup is asserted: every team in a confirmed-format conference reads 'Still in the Hunt', 'Clinched', or 'Eliminated', and Independents read blank"
+  - "Once a real championship matchup exists, the two participants show a normal game cell and everyone else is blank"
+  - "A Monday game (e.g. FSU vs SMU, 2026-09-07) appears in the same week column as the Thursday-Saturday games that precede it"
+  - "The grid shows at least 18 team rows and 6-8 week columns simultaneously on a ~1440x900 viewport"
+  - "A played cell reads like '@ {opponent logo} W 45-6' -- prefix, logo, result, score -- with no opponent name text; teams with no logo fall back to a name that still fits the column"
+  - "A neutral-site game reads 'vs' for BOTH participants"
+  - "Each tab's season dropdown lists only seasons that tab has data for and defaults to the most recent"
+  - "The tab toggle and both selectors hold fixed positions when switching tabs"
+  - "Every PR in this pass carries a completed independent review, with findings posted to the PR"
+
+open_questions:
+  - "Does the Cloudflare preview fix live in the repo or the dashboard? (discovery in flight)"
+  - "Exact mechanism of the phantom empty week and missing week -- hypothesis is that build_canonical_columns() derives columns from rows that _classify_row_slot() later diverts into the Conference Championship / Army-Navy slots, leaving an empty column behind. (discovery in flight)"
+  - "Whether the 'last completed week' pipeline fix belongs in this pass's backend PR or a later one -- depends on how invasive it proves; PR #8's date-pin already covers the immediate need."
+
+ready_for_planning: false
+planning_blockers:
+  - "Both discovery researchers must report before the plan can assign concrete tasks -- the Cloudflare answer determines whether PR 1 exists as a PR at all, and the week-column root cause determines the shape of the backend fix."
