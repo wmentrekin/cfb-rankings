@@ -74,10 +74,19 @@ CONFERENCE_ORDER: List[str] = [
 ARMY_TEAM = "Army"
 NAVY_TEAM = "Navy"
 
-CONF_CHAMPIONSHIP_SLOT: Tuple[str, str] = ("conf-championship", "Conference Championship")
-ARMY_NAVY_SLOT: Tuple[str, str] = ("army-navy", "Army-Navy Game Week")
+# slot_id is the stable contract the frontend keys off; the LABEL is what the user
+# reads. The championship/Army-Navy labels are derived per season in
+# build_canonical_columns() rather than hardcoded, because the week number they fall
+# on is not constant: get_cfb_week()'s anchor (the Tuesday on/before Aug 24) lands on
+# a different date each year, so the conference-championship weekend is week 15 in
+# 2024 and 2025 but week 14 in 2026. The labels in these two constants are fallbacks
+# used only when a season has no regular-season rows at all to derive a number from.
+CONF_CHAMPIONSHIP_SLOT_ID = "conf-championship"
+ARMY_NAVY_SLOT_ID = "army-navy"
+CONF_CHAMPIONSHIP_SLOT: Tuple[str, str] = (CONF_CHAMPIONSHIP_SLOT_ID, "Conference Championship")
+ARMY_NAVY_SLOT: Tuple[str, str] = (ARMY_NAVY_SLOT_ID, "Army-Navy Game Week")
 CFP_SLOTS: List[Tuple[str, str]] = [
-    ("cfp-r1-bowls", "CFP 1st Round + Other Bowls"),
+    ("cfp-r1-bowls", "Bowls"),
     ("cfp-quarterfinals", "CFP Quarterfinals"),
     ("cfp-semifinals", "CFP Semifinals"),
     ("cfp-national-championship", "CFP National Championship"),
@@ -223,18 +232,38 @@ def identify_conference_championship_games(
 
     result: Dict[str, int] = {}
     for conf, crows in candidates.items():
-        best = max(crows, key=lambda r: (_to_datetime(r["start_date"]), r.get("team") or ""))
-        max_dt = _to_datetime(best["start_date"])
-        tied_game_ids = {r["game_id"] for r in crows if _to_datetime(r["start_date"]) == max_dt}
-        if len(tied_game_ids) > 1:
-            logger.warning(
-                "schedule.py: conference %r season=%s has multiple distinct games tied for the "
-                "latest conference_game=true start_date (game_ids=%s) -- picking game_id=%s "
-                "deterministically (max start_date, then team name ascending). Verify this is "
-                "actually the championship game.",
-                conf, season, tied_game_ids, best["game_id"],
+        # POSITIVE SIGNAL, not "latest game". A conference championship game is
+        # structurally distinctive: it is the LONE conference game sitting in a week
+        # bucket by itself, strictly later than the bucket holding that conference's
+        # regular slate. Requiring that separation is what makes an in-progress season
+        # identify nothing instead of guessing.
+        #
+        # The previous rule -- max(start_date), tie-broken alphabetically -- had no
+        # notion of whether a championship game existed at all. With none scheduled
+        # yet it fell back to rivalry week, where (2026 ACC) six games share an
+        # identical start_date, and the tie-break produced a confidently-wrong
+        # "Wake Forest vs Duke" championship matchup in the published artifact.
+        by_bucket: Dict[int, set] = defaultdict(set)
+        for r in crows:
+            by_bucket[_get_week_slot(r)].add(r["game_id"])
+
+        if len(by_bucket) < 2:
+            # Every conference game in one bucket -> nothing is separated from the
+            # slate, so there is no championship game to identify.
+            continue
+
+        latest_bucket = max(by_bucket)
+        latest_game_ids = by_bucket[latest_bucket]
+        if len(latest_game_ids) != 1:
+            logger.info(
+                "schedule.py: conference %r season=%s has %d distinct conference games sharing "
+                "its latest week bucket (week %s, game_ids=%s) -- that is a regular slate, not a "
+                "championship game, so none is identified for this conference.",
+                conf, season, len(latest_game_ids), latest_bucket, sorted(latest_game_ids),
             )
-        result[conf] = best["game_id"]
+            continue
+
+        result[conf] = next(iter(latest_game_ids))
     return result
 
 
@@ -412,14 +441,33 @@ def _build_team_slot_rows(
 # ---------------------------------------------------------------------------
 # Canonical column list
 # ---------------------------------------------------------------------------
-def build_canonical_columns(rows: List[Dict[str, Any]], season: int) -> List[Tuple[str, str]]:
+def build_canonical_columns(
+    rows: List[Dict[str, Any]],
+    season: int,
+    champ_game_ids: Optional[set] = None,
+    army_navy_game_id: Optional[int] = None,
+) -> List[Tuple[str, str]]:
     """
     Every DISTINCT regular-season display-week-slot present in this season's
     data (derived, not hardcoded), then Conference Championship, then
     Army-Navy Game Week, then the four fixed CFP slots. Every team gets this
     SAME list.
+
+    Rows that _classify_row_slot() DIVERTS into a dedicated slot -- the Army-Navy
+    game, and any identified conference-championship game -- must not also mint a
+    week-N column. Otherwise a bucket whose only occupant is diverted leaves behind
+    a column no team can ever fill: the empty "Week 15" seen in the 2026 artifact,
+    where the Army-Navy game is the only game in bucket 15.
+
+    champ_game_ids/army_navy_game_id default to "nothing is diverted" so the
+    function stays callable standalone, but build_schedule_payload always passes
+    the real values -- identification must run BEFORE column derivation.
     """
+    champ_game_ids = champ_game_ids or set()
+
     weeks = set()
+    champ_buckets = set()
+    army_navy_bucket: Optional[int] = None
     for row in rows:
         if row.get("season") != season:
             continue
@@ -427,9 +475,51 @@ def build_canonical_columns(rows: List[Dict[str, Any]], season: int) -> List[Tup
             continue
         if row.get("start_date") is None:
             continue
-        weeks.add(_get_week_slot(row))
+        bucket = _get_week_slot(row)
+        game_id = row.get("game_id")
+        if army_navy_game_id is not None and game_id == army_navy_game_id:
+            army_navy_bucket = bucket
+            continue
+        if game_id in champ_game_ids:
+            champ_buckets.add(bucket)
+            continue
+        weeks.add(bucket)
+
     week_columns = [(f"week-{n}", f"Week {n}") for n in sorted(weeks)]
-    return week_columns + [CONF_CHAMPIONSHIP_SLOT, ARMY_NAVY_SLOT] + CFP_SLOTS
+
+    # Derived postseason labels -- see the CONF_CHAMPIONSHIP_SLOT_ID comment above for
+    # why these are not constants. When no championship game is identified (an
+    # in-progress season), fall forward from the last regular week instead.
+    if champ_buckets:
+        ccg_week = max(champ_buckets)
+    elif weeks:
+        ccg_week = max(weeks) + 1
+    else:
+        ccg_week = None
+
+    if army_navy_bucket is not None:
+        army_navy_week = army_navy_bucket
+    elif ccg_week is not None:
+        army_navy_week = ccg_week + 1
+    else:
+        army_navy_week = None
+
+    def _postseason_label(week_n: Optional[int], suffix: str, fallback: str, always_suffix: bool) -> str:
+        if week_n is None:
+            return fallback
+        # Suffix when asked for it, and always when a real week column already carries
+        # this number -- two columns reading "Week 15" would be worse than a long label.
+        if always_suffix or week_n in weeks:
+            return f"Week {week_n} ({suffix})"
+        return f"Week {week_n}"
+
+    ccg_label = _postseason_label(ccg_week, "CCG", CONF_CHAMPIONSHIP_SLOT[1], always_suffix=True)
+    army_navy_label = _postseason_label(army_navy_week, "Army-Navy", ARMY_NAVY_SLOT[1], always_suffix=False)
+
+    return week_columns + [
+        (CONF_CHAMPIONSHIP_SLOT_ID, ccg_label),
+        (ARMY_NAVY_SLOT_ID, army_navy_label),
+    ] + CFP_SLOTS
 
 
 # ---------------------------------------------------------------------------
@@ -605,7 +695,7 @@ def build_schedule_payload(rows: List[Dict[str, Any]], teams_meta: Dict[str, Dic
 
     champ_game_ids = set(identify_conference_championship_games(rows, season).values())
     army_navy_game_id = identify_army_navy_game(rows, season)
-    canonical_columns = build_canonical_columns(rows, season)
+    canonical_columns = build_canonical_columns(rows, season, champ_game_ids, army_navy_game_id)
     week_slot_ids_sorted = [slot_id for slot_id, _label in canonical_columns if slot_id.startswith("week-")]
     team_slot_rows = _build_team_slot_rows(rows, fbs_team_names, champ_game_ids, army_navy_game_id, week_slot_ids_sorted)
     logos_by_team = {team: meta.get("logos") for team, meta in teams_meta.items()}

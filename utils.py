@@ -21,8 +21,17 @@ def get_cfb_week(today: date, season_start_override: date) -> int:
 
     if season_start_override is None:
         year = today.year
-        aug25 = date(year, 8, 24) # default: first sunday after week 0
-        season_start = aug25 - timedelta(days=aug25.weekday())
+        # Weeks run Tuesday -> Monday, not Monday -> Sunday. College football weeks
+        # straddle the calendar week: Week 0 is a lone Saturday, Week 1 has run
+        # Thursday through Monday (2026: Sep 3 - Sep 7), and later weeks run
+        # Tuesday/Thursday through Saturday. Anchoring on Monday put a Monday-night
+        # game in the FOLLOWING week, split from the weekend it belongs to.
+        # Anchor on the Monday on/before Aug 24, then step forward one day to the
+        # Tuesday. The +1 day is the whole fix: it moves Mondays back into the week
+        # of the weekend that precedes them and leaves every other weekday alone.
+        anchor_monday = date(year, 8, 24)
+        anchor_monday -= timedelta(days=anchor_monday.weekday())
+        season_start = anchor_monday + timedelta(days=1)
     else:
         season_start = season_start_override
 

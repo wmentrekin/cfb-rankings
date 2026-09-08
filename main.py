@@ -31,6 +31,85 @@ def teams_exist_for_year(year):
     engine.dispose()
     return int(count_df['n'].iloc[0]) > 0
 
+def resolve_week_from_starts(candidate: int, start_dates, now: datetime, season_start_override=None) -> int:
+    """The pure decision behind resolve_target_week(), split out so it is testable without a DB.
+
+    Walks back from `candidate` while that week still contains a game that has not
+    kicked off. Never walks below week 1 -- main() has its own week-0 guard, and a
+    season whose every week looks incomplete should surface there, not silently here.
+    """
+    unstarted_by_week = {}
+    for start in start_dates:
+        if start <= now:
+            continue
+        bucket = get_cfb_week(today=start.date(), season_start_override=season_start_override)
+        unstarted_by_week[bucket] = unstarted_by_week.get(bucket, 0) + 1
+
+    week = candidate
+    while week > 1 and unstarted_by_week.get(week, 0) > 0:
+        print(
+            f"resolve_target_week: week {week} still has {unstarted_by_week[week]} game(s) that "
+            f"have not started; stepping back to week {week - 1}."
+        )
+        week -= 1
+    return week
+
+
+def resolve_target_week(year: int, today: date, season_start_override=None) -> int:
+    """The most recent week whose games have all kicked off -- not the week containing today.
+
+    get_cfb_week(today) answers "which week is it now", which is only the same
+    question as "which week should we publish" because the cron happens to fire on
+    a Sunday. Any run that slips past a week boundary mislabels the rankings: the
+    delayed 2026 Week 1 run (Tue Sep 8, after a Mon Sep 7 game) computed week 2 and
+    would have published Week 1's slate as Week 2, which is why that one run was
+    hand-pinned with --week 1.
+
+    So: start from the date-derived week and walk backwards while the candidate week
+    still contains a game that has not started. Bucketing reuses get_cfb_week on each
+    game's start_date, so the pipeline's notion of a week and the Season Grid's are the
+    same by construction.
+
+    COMPLETION TEST: "has kicked off" (start_date <= now), deliberately NOT
+    "kicked off at least N hours ago". A completion buffer reads as safer but breaks
+    the normal Sunday run: the cron fires 07:00 UTC and 2026's latest regular-season
+    kickoff is 04:00 UTC (week 11), so even a 3-hour buffer would mark a finished week
+    incomplete and walk it back one -- a regression on every ordinary week to guard a
+    case the 07:00 cron already clears by ~4 hours. The loose direction preserves
+    today's proven behavior; the strict direction would change it.
+
+    Falls back to the date-derived week when the season has no games loaded yet, or if
+    the lookup fails for any reason -- this must never be the thing that breaks a run.
+    """
+    candidate = get_cfb_week(today=today, season_start_override=season_start_override)
+    if candidate < 1:
+        return candidate
+
+    try:
+        load_dotenv()
+        db_url = (
+            f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+            f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+            "?sslmode=require"
+        )
+        engine = create_engine(db_url)
+        games_df = pd.read_sql_query(
+            f"SELECT start_date FROM games WHERE season = {int(year)} AND season_type = 'regular';",
+            engine,
+        )
+        engine.dispose()
+    except Exception as exc:  # noqa: BLE001 -- never let week selection break the run
+        print(f"resolve_target_week: DB lookup failed ({exc}); falling back to date-derived week={candidate}.")
+        return candidate
+
+    if games_df.empty:
+        print(f"resolve_target_week: no {year} games loaded yet; using date-derived week={candidate}.")
+        return candidate
+
+    start_dates = [pd.Timestamp(raw).to_pydatetime() for raw in games_df["start_date"]]
+    return resolve_week_from_starts(candidate, start_dates, datetime.now(), season_start_override)
+
+
 def main():
     """
     Main function to run the model and handle data loading and saving.
@@ -70,8 +149,8 @@ def main():
             season_start_override = None
     if args.week is None:
         today = datetime.now().date()
-        args.week = get_cfb_week(today=today,season_start_override=season_start_override)
-        print(f"No --week provided: computed week={args.week} based on date.")
+        args.week = resolve_target_week(args.year, today, season_start_override)
+        print(f"No --week provided: computed week={args.week} (last week whose games have all started).")
 
     # SETUP LOGGING
     logger = setup_logging(args.year, args.week)
