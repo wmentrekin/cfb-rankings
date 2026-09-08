@@ -13,6 +13,8 @@ Use this checklist during planning and verification inside `$work`.
 - [ ] Validation expectations exist per task
 - [ ] Risks and open questions are handled
 - [ ] Plan is ready for the execution checkpoint
+- [ ] Every delegated task has a task profile, risk factors, model tier, reasoning level, and
+  evidenced escalation condition
 
 ## Code Review
 
@@ -24,3 +26,4 @@ Use this checklist during planning and verification inside `$work`.
 - [ ] Local validation was adequate
 - [ ] Engineering standards followed (see `engineering-standards.md`)
 - [ ] Findings are concrete and actionable
+- [ ] Actual model use and any escalation are recorded without claiming unsupported enforcement

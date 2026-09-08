@@ -8,6 +8,9 @@ The user invokes `$work`.
 
 `$work` is the outward-facing orchestrator. It stays in the main chat, spawns bounded agents, keeps the user updated, and maintains the live status board.
 
+Before entering an internal stage, it completes the multi-repository synchronization preflight in
+`.agents/references/repository-sync.md`.
+
 ## Internal Stages
 
 `$work` uses four internal stages:
@@ -23,6 +26,9 @@ The feature branch is created immediately after mode classification, before Disc
 work begins — this precedes all four internal stages, for every mode, so no
 `docs/<feature>/*.yaml` artifact is ever first written on the base/main branch. See
 `.agents/references/branch-and-pr-workflow.md`.
+
+All agent tasks are routed by task instance through `.agents/references/model-routing.md`; agent
+role alone does not determine model cost or reasoning effort.
 
 ## Modes
 

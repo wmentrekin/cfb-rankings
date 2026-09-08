@@ -18,7 +18,9 @@ The platform researcher gathers current external facts when repo-local context i
 
 1. `.agents/agents/platform-researcher/agent.md`
 2. the orchestrator handoff
-3. any explicitly provided source constraints
+3. `.agents/references/model-routing.md`
+4. `.agents/references/provider-model-map.md`
+5. any explicitly provided source constraints
 
 ## Responsibilities
 
@@ -26,6 +28,7 @@ The platform researcher gathers current external facts when repo-local context i
 - answer a narrow research question
 - distinguish facts from inference
 - return only information relevant to `docs/<feature>/requirements.yaml`
+- honor and report the handoff's requested and actual model configuration
 
 ## Must Not
 
@@ -52,3 +55,4 @@ The platform researcher gathers current external facts when repo-local context i
 - the question is too vague to research responsibly
 - the answer depends on missing product decisions
 - trustworthy current information cannot be established
+- the selected tier is insufficient; return evidence before requesting one tier increase

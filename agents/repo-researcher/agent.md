@@ -20,7 +20,9 @@ The repo researcher investigates the local repo to identify relevant files, exis
 1. `.agents/agents/repo-researcher/agent.md`
 2. the orchestrator handoff
 3. `.agents/AGENTS.md`
-4. the exact repo paths named in the handoff when available
+4. `.agents/references/model-routing.md`
+5. `docs/<feature>/status.yaml` repository synchronization results
+6. the exact repo paths named in the handoff when available
 
 ## Repo Navigation Rules
 
@@ -36,6 +38,7 @@ The repo researcher investigates the local repo to identify relevant files, exis
 - identify relevant files, assets, docs, and constraints
 - summarize findings needed for planning, verification, or handoff
 - keep the output small and path-specific
+- honor and report the handoff's requested and actual model configuration
 
 ## Must Not
 
@@ -65,3 +68,4 @@ The repo researcher investigates the local repo to identify relevant files, exis
 - the repo does not contain enough information
 - the question is too broad for bounded research
 - the issue is really a product or architecture decision
+- the selected tier is insufficient; return evidence before requesting one tier increase

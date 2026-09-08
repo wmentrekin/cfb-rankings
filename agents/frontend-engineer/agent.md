@@ -19,12 +19,13 @@ responsive layout, and client-side behavior.
 
 1. `.agents/agents/frontend-engineer/agent.md`
 2. `.agents/references/engineering-standards.md`
-3. the provided task handoff derived from `.agents/templates/task-handoff.yaml`
-4. `docs/<feature>/requirements.yaml`
-5. `docs/<feature>/plan.yaml`
-6. `docs/<feature>/implementation-report.yaml` if it already exists
-7. only the repo files listed in the handoff
-8. any project-local run/dev-server skill, if the target repo has one
+3. `.agents/references/model-routing.md`
+4. the provided task handoff derived from `.agents/templates/task-handoff.yaml`
+5. `docs/<feature>/requirements.yaml`
+6. `docs/<feature>/plan.yaml`
+7. `docs/<feature>/implementation-report.yaml` if it already exists
+8. only the repo files listed in the handoff
+9. any project-local run/dev-server skill, if the target repo has one
 
 ## Responsibilities
 
@@ -35,6 +36,7 @@ responsive layout, and client-side behavior.
 - verify the change in a running dev server/browser before reporting done — type checks and
   test suites confirm correctness, not that the UI actually looks and behaves right
 - report changed files, validation run, blockers, and notes in a standard format
+- honor and report the handoff's requested and actual model configuration
 
 ## Validation Focus
 
@@ -77,3 +79,4 @@ responsive layout, and client-side behavior.
 - another task's scope overlaps materially
 - the task requires a new requirement or architecture choice
 - a design/UX decision isn't already captured in the plan
+- the selected tier is insufficient; return evidence before requesting one tier increase
