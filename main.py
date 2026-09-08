@@ -33,39 +33,72 @@ def teams_exist_for_year(year):
     engine.dispose()
     return int(count_df['n'].iloc[0]) > 0
 
-def non_fbs_logos_exist_for_year(year):
+def non_fbs_logo_coverage_is_complete(year):
     """
-    Check whether non_fbs_teams already holds usable logo data for the given season.
+    Check whether every non-FBS opponent on this season's FBS schedules already has a
+    usable logo stored, so the ingest can be skipped.
 
-    "Usable" means at least one row with a non-empty logos array, not merely at least one
-    row. A season whose ingest ran before CFBD had logos for it would otherwise be locked
-    into the empty state by a rows-exist check, with no way back short of a manual delete;
-    this way the next run retries it and a season already carrying logos is skipped.
+    Coverage, deliberately, not "has the table got rows". A count-based gate ("at least one
+    row with logos") is satisfied for the whole season by a SINGLE row, so an FCS opponent
+    added to a schedule after the first ingest -- a late-season non-conference booking, or a
+    school CFBD renames -- would never be fetched, and its cell would render as a text name
+    for the rest of the season with no automated run able to repair it. This asks the
+    question the feature actually cares about instead: is any opponent we will need a logo
+    for missing one?
+
+    "Usable" is a non-empty logos array. 41 of 2026's 545 non-FBS rows have none (mostly DII
+    and DIII teams CFBD has no logo data for), which is why this is scoped to the opponents
+    that appear on an FBS schedule rather than to the table as a whole -- otherwise those 41
+    would force a pointless re-ingest every single week, which is the redundancy this gate
+    exists to remove.
+
+    Timing note: main() calls this BEFORE the week's games are ingested, so schedule_grid
+    still reflects the previous run. A newly-scheduled opponent is therefore picked up on the
+    NEXT run rather than the one that first ingests its game -- one week of text fallback,
+    then self-healing, versus never.
     Args:
         year (int): Season year to check.
     Returns:
-        bool: True if at least one non_fbs_teams row for that season has a non-empty logos
-              array. False on any failure -- the caller then re-ingests, which is the safe
-              direction for a check whose only purpose is skipping redundant work.
+        bool: True only if the season has non_fbs_teams rows AND every non-FBS opponent in
+              schedule_grid for that season has a non-empty logos array. False on any
+              failure -- the caller then re-ingests, which is the safe direction for a check
+              whose only purpose is skipping redundant work.
     """
-    load_dotenv()
-    db_url = (
-        f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
-        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
-        "?sslmode=require"
-    )
-    engine = create_engine(db_url)
+    engine = None
     try:
-        count_df = pd.read_sql_query(
-            "SELECT COUNT(*) AS n FROM non_fbs_teams "
-            f"WHERE season = {int(year)} AND logos IS NOT NULL AND array_length(logos, 1) > 0;",
+        load_dotenv()
+        db_url = (
+            f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+            f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+            "?sslmode=require"
+        )
+        # Built inside the try, not before it: a missing DB_PORT makes create_engine itself
+        # raise, and this function's whole contract is "False on any failure, then re-ingest".
+        # Raising here instead would be caught by main()'s handler and SKIP the ingest --
+        # exactly the opposite of the safe direction.
+        engine = create_engine(db_url)
+        counts = pd.read_sql_query(
+            "SELECT "
+            f"  (SELECT COUNT(*) FROM non_fbs_teams WHERE season = {int(year)}) AS rows_present, "
+            "  (SELECT COUNT(*) FROM ("
+            "     SELECT DISTINCT sg.opponent AS school FROM schedule_grid sg "
+            "     LEFT JOIN teams t ON t.school = sg.opponent AND t.season = sg.season "
+            f"    WHERE sg.season = {int(year)} AND sg.opponent IS NOT NULL AND t.school IS NULL"
+            "   ) o "
+            "   LEFT JOIN non_fbs_teams n "
+            f"    ON n.school = o.school AND n.season = {int(year)} "
+            "     AND n.logos IS NOT NULL AND array_length(n.logos, 1) > 0 "
+            "   WHERE n.school IS NULL) AS uncovered;",
             engine,
         )
-        return int(count_df['n'].iloc[0]) > 0
+        rows_present = int(counts['rows_present'].iloc[0])
+        uncovered = int(counts['uncovered'].iloc[0])
+        return rows_present > 0 and uncovered == 0
     except Exception:
         return False
     finally:
-        engine.dispose()
+        if engine is not None:
+            engine.dispose()
 
 # A run delayed past more than this many week boundaries is an operational anomaly, not
 # something to silently resolve: walking back arbitrarily far lets a single stale
@@ -262,19 +295,19 @@ def main():
     # model's team list or the games/schedule-grid ingestion, so a failure
     # here must never block the pipeline.
     #
-    # Gated behind an existence check, like the FBS teams block above. This is
-    # reference data, not weekly data: a team's logo does not change between
-    # weeks, so re-fetching all ~545 non-FBS teams and re-upserting every row
-    # on every single weekly run bought nothing. The check looks for rows that
-    # actually carry logos rather than merely existing, so a season ingested
-    # while CFBD had no logo data for it is retried rather than locked in.
-    # To force a refresh (a corrected logo upstream, say), delete the season's
-    # rows and let the next run repopulate them.
+    # Gated, like the FBS teams block above, but on COVERAGE rather than mere
+    # existence. This is reference data, not weekly data: a team's logo does not
+    # change between weeks, so re-fetching all ~545 non-FBS teams and re-upserting
+    # every row on every weekly run bought nothing. What a count-based gate would
+    # cost, though, is repair: one stored row would satisfy it for the whole
+    # season, so an opponent added to a schedule later would never be fetched.
+    # See non_fbs_logo_coverage_is_complete. To force a full refresh (a corrected
+    # logo upstream, say), delete the season's rows and let the next run repopulate.
     try:
-        if non_fbs_logos_exist_for_year(args.year):
+        if non_fbs_logo_coverage_is_complete(args.year):
             logger.info(
-                "Non-FBS team logo data already present for year=%s; skipping re-ingest.",
-                args.year,
+                "Every non-FBS opponent for year=%s already has a stored logo; "
+                "skipping re-ingest.", args.year,
             )
         else:
             logger.info("Loading non-FBS Division-I team logo data for year=%s", args.year)

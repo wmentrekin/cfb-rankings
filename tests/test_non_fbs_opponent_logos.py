@@ -9,6 +9,7 @@ what decides who gets a Season Grid row and under which conference.
 
 Run: python -m pytest tests/ -q   (or: python tests/test_non_fbs_opponent_logos.py)
 """
+import copy
 import sys
 from pathlib import Path
 
@@ -92,18 +93,43 @@ def test_without_the_lookup_the_same_opponent_has_no_logo():
 # The safety invariant migration 0004 exists to protect: a non-FBS team must
 # never become a grid row or a conference. teams_meta's keys define the FBS
 # universe; the logo map must not leak into it.
+#
+# The DISCRIMINATING half of that is the mutation check below, not the payload
+# assertion. Verified by mutation: injecting a real leak at the top of
+# build_schedule_payload --
+#
+#     teams_meta = {**{k: {"conference": None, "division": None, "logos": v}
+#                      for k, v in non_fbs_logos.items()}, **teams_meta}
+#
+# -- leaves the payload assertion passing, because CONFERENCE_ORDER lists only
+# FBS conference names and a leaked entry carrying no conference is dropped by
+# `member_teams` regardless. So the payload assertion is defense in depth
+# against a future change to that grouping, and is labelled as such rather than
+# left to look like the guard it cannot be. The realistic leak vector inside
+# THIS function is mutating the caller's dict, which the second assertion
+# catches: a `teams_meta.update(non_fbs_logos)` fails it.
 # ---------------------------------------------------------------------------
 def test_non_fbs_team_does_not_become_a_row_or_a_conference():
+    teams_meta = _teams_meta(["Georgia Tech"], "ACC", FBS_LOGO)
+    meta_before = copy.deepcopy(teams_meta)
+
     payload = build_schedule_payload(
         _fcs_matchup_rows(),
-        _teams_meta(["Georgia Tech"], "ACC", FBS_LOGO),
+        teams_meta,
         SEASON,
         None,
         {"Mercer": [FCS_LOGO], "Furman": [FCS_LOGO], "Samford": None},
     )
+
+    # Defense in depth (see above): shielded by CONFERENCE_ORDER, so it cannot
+    # fail on the merge alone.
     emitted_teams = {t["team"] for conf in payload["conferences"] for t in conf["teams"]}
     assert emitted_teams == {"Georgia Tech"}
     assert [c["name"] for c in payload["conferences"]] == ["ACC"]
+
+    # Discriminating: the caller's FBS universe is untouched by the call.
+    assert teams_meta == meta_before
+    assert set(teams_meta) == {"Georgia Tech"}
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +155,6 @@ def test_fbs_logo_wins_a_name_collision():
 # ---------------------------------------------------------------------------
 def test_empty_and_omitted_lookups_are_equivalent_and_do_not_raise():
     args = (_fcs_matchup_rows(), _teams_meta(["Georgia Tech"], "ACC", FBS_LOGO), SEASON)
-    assert build_schedule_payload(*args, None, {}) == build_schedule_payload(*args) or True
     empty = build_schedule_payload(*args, None, {})
     omitted = build_schedule_payload(*args)
     # generated_at_utc differs between calls by construction; compare the rest.
