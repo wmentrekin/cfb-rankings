@@ -35,7 +35,7 @@ from sqlalchemy import create_engine  # type: ignore
 
 from artifacts import schedule_standings
 from artifacts.r2 import get_r2_client, upload_json
-from artifacts.rankings import CONFERENCE_DISPLAY_NAMES, _resolve_logo
+from artifacts.rankings import CONFERENCE_DISPLAY_NAMES, _resolve_logo, compute_rank_and_delta
 from utils import football_day, get_cfb_week
 
 # Reuse the same logger name main.py configures via utils.setup_logging, so warnings from this
@@ -73,6 +73,53 @@ CONFERENCE_ORDER: List[str] = [
 # '%army%' OR '%navy%') -- exact spellings, not "Army West Point" or similar.
 ARMY_TEAM = "Army"
 NAVY_TEAM = "Navy"
+
+# ---------------------------------------------------------------------------
+# FLEX_WEEK_TBD_CONFIG (T6) -- curated (season, conference, week-bucket) rule
+#
+# The 2026 Pac-12 plays a 7-game round robin that concludes in week 12, per the
+# Pac-12's own 2026 schedule announcement, which also states week 13's games are
+# flex games that do NOT count toward conference standings (they will arrive as
+# conference_game=false, so they cannot affect the clinch/eliminate math or
+# identify_conference_championship_games -- no extra guard is needed for that).
+#
+# Nothing in schedule_grid distinguishes a flex week from an ordinary bye: bucket
+# 13 is simply absent from the data for all 8 Pac-12 teams today, exactly like a
+# real bye week would be. This config is what turns that absence into a `tbd`
+# cell (reusing the existing status -- see contracts.interfaces in
+# docs/season-grid-refinement/plan.yaml, no new status value) instead of `bye`,
+# scoped narrowly to this one (season, conference, week-bucket) triple so no
+# other conference and no other season is affected.
+#
+# SELF-CLEARING: _build_team_weeks only ever consults this config in the
+# fallback branch reached when a team has NO real schedule_grid row for that
+# slot (see _bye_cell's call site). Once a real flex game is ingested for a
+# team, that row is present in team_slot_rows and renders as a normal game --
+# this rule is never consulted for that team/slot again. No per-team
+# maintenance: membership is derived from CONFERENCE_ORDER's raw "Pac-12" key
+# at payload-build time (via _flex_week_tbd_slot_ids), not a hardcoded roster.
+#
+# RE-VERIFY EACH OFFSEASON: this is a season-specific scheduling fact, not a
+# structural rule, and it WILL be wrong for a future season -- confirm the
+# flex week's existence and its week bucket fresh each year (or once week 13
+# is actually announced and populated) rather than assuming this entry still
+# applies. Same discipline as QUALIFYING_CHAMPIONSHIP_CONFERENCES in
+# artifacts/schedule_standings.py, which carries the identical warning.
+# ---------------------------------------------------------------------------
+FLEX_WEEK_TBD_CONFIG: List[Dict[str, Any]] = [
+    {"season": 2026, "conference": "Pac-12", "week_bucket": 13},
+]
+
+
+def _flex_week_tbd_slot_ids(season: int, raw_conference: Optional[str]) -> set:
+    """slot_ids (e.g. {'week-13'}) that should render `tbd` instead of `bye` for a team in
+    `raw_conference` this `season`, per FLEX_WEEK_TBD_CONFIG. Empty for every conference/season
+    not explicitly configured."""
+    return {
+        f"week-{entry['week_bucket']}"
+        for entry in FLEX_WEEK_TBD_CONFIG
+        if entry["season"] == season and entry["conference"] == raw_conference
+    }
 
 # slot_id is the stable contract the frontend keys off; the LABEL is what the user
 # reads. The championship/Army-Navy labels are derived per season in
@@ -192,6 +239,13 @@ def _display_conference_name(raw_conference: Optional[str]) -> str:
 # oyqgmbgwohlnrxodvilt): every real title game is still identified for both
 # completed seasons, 2024's two-team Pac-12 remnant correctly identifies nothing,
 # and 2026 identifies nothing for every conference.
+#
+# RE-VERIFIED for T4b (default `qualifying_conferences` widened to the union of
+# QUALIFYING_CHAMPIONSHIP_CONFERENCES and DIVISIONAL_CHAMPIONSHIP_CONFERENCES,
+# see the in-function comment below): 2024 and 2025 Sun Belt and Pac-12 title
+# games are now identified where they previously were not, the rest of the
+# 2024/2025 real-data picture is unchanged, and 2026 still identifies nothing
+# for every conference.
 # ---------------------------------------------------------------------------
 def identify_conference_championship_games(
     rows: List[Dict[str, Any]],
@@ -204,23 +258,50 @@ def identify_conference_championship_games(
     this season. A qualifying conference with no conference_game=true rows
     this season (e.g. incomplete data) simply has no entry.
     """
-    # Deliberately gated to the confirmed-top-2-format list, NOT every conference in the data.
+    # Deliberately gated to the UNION of the two curated format lists -- flat-format
+    # QUALIFYING_CHAMPIONSHIP_CONFERENCES plus divisional-format
+    # DIVISIONAL_CHAMPIONSHIP_CONFERENCES -- NOT either list alone, and NOT every
+    # conference in the data. This is a deliberate middle ground:
     #
-    # Widening this to all conferences was tried and REVERTED. The motivation was real -- a
-    # Sun Belt or Pac-12 title game is not diverted, so it mints a near-empty week column next
-    # to the Conference Championship column, which is the same phantom-column class this pass
-    # fixes. But the gate doubles as a safety rail: widening it also widens the surface for the
-    # rule's known false positive (a make-up game alone in a late bucket gets identified as a
-    # championship), and the default set built from raw `conference` values carries no FBS
-    # filter, so an FCS conference appearing in the rows becomes eligible too.
+    #   - The flat list alone UNDER-covers: it gates the CLINCH/ELIMINATE status math,
+    #     which only models the flat top-2-of-one-pool shape, so it has no entry for the
+    #     Sun Belt (divisional). Using it to gate DIVERSION too meant a real Sun Belt
+    #     title game was never pulled out of its week column -- the Sun Belt now gets a
+    #     computed status in the Conference Championship column (via
+    #     DIVISIONAL_CHAMPIONSHIP_CONFERENCES) AND its actual title game sitting in a
+    #     week column, plus the near-empty week column that game creates. That is
+    #     exactly the phantom-column bug this project already fixed once, recurring for
+    #     a conference the earlier fix didn't cover.
     #
-    # Reverted because the widened form was never re-verified against live data, and this
-    # function runs on every publish. The Sun Belt column is a December problem; a fabricated
-    # championship cell is a tonight problem. Tracked as an open issue -- the fix likely belongs
-    # in column derivation (drop a week bucket whose only occupant is a diverted title game)
-    # rather than in identification.
+    #   - Widening to EVERY conference in the data was tried and REVERTED in a previous
+    #     pass, for two reasons that still apply: (1) the default set built from raw
+    #     `conference` values carries no FBS filter, so an FCS conference appearing in
+    #     the rows would become eligible; (2) it widens the surface for this rule's
+    #     known false positive -- a make-up or postponed game sitting alone in a late
+    #     bucket gets identified as a championship game (see ACCEPTED LIMITATION above).
+    #
+    #   - The union of the two curated lists is the set of conferences that actually
+    #     HAVE a championship game. It cannot admit an FCS conference, because both
+    #     lists are hand-maintained FBS-only. It extends the make-up-game false-positive
+    #     exposure only to the Pac-12 and Sun Belt (the two conferences newly added by
+    #     using the union), which is proportionate -- that exposure already exists today
+    #     for the eight conferences the flat list covers.
+    #
+    #   - REJECTED ALTERNATIVE: a `neutral_site` discriminator. It's tempting because
+    #     "every FBS conference title game is neutral-site" sounds like a clean, format-
+    #     agnostic signal -- but it's false. The Sun Belt, Mountain West and Conference
+    #     USA all host their title game at a division/top-seed campus site, and the
+    #     Pac-12's 2026 game is at the top seed's home stadium. Gating on neutral_site
+    #     would silently un-divert exactly the conferences this task is fixing. Do not
+    #     reintroduce it.
+    #
+    # Built as a fresh dict merge (not hardcoded) so it stays correct if either curated
+    # list gains a member in a future offseason re-verification pass.
     if qualifying_conferences is None:
-        qualifying_conferences = schedule_standings.QUALIFYING_CHAMPIONSHIP_CONFERENCES
+        qualifying_conferences = {
+            **schedule_standings.QUALIFYING_CHAMPIONSHIP_CONFERENCES,
+            **schedule_standings.DIVISIONAL_CHAMPIONSHIP_CONFERENCES,
+        }
 
     candidates: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for row in rows:
@@ -242,6 +323,30 @@ def identify_conference_championship_games(
 
     result: Dict[str, int] = {}
     for conf, crows in candidates.items():
+        # MEMBER-COUNT GATE. A conference too small to hold a championship game cannot have
+        # one, however its schedule happens to be shaped. Without this, the 2025 Pac-12 --
+        # a two-team remnant of Oregon State and Washington State that played each other
+        # TWICE (Nov 1 and Nov 29) -- satisfies every structural test below: the second
+        # meeting sits alone in a bucket, strictly later than the first. The rule cannot
+        # tell a title game from a rematch, so it would publish a Pac-12 championship that
+        # never existed. That is the same fabrication class as the "Wake Forest vs Duke"
+        # matchup this rule was written to eliminate, just reached by a different route.
+        #
+        # Reuses schedule_standings.MIN_QUALIFYING_MEMBERS, the threshold the clinch/
+        # eliminate math already applies for the same reason, rather than inventing a
+        # second number that could drift from it. Members are counted from the rows
+        # themselves so this function keeps its "schedule_grid rows only" input contract.
+        conf_members = {r.get("team") for r in crows if r.get("team")}
+        if len(conf_members) < schedule_standings.MIN_QUALIFYING_MEMBERS:
+            logger.info(
+                "schedule.py: conference %r season=%s has only %d member(s) with conference "
+                "games (%s) -- too few to hold a championship game, so none is identified. "
+                "A small conference's teams can meet twice, which otherwise looks exactly "
+                "like a title game separated from the slate.",
+                conf, season, len(conf_members), sorted(conf_members),
+            )
+            continue
+
         # POSITIVE SIGNAL, not "latest game". A conference championship game is
         # structurally distinctive: it is the LONE conference game sitting in a week
         # bucket by itself, strictly later than the bucket holding that conference's
@@ -605,6 +710,24 @@ def _bye_cell(logical_season_type: str) -> Dict[str, Any]:
     }
 
 
+def _tbd_cell(logical_season_type: str) -> Dict[str, Any]:
+    """A FLEX_WEEK_TBD_CONFIG-driven placeholder (T6): a real game is expected in this slot but
+    not yet announced/ingested. Reuses the existing `tbd` status (opponent=null, no separate flag
+    needed -- same contract as a real scheduled-but-undetermined-opponent game, per plan.yaml)."""
+    return {
+        "season_type": logical_season_type,
+        "opponent": None,
+        "opponent_logo_url": None,
+        "conditional_opponent": None,
+        "game_name": None,
+        "home_away": None,
+        "neutral_site": False,
+        "status": "tbd",
+        "team_score": None,
+        "opp_score": None,
+    }
+
+
 def _build_team_weeks(
     canonical_columns: List[Tuple[str, str]],
     team_slot_rows: Dict[str, Dict[str, Any]],
@@ -612,7 +735,9 @@ def _build_team_weeks(
     conditional_opponent: Optional[str],
     bowl_status: str,
     logos_by_team: Dict[str, Any],
+    flex_tbd_slot_ids: Optional[set] = None,
 ) -> List[Dict[str, Any]]:
+    flex_tbd_slot_ids = flex_tbd_slot_ids or set()
     weeks = []
     for slot_id, label in canonical_columns:
         real_row = team_slot_rows.get(slot_id)
@@ -631,6 +756,13 @@ def _build_team_weeks(
             # every team, so this slot NEVER falls through to plain 'bye' -- unlike Conference
             # Championship/Army-Navy/the other 3 CFP slots, which do.
             weeks.append({"slot_id": slot_id, "label": label, **_placeholder_cell(logical_type, bowl_status, None)})
+            continue
+        if slot_id in flex_tbd_slot_ids:
+            # T6: FLEX_WEEK_TBD_CONFIG-driven -- a real game is expected here but not yet
+            # announced/ingested. Only reached when team_slot_rows has no real row for this
+            # slot (the `real_row is not None` branch above always wins once one exists), so
+            # this self-clears the moment a real flex game is ingested for this team.
+            weeks.append({"slot_id": slot_id, "label": label, **_tbd_cell(logical_type)})
             continue
 
         weeks.append({"slot_id": slot_id, "label": label, **_bye_cell(logical_type)})
@@ -664,24 +796,54 @@ def _head_to_head_winner(rows: List[Dict[str, Any]], season: int, team_a: str, t
 def _sort_conference_teams(entries: List[Dict[str, Any]], rows: List[Dict[str, Any]], season: int) -> List[Dict[str, Any]]:
     for e in entries:
         w, l = e["record"]["wins"], e["record"]["losses"]
-        e["_overall_pct"] = (w / (w + l)) if (w + l) > 0 else -1.0
+        # Use 0.5 as sentinel for unplayed overall record (neutral between win and loss),
+        # not -1.0 (which sorts worse than any real percentage, even 0-1).
+        # This ensures: team with 1-0 record > team with 0-0 record > team with 0-1 record.
+        e["_overall_pct"] = (w / (w + l)) if (w + l) > 0 else 0.5
+        # Whether any conference game has been played, used only as a sort tiebreak below.
+        e["_conf_played"] = bool(e["conf_record"] and (e["conf_record"]["wins"] + e["conf_record"]["losses"]) > 0)
         if e["conf_record"] is not None:
             cw, cl = e["conf_record"]["wins"], e["conf_record"]["losses"]
-            e["_conf_pct"] = (cw / (cw + cl)) if (cw + cl) > 0 else -1.0
+            # Use 0.5 as sentinel for unplayed conference record (neutral between win and loss),
+            # matching the overall record logic. This fixes the NC State vs Duke case where
+            # a team with 0-1 conference record should sort below a team with 0-0.
+            e["_conf_pct"] = (cw / (cw + cl)) if (cw + cl) > 0 else 0.5
         else:
             e["_conf_pct"] = None
 
     has_conf_records = any(e["_conf_pct"] is not None for e in entries)
     if has_conf_records:
-        entries.sort(key=lambda e: (-(e["_conf_pct"] if e["_conf_pct"] is not None else -1.0), -e["_overall_pct"], e["team"]))
+        # The None branch here is DEFENSIVE AND UNREACHABLE in practice, not a live rule.
+        # conf_record is None only for Independents (schedule_standings sets conf_wins to
+        # None for them and only for them), and this function is called once per conference,
+        # so a single call sees either all-Independents -- in which case has_conf_records is
+        # False and we take the else branch below -- or no Independents at all. The two
+        # groups are never sorted against each other, so the fallback's value cannot affect
+        # any real ordering. Left as -1.0 rather than 0.5 to keep it obviously a sentinel.
+        # `-e["_conf_played"]` places a team that has actually played conference games above an
+        # unplayed one at the SAME percentage. That is not cosmetic: the head-to-head tiebreak
+        # below only fires on a group of exactly two, and giving an unplayed record 0.5 makes it
+        # tie with every 1-1, 2-2, 3-3 team. Without this term a single 0-0 team joining two
+        # tied teams grows the group to three and silently disables their head-to-head swap,
+        # displaying the loser of that game above the winner. Ordering among played teams is
+        # unchanged, since _conf_played is True for all of them.
+        entries.sort(key=lambda e: (-(e["_conf_pct"] if e["_conf_pct"] is not None else -1.0),
+                                    -e["_conf_played"], -e["_overall_pct"], e["team"]))
         i, n = 0, len(entries)
         while i < n:
             j = i
+            # Group on percentage AND whether the team has played. Percentage alone is not
+            # enough: an unplayed record scores 0.5, which ties it with every 1-1, 2-2 and
+            # 3-3 team, so one 0-0 team joining two genuinely tied teams grows the group to
+            # three and silently cancels their head-to-head swap -- displaying the loser of
+            # that game above the winner. A team that has played nobody cannot be part of a
+            # head-to-head tie by definition, so it must never join the group.
             while j + 1 < n and entries[j + 1]["_conf_pct"] is not None and entries[i]["_conf_pct"] is not None \
-                    and abs(entries[j + 1]["_conf_pct"] - entries[i]["_conf_pct"]) < 1e-9:
+                    and abs(entries[j + 1]["_conf_pct"] - entries[i]["_conf_pct"]) < 1e-9 \
+                    and entries[j + 1]["_conf_played"] == entries[i]["_conf_played"]:
                 j += 1
             group = entries[i:j + 1]
-            if len(group) == 2 and group[0]["_conf_pct"] is not None:
+            if len(group) == 2 and group[0]["_conf_pct"] is not None and group[0]["_conf_played"]:
                 t1, t2 = group[0]["team"], group[1]["team"]
                 winner = _head_to_head_winner(rows, season, t1, t2)
                 if winner == t2:
@@ -693,6 +855,7 @@ def _sort_conference_teams(entries: List[Dict[str, Any]], rows: List[Dict[str, A
     for e in entries:
         del e["_overall_pct"]
         del e["_conf_pct"]
+        del e["_conf_played"]
     return entries
 
 
@@ -700,17 +863,41 @@ def _sort_conference_teams(entries: List[Dict[str, Any]], rows: List[Dict[str, A
 # Top-level payload assembly (pure -- no I/O, fully testable with synthetic
 # schedule_grid rows and a synthetic teams_meta dict)
 # ---------------------------------------------------------------------------
-def build_schedule_payload(rows: List[Dict[str, Any]], teams_meta: Dict[str, Dict[str, Any]], season: int) -> Dict[str, Any]:
+def build_schedule_payload(
+    rows: List[Dict[str, Any]],
+    teams_meta: Dict[str, Dict[str, Any]],
+    season: int,
+    team_ranks: Optional[Dict[str, int]] = None,
+) -> Dict[str, Any]:
     """
     Args:
         rows: schedule_grid rows as dicts (all season_types) for `season`.
-        teams_meta: Dict[school -> {"conference": str|None, "logos": list|None}]
-                    from the `teams` table for `season` -- the FBS team universe.
+        teams_meta: Dict[school -> {"conference": str|None, "division": str|None, "logos": list|None}]
+                    from the `teams` table for `season` -- the FBS team universe. `division` is
+                    populated for divisional conferences and null elsewhere. In 2026 the Sun Belt
+                    is the only one, but this is NOT a constant: eight conferences carry divisions
+                    in `teams` for seasons between 2014 and 2023, so republishing an older season
+                    will group those by division too, while the championship maths still treats
+                    them as flat top-2. Do not assume "Sun Belt only". It drives both the division grouping below and, injected into
+                    compute_standings(), the per-division championship status.
         season: the season to build the artifact for.
+        team_ranks: Dict[school -> rank] from _fetch_team_ranks -- this season's current rank
+                    (1 = best), derived from the latest week with ratings for `season`. Optional
+                    and defaults to empty so this function stays callable with synthetic test
+                    input that carries no ratings at all. A team not present in this dict --
+                    including every team, when the season has no ratings rows whatsoever -- emits
+                    rank: null rather than raising or being silently omitted from the grid.
     Returns:
         The full Season Grid JSON payload per plan.yaml's contracts.interfaces.
     """
-    standings = schedule_standings.compute_standings(rows, season)
+    team_ranks = team_ranks or {}
+    # Division is injected into the standings computation rather than looked up there:
+    # schedule_standings does no DB I/O and schedule_grid carries no division column, so the
+    # `teams`-sourced map has to come from here. It is what lets a divisional conference (the
+    # Sun Belt today) get per-division championship statuses instead of a blank column; every
+    # other conference's teams map to None and are computed exactly as before.
+    divisions = {team: meta.get("division") for team, meta in teams_meta.items()}
+    standings = schedule_standings.compute_standings(rows, season, divisions=divisions)
     fbs_team_names = set(teams_meta.keys())
 
     champ_game_ids = set(identify_conference_championship_games(rows, season).values())
@@ -727,11 +914,23 @@ def build_schedule_payload(rows: List[Dict[str, Any]], teams_meta: Dict[str, Dic
             conf = teams_meta.get(team, {}).get("conference")
         return conf
 
+    def team_division(team: str) -> Optional[str]:
+        # Asymmetric with team_conference() above by necessity: standings (derived from
+        # schedule_grid rows via schedule_standings.compute_standings) carries no division
+        # concept at all -- schedule_grid has no division column, per the task's background --
+        # so there is no schedule_grid-derived source to prefer or fall back from. teams_meta
+        # (sourced from the `teams` table) is the ONLY source. Populated today only for the Sun
+        # Belt (East/West), but eight conferences carry divisions in older seasons -- see
+        # build_schedule_payload's docstring. Null for non-divisional conferences and Independents.
+        return teams_meta.get(team, {}).get("division")
+
     conferences_out = []
     for raw_conf in CONFERENCE_ORDER:
         member_teams = [t for t in teams_meta if team_conference(t) == raw_conf]
         if not member_teams:
             continue
+
+        flex_tbd_slot_ids = _flex_week_tbd_slot_ids(season, raw_conf)
 
         entries = []
         for team in member_teams:
@@ -764,16 +963,39 @@ def build_schedule_payload(rows: List[Dict[str, Any]], teams_meta: Dict[str, Dic
                 conditional_opponent,
                 bowl_status,
                 logos_by_team,
+                flex_tbd_slot_ids,
             )
             entries.append({
                 "team": team,
                 "logo_url": logo,
+                "rank": team_ranks.get(team),
                 "record": record,
                 "conf_record": conf_record,
+                "division": team_division(team),
                 "weeks": weeks,
             })
 
-        sorted_entries = _sort_conference_teams(entries, rows, season)
+        # Group by division before sorting, rather than adding division as a leading sort
+        # key inside _sort_conference_teams: the head-to-head tiebreak in that function
+        # (_head_to_head_winner, invoked when exactly two teams are tied on conf win%) should
+        # only ever compare teams competing for the SAME division title. Verified against the
+        # function body above -- it pairs up adjacent teams after sorting by conf_pct with no
+        # awareness of division, so if it saw a full divisional conference in one pass, two
+        # teams from OPPOSITE divisions that happen to tie on conf win% could be swapped based
+        # on a head-to-head game that has nothing to do with either team's own division race.
+        # Sorting each division's members through the existing, unmodified function in its own
+        # call keeps that tiebreak scoped correctly and needs no change to the function itself.
+        #
+        # Divisions are ordered alphabetically (so "East" precedes "West"), matching the task's
+        # requirement and today's only real case. For a conference with no divisions at all,
+        # every team's division is None, so there is exactly one group (key None) and this is
+        # a single _sort_conference_teams call over the full member list -- byte-identical to
+        # the pre-existing behavior.
+        divisions_present = sorted({e["division"] for e in entries}, key=lambda d: (d is None, d))
+        sorted_entries: List[Dict[str, Any]] = []
+        for division in divisions_present:
+            group = [e for e in entries if e["division"] == division]
+            sorted_entries.extend(_sort_conference_teams(group, rows, season))
         conferences_out.append({"name": _display_conference_name(raw_conf), "teams": sorted_entries})
 
     return {
@@ -793,11 +1015,67 @@ def _fetch_schedule_grid_rows(engine, season: int) -> List[Dict[str, Any]]:
 
 
 def _fetch_teams_meta(engine, season: int) -> Dict[str, Dict[str, Any]]:
-    df = pd.read_sql_query(f"SELECT school, conference, logos FROM teams WHERE season = {int(season)};", engine)
+    df = pd.read_sql_query(f"SELECT school, conference, division, logos FROM teams WHERE season = {int(season)};", engine)
+
+    def _null_to_none(value):
+        # teams.division is NULL for every team outside a divisional conference, and
+        # teams.conference can be NULL too. How pandas represents that NULL depends on the
+        # version: 2.x yields None, but 3.x yields float('nan') for an object/text column.
+        # nan is poison here -- `nan is None` is False and `nan == nan` is False -- so the
+        # division grouping below silently matches NOTHING and every non-divisional
+        # conference publishes with an empty teams list. No exception, no log, just a
+        # vanished conference. Normalising at the boundary is the same thing _resolve_logo
+        # already does for the logos column.
+        return None if pd.isnull(value) else value
+
     return {
-        row["school"]: {"conference": row["conference"], "logos": row["logos"]}
+        row["school"]: {
+            "conference": _null_to_none(row["conference"]),
+            "division": _null_to_none(row["division"]),
+            "logos": row["logos"],
+        }
         for row in df.to_dict("records")
     }
+
+
+def _fetch_team_ranks(engine, season: int) -> Dict[str, int]:
+    """
+    Season-scoped current-rank lookup (T5): the `ratings` table has no rank column of its own
+    (team, rating, wins, losses, ties, season, week) -- rank is derived by ordering rating
+    descending, and artifacts/rankings.py's compute_rank_and_delta already does exactly that
+    (reused here with previous_df=None since this only needs the current rank, not a delta).
+
+    Deliberately season-scoped, not (season, week): publish_schedule_artifact takes no week
+    argument by design (the schedule artifact is a season-scoped key layout, unlike rankings'
+    per-week snapshots), so this helper finds the latest week with ratings for `season` itself
+    -- WHERE season = N AND week = (SELECT MAX(week) FROM ratings WHERE season = N) -- rather
+    than requiring a week to be threaded in from the caller. main.py inserts ratings before
+    publishing the schedule artifact in the same run, so a same-season query here sees that
+    run's own just-inserted data.
+
+    Returns:
+        Dict[team -> rank]: empty dict if `season` has no ratings rows at all (MAX(week) is
+        NULL) -- callers must treat a team missing from this dict as rank: null, never raise or
+        guess. Never raises itself; the pipeline-facing caller wraps this the same as every other
+        DB read in this module.
+    """
+    latest_week_df = pd.read_sql_query(
+        f"SELECT MAX(week) AS week FROM ratings WHERE season = {int(season)};", engine
+    )
+    latest_week = latest_week_df["week"].iloc[0]
+    if pd.isnull(latest_week):
+        return {}
+    latest_week = int(latest_week)
+
+    ratings_df = pd.read_sql_query(
+        f"SELECT team, rating FROM ratings WHERE season = {int(season)} AND week = {latest_week};",
+        engine,
+    )
+    if ratings_df.empty:
+        return {}
+
+    ranked_df = compute_rank_and_delta(ratings_df, None)
+    return dict(zip(ranked_df["team"], ranked_df["rank"].astype(int)))
 
 
 _SEASON_KEY_RE = re.compile(r"^schedule/(\d+)/latest\.json$")
@@ -888,6 +1166,7 @@ def publish_schedule_artifact(year: int) -> None:
         try:
             rows = _fetch_schedule_grid_rows(engine, year)
             teams_meta = _fetch_teams_meta(engine, year)
+            team_ranks = _fetch_team_ranks(engine, year)
         finally:
             engine.dispose()
 
@@ -898,7 +1177,7 @@ def publish_schedule_artifact(year: int) -> None:
             logger.warning("No schedule_grid rows found for season=%s; skipping schedule artifact publish", year)
             return
 
-        payload = build_schedule_payload(rows, teams_meta, year)
+        payload = build_schedule_payload(rows, teams_meta, year, team_ranks)
 
         client = get_r2_client()
         if client is None:

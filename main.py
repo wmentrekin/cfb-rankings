@@ -4,6 +4,7 @@ from model.model import get_ratings
 from database.model_to_db import ratings_to_df, insert_model_results_to_db
 from database.get_games import load_games_to_db
 from database.get_teams import load_teams_to_db
+from database.get_non_fbs_teams import load_non_fbs_teams_to_db
 from artifacts.r2 import publish_rankings_artifact
 from artifacts.schedule import publish_schedule_artifact
 from utils import football_day, get_cfb_week, setup_logging
@@ -221,6 +222,23 @@ def main():
         logger.exception("Team loading check/load failed for year=%s: %s", args.year, e)
         logger.error("Exiting: cannot proceed with game ingestion without a teams table for year=%s.", args.year)
         return
+
+    # LOAD NON-FBS TEAM LOGO DATA (supplementary, not a model input)
+    # `non_fbs_teams` is a separate table from `teams` -- it does NOT feed the
+    # model's team list or the games/schedule-grid ingestion, so a failure
+    # here must never block the pipeline. Always attempted (not gated behind
+    # an existence check like the FBS teams block above) since the upsert on
+    # (season, school) is idempotent and cheap, mirroring how postseason
+    # games are always re-fetched below.
+    try:
+        logger.info("Loading non-FBS Division-I team logo data for year=%s", args.year)
+        non_fbs_result = load_non_fbs_teams_to_db(args.year)
+        logger.info(
+            "Non-FBS teams for year=%s: %s stored, %s with a non-empty logos array.",
+            args.year, non_fbs_result.get('stored'), non_fbs_result.get('with_logos'),
+        )
+    except Exception as e:
+        logger.warning("Non-FBS team logo loading raised an exception. Continuing. Exception: %s", e)
 
     # PULL DATA
     try:
