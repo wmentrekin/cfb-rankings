@@ -88,7 +88,30 @@ repo_context:
 
 research:
   repo_findings:
-    - "PENDING: repo-researcher-cloudflare-preview -- whether preview builds can be given R2 access in-repo or only via the Cloudflare dashboard"
+    - >
+      RESOLVED (repo-researcher-cloudflare-preview): the Cloudflare preview fix is DASHBOARD-ONLY --
+      there is no in-repo path. personal-site has no wrangler.toml/wrangler.jsonc, no functions/
+      directory, and no .github/workflows at all; deployment is Cloudflare Pages' native Git
+      integration running package.json's plain prebuild/build scripts per dashboard build config.
+      docs/roadmap-to-launch.md (Phase 1) confirms the four R2 vars were added as Cloudflare Pages
+      project environment variables and that production rebuilds fire via a Deploy Hook called from
+      cfb-rankings' weekly-update.yml. Cloudflare scopes env vars per build environment (Production
+      vs Preview) as two separate dashboard lists; the vars are almost certainly Production-only,
+      which is exactly the observed symptom. FIX = user action: Pages project -> Settings ->
+      Environment variables -> Preview -> add R2_ACCOUNT_ID, R2_ACCESS_KEY_ID_READONLY,
+      R2_SECRET_ACCESS_KEY_READONLY, R2_BUCKET_NAME, then push a commit to a PR branch to trigger a
+      fresh preview build. CONSEQUENCE FOR THE PLAN: what the user chose as "PR 1 (infra)" is not a
+      PR -- the three-step sequence becomes user-dashboard-action -> backend PR -> frontend PR.
+    - >
+      SECURITY FLAG (same researcher, worth surfacing before the user makes the change): Cloudflare
+      exposes Preview-scoped env vars to every preview deployment, including builds from forked-repo
+      PRs where enabled -- a fork PR's build could read the R2 credentials via process.env. Capped
+      by two facts: the tokens are read-only (docs/roadmap-to-launch.md Phase 1 item 1 confirms a
+      read-only R2 API token was created separately from cfb-rankings' write token), and the risk is
+      theoretical if this repo takes no external PRs. Recommend confirming forked-PR builds are
+      disabled under Settings -> Builds & deployments first. A leaked read token still permits
+      exfiltrating bucket contents directly, so this is a real if small consideration, not a
+      non-issue."
     - "PENDING: repo-researcher-week-columns -- root cause of the phantom empty week and the missing week"
     - "CONFIRMED (during discussion, verified live): CFBD's week 1 for 2026 spans 2026-08-29 16:00 to 2026-09-07 23:30 (99 games) -- Week 0's Saturday through Monday night. Week 2 begins 2026-09-11. This is why --week 1 was the correct pin for the delayed Tuesday run."
     - "CONFIRMED: the rating model queries rankings_games WHERE season = N AND week <= W using CFBD's own week column, so get_cfb_week() changes do not alter model inputs."
@@ -108,7 +131,7 @@ acceptance_criteria:
   - "Every PR in this pass carries a completed independent review, with findings posted to the PR"
 
 open_questions:
-  - "Does the Cloudflare preview fix live in the repo or the dashboard? (discovery in flight)"
+  - "RESOLVED: the Cloudflare preview fix is dashboard-only -- see research.repo_findings. No PR; a user action instead."
   - "Exact mechanism of the phantom empty week and missing week -- hypothesis is that build_canonical_columns() derives columns from rows that _classify_row_slot() later diverts into the Conference Championship / Army-Navy slots, leaving an empty column behind. (discovery in flight)"
   - "Whether the 'last completed week' pipeline fix belongs in this pass's backend PR or a later one -- depends on how invasive it proves; PR #8's date-pin already covers the immediate need."
 
