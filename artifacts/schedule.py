@@ -720,12 +720,19 @@ def build_schedule_payload(rows: List[Dict[str, Any]], teams_meta: Dict[str, Dic
         teams_meta: Dict[school -> {"conference": str|None, "division": str|None, "logos": list|None}]
                     from the `teams` table for `season` -- the FBS team universe. `division` is
                     populated only for divisional conferences (currently just the Sun Belt); null
-                    elsewhere.
+                    elsewhere. It drives both the division grouping below and, injected into
+                    compute_standings(), the per-division championship status.
         season: the season to build the artifact for.
     Returns:
         The full Season Grid JSON payload per plan.yaml's contracts.interfaces.
     """
-    standings = schedule_standings.compute_standings(rows, season)
+    # Division is injected into the standings computation rather than looked up there:
+    # schedule_standings does no DB I/O and schedule_grid carries no division column, so the
+    # `teams`-sourced map has to come from here. It is what lets a divisional conference (the
+    # Sun Belt today) get per-division championship statuses instead of a blank column; every
+    # other conference's teams map to None and are computed exactly as before.
+    divisions = {team: meta.get("division") for team, meta in teams_meta.items()}
+    standings = schedule_standings.compute_standings(rows, season, divisions=divisions)
     fbs_team_names = set(teams_meta.keys())
 
     champ_game_ids = set(identify_conference_championship_games(rows, season).values())
