@@ -35,7 +35,7 @@ from sqlalchemy import create_engine  # type: ignore
 
 from artifacts import schedule_standings
 from artifacts.r2 import get_r2_client, upload_json
-from artifacts.rankings import CONFERENCE_DISPLAY_NAMES, _resolve_logo
+from artifacts.rankings import CONFERENCE_DISPLAY_NAMES, _resolve_logo, compute_rank_and_delta
 from utils import football_day, get_cfb_week
 
 # Reuse the same logger name main.py configures via utils.setup_logging, so warnings from this
@@ -73,6 +73,53 @@ CONFERENCE_ORDER: List[str] = [
 # '%army%' OR '%navy%') -- exact spellings, not "Army West Point" or similar.
 ARMY_TEAM = "Army"
 NAVY_TEAM = "Navy"
+
+# ---------------------------------------------------------------------------
+# FLEX_WEEK_TBD_CONFIG (T6) -- curated (season, conference, week-bucket) rule
+#
+# The 2026 Pac-12 plays a 7-game round robin that concludes in week 12, per the
+# Pac-12's own 2026 schedule announcement, which also states week 13's games are
+# flex games that do NOT count toward conference standings (they will arrive as
+# conference_game=false, so they cannot affect the clinch/eliminate math or
+# identify_conference_championship_games -- no extra guard is needed for that).
+#
+# Nothing in schedule_grid distinguishes a flex week from an ordinary bye: bucket
+# 13 is simply absent from the data for all 8 Pac-12 teams today, exactly like a
+# real bye week would be. This config is what turns that absence into a `tbd`
+# cell (reusing the existing status -- see contracts.interfaces in
+# docs/season-grid-refinement/plan.yaml, no new status value) instead of `bye`,
+# scoped narrowly to this one (season, conference, week-bucket) triple so no
+# other conference and no other season is affected.
+#
+# SELF-CLEARING: _build_team_weeks only ever consults this config in the
+# fallback branch reached when a team has NO real schedule_grid row for that
+# slot (see _bye_cell's call site). Once a real flex game is ingested for a
+# team, that row is present in team_slot_rows and renders as a normal game --
+# this rule is never consulted for that team/slot again. No per-team
+# maintenance: membership is derived from CONFERENCE_ORDER's raw "Pac-12" key
+# at payload-build time (via _flex_week_tbd_slot_ids), not a hardcoded roster.
+#
+# RE-VERIFY EACH OFFSEASON: this is a season-specific scheduling fact, not a
+# structural rule, and it WILL be wrong for a future season -- confirm the
+# flex week's existence and its week bucket fresh each year (or once week 13
+# is actually announced and populated) rather than assuming this entry still
+# applies. Same discipline as QUALIFYING_CHAMPIONSHIP_CONFERENCES in
+# artifacts/schedule_standings.py, which carries the identical warning.
+# ---------------------------------------------------------------------------
+FLEX_WEEK_TBD_CONFIG: List[Dict[str, Any]] = [
+    {"season": 2026, "conference": "Pac-12", "week_bucket": 13},
+]
+
+
+def _flex_week_tbd_slot_ids(season: int, raw_conference: Optional[str]) -> set:
+    """slot_ids (e.g. {'week-13'}) that should render `tbd` instead of `bye` for a team in
+    `raw_conference` this `season`, per FLEX_WEEK_TBD_CONFIG. Empty for every conference/season
+    not explicitly configured."""
+    return {
+        f"week-{entry['week_bucket']}"
+        for entry in FLEX_WEEK_TBD_CONFIG
+        if entry["season"] == season and entry["conference"] == raw_conference
+    }
 
 # slot_id is the stable contract the frontend keys off; the LABEL is what the user
 # reads. The championship/Army-Navy labels are derived per season in
@@ -663,6 +710,24 @@ def _bye_cell(logical_season_type: str) -> Dict[str, Any]:
     }
 
 
+def _tbd_cell(logical_season_type: str) -> Dict[str, Any]:
+    """A FLEX_WEEK_TBD_CONFIG-driven placeholder (T6): a real game is expected in this slot but
+    not yet announced/ingested. Reuses the existing `tbd` status (opponent=null, no separate flag
+    needed -- same contract as a real scheduled-but-undetermined-opponent game, per plan.yaml)."""
+    return {
+        "season_type": logical_season_type,
+        "opponent": None,
+        "opponent_logo_url": None,
+        "conditional_opponent": None,
+        "game_name": None,
+        "home_away": None,
+        "neutral_site": False,
+        "status": "tbd",
+        "team_score": None,
+        "opp_score": None,
+    }
+
+
 def _build_team_weeks(
     canonical_columns: List[Tuple[str, str]],
     team_slot_rows: Dict[str, Dict[str, Any]],
@@ -670,7 +735,9 @@ def _build_team_weeks(
     conditional_opponent: Optional[str],
     bowl_status: str,
     logos_by_team: Dict[str, Any],
+    flex_tbd_slot_ids: Optional[set] = None,
 ) -> List[Dict[str, Any]]:
+    flex_tbd_slot_ids = flex_tbd_slot_ids or set()
     weeks = []
     for slot_id, label in canonical_columns:
         real_row = team_slot_rows.get(slot_id)
@@ -689,6 +756,13 @@ def _build_team_weeks(
             # every team, so this slot NEVER falls through to plain 'bye' -- unlike Conference
             # Championship/Army-Navy/the other 3 CFP slots, which do.
             weeks.append({"slot_id": slot_id, "label": label, **_placeholder_cell(logical_type, bowl_status, None)})
+            continue
+        if slot_id in flex_tbd_slot_ids:
+            # T6: FLEX_WEEK_TBD_CONFIG-driven -- a real game is expected here but not yet
+            # announced/ingested. Only reached when team_slot_rows has no real row for this
+            # slot (the `real_row is not None` branch above always wins once one exists), so
+            # this self-clears the moment a real flex game is ingested for this team.
+            weeks.append({"slot_id": slot_id, "label": label, **_tbd_cell(logical_type)})
             continue
 
         weeks.append({"slot_id": slot_id, "label": label, **_bye_cell(logical_type)})
@@ -771,7 +845,12 @@ def _sort_conference_teams(entries: List[Dict[str, Any]], rows: List[Dict[str, A
 # Top-level payload assembly (pure -- no I/O, fully testable with synthetic
 # schedule_grid rows and a synthetic teams_meta dict)
 # ---------------------------------------------------------------------------
-def build_schedule_payload(rows: List[Dict[str, Any]], teams_meta: Dict[str, Dict[str, Any]], season: int) -> Dict[str, Any]:
+def build_schedule_payload(
+    rows: List[Dict[str, Any]],
+    teams_meta: Dict[str, Dict[str, Any]],
+    season: int,
+    team_ranks: Optional[Dict[str, int]] = None,
+) -> Dict[str, Any]:
     """
     Args:
         rows: schedule_grid rows as dicts (all season_types) for `season`.
@@ -781,9 +860,16 @@ def build_schedule_payload(rows: List[Dict[str, Any]], teams_meta: Dict[str, Dic
                     elsewhere. It drives both the division grouping below and, injected into
                     compute_standings(), the per-division championship status.
         season: the season to build the artifact for.
+        team_ranks: Dict[school -> rank] from _fetch_team_ranks -- this season's current rank
+                    (1 = best), derived from the latest week with ratings for `season`. Optional
+                    and defaults to empty so this function stays callable with synthetic test
+                    input that carries no ratings at all. A team not present in this dict --
+                    including every team, when the season has no ratings rows whatsoever -- emits
+                    rank: null rather than raising or being silently omitted from the grid.
     Returns:
         The full Season Grid JSON payload per plan.yaml's contracts.interfaces.
     """
+    team_ranks = team_ranks or {}
     # Division is injected into the standings computation rather than looked up there:
     # schedule_standings does no DB I/O and schedule_grid carries no division column, so the
     # `teams`-sourced map has to come from here. It is what lets a divisional conference (the
@@ -822,6 +908,8 @@ def build_schedule_payload(rows: List[Dict[str, Any]], teams_meta: Dict[str, Dic
         if not member_teams:
             continue
 
+        flex_tbd_slot_ids = _flex_week_tbd_slot_ids(season, raw_conf)
+
         entries = []
         for team in member_teams:
             st = standings.get(team)
@@ -853,10 +941,12 @@ def build_schedule_payload(rows: List[Dict[str, Any]], teams_meta: Dict[str, Dic
                 conditional_opponent,
                 bowl_status,
                 logos_by_team,
+                flex_tbd_slot_ids,
             )
             entries.append({
                 "team": team,
                 "logo_url": logo,
+                "rank": team_ranks.get(team),
                 "record": record,
                 "conf_record": conf_record,
                 "division": team_division(team),
@@ -908,6 +998,46 @@ def _fetch_teams_meta(engine, season: int) -> Dict[str, Dict[str, Any]]:
         row["school"]: {"conference": row["conference"], "division": row["division"], "logos": row["logos"]}
         for row in df.to_dict("records")
     }
+
+
+def _fetch_team_ranks(engine, season: int) -> Dict[str, int]:
+    """
+    Season-scoped current-rank lookup (T5): the `ratings` table has no rank column of its own
+    (team, rating, wins, losses, ties, season, week) -- rank is derived by ordering rating
+    descending, and artifacts/rankings.py's compute_rank_and_delta already does exactly that
+    (reused here with previous_df=None since this only needs the current rank, not a delta).
+
+    Deliberately season-scoped, not (season, week): publish_schedule_artifact takes no week
+    argument by design (the schedule artifact is a season-scoped key layout, unlike rankings'
+    per-week snapshots), so this helper finds the latest week with ratings for `season` itself
+    -- WHERE season = N AND week = (SELECT MAX(week) FROM ratings WHERE season = N) -- rather
+    than requiring a week to be threaded in from the caller. main.py inserts ratings before
+    publishing the schedule artifact in the same run, so a same-season query here sees that
+    run's own just-inserted data.
+
+    Returns:
+        Dict[team -> rank]: empty dict if `season` has no ratings rows at all (MAX(week) is
+        NULL) -- callers must treat a team missing from this dict as rank: null, never raise or
+        guess. Never raises itself; the pipeline-facing caller wraps this the same as every other
+        DB read in this module.
+    """
+    latest_week_df = pd.read_sql_query(
+        f"SELECT MAX(week) AS week FROM ratings WHERE season = {int(season)};", engine
+    )
+    latest_week = latest_week_df["week"].iloc[0]
+    if pd.isnull(latest_week):
+        return {}
+    latest_week = int(latest_week)
+
+    ratings_df = pd.read_sql_query(
+        f"SELECT team, rating FROM ratings WHERE season = {int(season)} AND week = {latest_week};",
+        engine,
+    )
+    if ratings_df.empty:
+        return {}
+
+    ranked_df = compute_rank_and_delta(ratings_df, None)
+    return dict(zip(ranked_df["team"], ranked_df["rank"].astype(int)))
 
 
 _SEASON_KEY_RE = re.compile(r"^schedule/(\d+)/latest\.json$")
@@ -998,6 +1128,7 @@ def publish_schedule_artifact(year: int) -> None:
         try:
             rows = _fetch_schedule_grid_rows(engine, year)
             teams_meta = _fetch_teams_meta(engine, year)
+            team_ranks = _fetch_team_ranks(engine, year)
         finally:
             engine.dispose()
 
@@ -1008,7 +1139,7 @@ def publish_schedule_artifact(year: int) -> None:
             logger.warning("No schedule_grid rows found for season=%s; skipping schedule artifact publish", year)
             return
 
-        payload = build_schedule_payload(rows, teams_meta, year)
+        payload = build_schedule_payload(rows, teams_meta, year, team_ranks)
 
         client = get_r2_client()
         if client is None:
