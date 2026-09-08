@@ -1,0 +1,167 @@
+# Contract: live coordination artifact maintained by $work
+
+artifact: status
+feature: "season-grid-refinement"
+mode: "large-initiative"
+stage: "discovery"
+owner_skill: work
+
+objective: >
+  Act on 15 items of live-use feedback on the shipped Season Grid and Rankings views.
+  Roughly two thirds are presentation (solid cell backgrounds, uniform week-column width,
+  delta triangles, rankings column order, scrollbar treatment, titles and copy, a grouped
+  conference filter) and one third requires artifact or algorithm changes (FCS opponent
+  logos, a standings sort bug, per-team current rank in the grid, Sun Belt divisions,
+  Pac-12 and Sun Belt championship handling, and a Pac-12 flex-week placeholder).
+
+repository_sync:
+  completed_before_work: true
+  checked_at: "2026-09-08T15:40:00Z"
+  repositories:
+    - path: "/home/user/cfb-rankings"
+      remote: "https://github.com/wmentrekin/cfb-rankings"
+      relevant_branch: "main"
+      local_commit_before: "9454b49"
+      remote_commit_after_fetch: "9454b49"
+      local_commit_after: "9454b49"
+      result: "current"
+      notes: "Clean tree, already aligned with origin/main (the PR #9 merge). No fast-forward needed."
+    - path: "/home/user/personal-site"
+      remote: "https://github.com/wmentrekin/personal-site"
+      relevant_branch: "main"
+      local_commit_before: "09b316e"
+      remote_commit_after_fetch: "09b316e"
+      local_commit_after: "09b316e"
+      result: "current"
+      notes: "Clean tree, already aligned with origin/main (the PR #18 merge). No fast-forward needed."
+
+branching:
+  branch_name: "work/season-grid-refinement"
+  note: >
+    Same branch name in both repos, created immediately after mode classification and BEFORE
+    this file was first written, per branch-and-pr-workflow.md. Two PRs (one per repo) rather
+    than one integration PR -- a deliberate, user-directed continuation of the previous pass's
+    structure, since the frontend cannot be visually verified until the backend merges and a
+    pipeline run republishes the artifact.
+
+summary:
+  current_focus: "Discovery: three parallel researchers on championship formats, the standings/clinch algorithm, and the rankings table."
+  last_completed: "Repository sync preflight (both repos current). Mode classified large-initiative. Feature branches created in both repos."
+  current_blocker: "none"
+
+artifacts:
+  requirements: null
+  plan: null
+  implementation_report: null
+
+pr:
+  number: null
+  url: null
+  status: "not_opened"
+
+pr_personal_site:
+  number: null
+  url: null
+  status: "not_opened"
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    task_profile: "orchestration"
+    requested_model_tier: "frontier"
+    requested_reasoning: "high"
+    requested_provider_model: "claude-opus-5"
+    actual_model: "claude-opus-5 (session-configured; serving model not independently verifiable)"
+    actual_reasoning: "high"
+    routing_enforced: false
+    escalation_count: 0
+    status: "active"
+    stage: "discovery"
+    task: "coordinating discovery; branches created, three researchers being spawned"
+    last_update: "2026-09-08"
+    blocker: ""
+  - id: "platform-researcher-championship-formats"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "claude-sonnet-5"
+    actual_model: "unverified -- per-subagent model selection is advisory in this runtime"
+    actual_reasoning: "unverified"
+    routing_enforced: false
+    escalation_count: 0
+    status: "pending"
+    stage: "discovery"
+    task: "Verify live the 2026 championship-game format for the Pac-12 and Sun Belt, and confirm CFBD's teams endpoint returns non-FBS teams with logos"
+    last_update: "2026-09-08"
+    blocker: ""
+  - id: "repo-researcher-standings"
+    role: "repo-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "claude-sonnet-5"
+    actual_model: "unverified"
+    actual_reasoning: "unverified"
+    routing_enforced: false
+    escalation_count: 0
+    status: "pending"
+    stage: "discovery"
+    task: "Map compute_standings and the clinch/eliminate algorithm: locate the 0-0 sort bug, assess how divisions would extend it, and how per-team rank could reach the artifact"
+    last_update: "2026-09-08"
+    blocker: ""
+  - id: "repo-researcher-rankings-table"
+    role: "repo-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "claude-sonnet-5"
+    actual_model: "unverified"
+    actual_reasoning: "unverified"
+    routing_enforced: false
+    escalation_count: 0
+    status: "pending"
+    stage: "discovery"
+    task: "Map RankingsTable.astro and the rankings artifact: column structure, delta field, the client-side render mirror, and what the column reorder and delta-triangle change would touch"
+    last_update: "2026-09-08"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: pending
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+
+decisions:
+  - question: "Mode classification"
+    answer: "large-initiative -- 15 items, two repos, multiple task batches, and genuinely new algorithmic work (division-winner championship modelling), well past bounded-feature."
+  - question: "One integration PR or one per repo?"
+    answer: "One per repo, backend first. Continues the previous pass's structure: the frontend renders whatever the artifact says, so artifact-dependent items are unverifiable until the backend merges and a pipeline run republishes."
+
+model_routing:
+  provider: "anthropic"
+  provider_map_verified_at: "2026-09-08T15:40:00Z"
+  substitutions: []
+  unresolved_limitations:
+    - >
+      Per-subagent model selection is advisory in this runtime: the orchestrator can request a
+      tier but cannot verify which model served a subagent turn. actual_model is recorded as
+      "unverified" for every spawned agent rather than asserting enforcement the provider does
+      not expose.
+
+next_action: "Spawn the three discovery researchers, then write requirements.yaml from their findings."
+next_recommended_command: "$work"
+user_input_needed: false
