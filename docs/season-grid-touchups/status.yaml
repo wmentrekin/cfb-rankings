@@ -17,6 +17,54 @@ objective: >
   (personal-site) -- control layout, per-tab season dropdowns, a much denser
   table, cell format, neutral-site handling, and label renames.
 
+repository_sync:
+  completed_before_work: false
+  checked_at: "2026-09-08T05:05:00Z"
+  repositories:
+    - path: "/home/user/cfb-rankings"
+      remote: "https://github.com/wmentrekin/cfb-rankings"
+      relevant_branch: "main"
+      local_commit_before: "1885958"
+      remote_commit_after_fetch: "97ba3e8"
+      local_commit_after: "1e3b1c1"
+      result: "comparison_only"
+      notes: >
+        Feature checkout, so the base branch was fetched and compared rather than
+        checked out or pulled into, per the preflight's worktree rule. origin/main had
+        moved ahead (PR #10, the agent-framework update) and was merged INTO the feature
+        branch deliberately -- that is base-into-feature integration, not a merge pull of
+        the base itself. Confirmed origin/main is now an ancestor of HEAD.
+    - path: "/home/user/personal-site"
+      remote: "https://github.com/wmentrekin/personal-site"
+      relevant_branch: "main"
+      local_commit_before: "675be91"
+      remote_commit_after_fetch: "5ae53d4"
+      local_commit_after: "53bc594"
+      result: "comparison_only"
+      notes: >
+        Same handling. origin/main had moved ahead (PR #19, the same framework update)
+        and was merged into the feature branch. Working tree clean.
+  honest_limitation: >
+    completed_before_work is FALSE and deliberately not backdated. This preflight did not
+    exist when this pass started -- it arrived mid-execution with the framework update, and
+    both feature branches had already been created and pushed. Recording it as satisfied
+    up front would be a false claim. Both repositories are now synchronized and no
+    blocked_* or unverified_* state was encountered.
+
+model_routing:
+  provider: "anthropic"
+  provider_map_verified_at: "2026-09-08T05:05:00Z"
+  substitutions: []
+  unresolved_limitations:
+    - >
+      Per-subagent model selection is advisory in this runtime: the orchestrator can request
+      a tier but cannot verify which model actually served a subagent turn. actual_model is
+      recorded as "unverified" rather than asserting enforcement the provider does not expose.
+    - >
+      The routing framework arrived mid-execution. B1's implementation tasks were executed
+      inline by the orchestrator rather than delegated, so their per-task routing is recorded
+      retroactively in implementation-report.yaml and describes what actually ran.
+
 branching:
   branch_name: "work/season-grid-touchups"
   note: >

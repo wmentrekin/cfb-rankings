@@ -43,14 +43,10 @@ USAGE
 """
 import argparse
 import os
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-import pandas as pd  # type: ignore  # noqa: E402
-from dotenv import load_dotenv  # type: ignore  # noqa: E402
-from sqlalchemy import create_engine, text  # type: ignore  # noqa: E402
+import pandas as pd  # type: ignore
+from dotenv import load_dotenv  # type: ignore
+from sqlalchemy import create_engine, text  # type: ignore
 
 SELECT_AFFECTED = """
 SELECT season, COUNT(*) AS rows, MIN(start_date) AS earliest, MAX(start_date) AS latest

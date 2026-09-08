@@ -36,7 +36,7 @@ from sqlalchemy import create_engine  # type: ignore
 from artifacts import schedule_standings
 from artifacts.r2 import get_r2_client, upload_json
 from artifacts.rankings import CONFERENCE_DISPLAY_NAMES, _resolve_logo
-from utils import get_cfb_week
+from utils import football_day, get_cfb_week
 
 # Reuse the same logger name main.py configures via utils.setup_logging, so warnings from this
 # module surface through the pipeline's existing stdout/file handlers when run via main.py, and
@@ -124,12 +124,16 @@ def _to_datetime(value: Any) -> datetime:
 
 
 def _get_week_slot(row: Dict[str, Any]) -> int:
-    """Per-row display-week-slot via utils.get_cfb_week(start_date, None) -- NOT raw `week`.
+    """Per-row display-week-slot via utils.get_cfb_week -- NOT raw `week`.
 
     T3 confirmed raw `week` collides across true-Week-0-vs-Week-1 games (129 real examples);
     this is the fix, reused as-is per the handoff (no reimplementation of the date-anchor math).
+
+    Buckets on utils.football_day() rather than the raw UTC date, so a Monday-night kickoff
+    (00:00 UTC Tuesday for an 8pm ET start) groups with the weekend it belongs to instead of
+    opening the next week -- see that function for why midnight UTC is the wrong boundary.
     """
-    return get_cfb_week(_to_date(row["start_date"]), None)
+    return get_cfb_week(football_day(_to_datetime(row["start_date"])), None)
 
 
 def _is_army_navy_pairing(team: Optional[str], opponent: Optional[str]) -> bool:
@@ -154,52 +158,40 @@ def _display_conference_name(raw_conference: Optional[str]) -> str:
 # ---------------------------------------------------------------------------
 # CONFERENCE-CHAMPIONSHIP GAME IDENTIFICATION
 #
-# Per the T4b handoff: for each conference in
-# schedule_standings.QUALIFYING_CHAMPIONSHIP_CONFERENCES, the championship
-# game is the single schedule_grid game (season_type='regular',
-# conference_game=true, both teams sharing that conference) with the LATEST
-# start_date among that conference's conference_game=true games that season.
+# A championship game is identified by a POSITIVE STRUCTURAL SIGNAL: it is the
+# lone conference game occupying a week bucket by itself, strictly later than
+# the bucket holding that conference's regular slate. If a conference's latest
+# bucket holds more than one game, that is a regular slate and nothing is
+# identified.
 #
-# RE-VERIFIED against live 2024 AND 2025 data during this task (Supabase MCP
-# queries against project oyqgmbgwohlnrxodvilt) -- confirmed correct for 7 of
-# the 8 qualifying conferences in both seasons (SEC, Big Ten, Big 12, ACC,
-# Conference USA, Mountain West, Mid-American), reproducing exactly the
-# games the handoff already listed. HOWEVER: American Athletic (AAC) BREAKS
-# the naive heuristic for 2024, and the handoff's own worked example list
-# conspicuously omits American Athletic despite it being in
-# QUALIFYING_CHAMPIONSHIP_CONFERENCES -- this is not a coincidence.
+# WHY NOT "the latest conference game" (the rule this replaced): that rule had
+# no notion of whether a championship game existed at all. For an in-progress
+# season with none scheduled, it fell back to rivalry week and tie-broke
+# alphabetically -- six ACC games share an identical start_date in 2026, and the
+# tie-break published "Wake Forest vs Duke" as a determined championship matchup
+# in the live artifact. Requiring separation from the slate is what makes the
+# in-progress case correctly identify nothing.
 #
-# ROOT CAUSE (confirmed live): Army joined the American Athletic Conference
-# as a full football member starting in the 2024 season. Army and Navy still
-# play their annual rivalry game every December regardless of conference
-# standings -- and since Navy has been an AAC member since 2015, that
-# Army-Navy game is ALSO tagged conference_game=true, conference='American
-# Athletic' in schedule_grid for 2024. It falls on 2024-12-14, which is
-# LATER than the real 2024 AAC Championship Game (Army 35, Tulane 14,
-# 2024-12-07) -- so the naive "latest conference_game=true row" heuristic
-# picks Army-vs-Navy as AAC's "championship game," which is wrong.
+# ARMY-NAVY CARVE-OUT (retained from the previous rule, still needed): Army
+# joined the American Athletic Conference in 2024 and Navy has been a member
+# since 2015, so the annual Army-Navy game is tagged conference_game=true,
+# conference='American Athletic'. It falls LATER than the real AAC title game
+# (2024-12-14 vs 2024-12-07), and it sits alone in its own week bucket -- so it
+# satisfies the new rule's shape perfectly and would be identified as AAC's
+# championship game. It is excluded unconditionally, for every conference,
+# consistent with the dedicated Army-Navy column it is always diverted into.
 #
-# For 2025 the naive heuristic happens to still return the correct game
-# (Tulane vs North Texas, 2025-12-06) -- but only because no 2025 Army-Navy
-# row exists yet in this sandbox's DB at all (checked directly; Navy's 2025
-# schedule_grid rows stop at 2025-11-29). This is a data-completeness
-# coincidence, not evidence the naive heuristic is safe going forward --
-# once a real 2025 (or any future season's) Army-Navy row is ingested, the
-# same failure mode will reproduce for American Athletic every year Army and
-# Navy are both AAC conference-game=true members and Army-Navy is
-# chronologically the conference's last game of the year.
+# ACCEPTED LIMITATION: a make-up or postponed regular-season conference game
+# scheduled into the championship weekend shares that bucket, so the conference
+# identifies nothing that season and its title game renders in a week column
+# instead of the championship column. That is the conservative direction --
+# rendering a real game in the wrong column beats asserting a matchup that was
+# never determined, which is the failure this rule exists to prevent.
 #
-# FIX APPLIED: unconditionally exclude the Army/Navy pairing from the
-# "latest conference_game=true row per conference" candidate pool for EVERY
-# conference, not just American Athletic. This is a natural, low-risk fix,
-# not a new guess -- it's consistent with the Army-Navy carve-out the
-# handoff already specifies elsewhere (that game is always diverted to its
-# own dedicated column, never treated as a normal conference-standings game
-# for any other purpose). Re-verified with this fix in place: produces
-# exactly one distinct game per qualifying conference for BOTH 2024 and 2025
-# (16/16), matching the real-world championship game in every case,
-# including American Athletic in both seasons. See this task's report for
-# the full verification query/output.
+# VERIFIED against live 2024, 2025 and 2026 data (Supabase project
+# oyqgmbgwohlnrxodvilt): every real title game is still identified for both
+# completed seasons, 2024's two-team Pac-12 remnant correctly identifies nothing,
+# and 2026 identifies nothing for every conference.
 # ---------------------------------------------------------------------------
 def identify_conference_championship_games(
     rows: List[Dict[str, Any]],
@@ -212,8 +204,18 @@ def identify_conference_championship_games(
     this season. A qualifying conference with no conference_game=true rows
     this season (e.g. incomplete data) simply has no entry.
     """
+    # Defaults to EVERY conference in the data, not just the confirmed-top-2-format list.
+    # This function decides which rows get DIVERTED out of the week columns; the computed
+    # clinched/eliminated STATUSES are gated separately in schedule_standings. Gating
+    # diversion too would leave a real title game (Sun Belt, Pac-12) sitting in a week
+    # bucket of its own and minting a near-empty week column right next to the
+    # Conference Championship column -- the exact phantom-column bug this pass fixes.
     if qualifying_conferences is None:
-        qualifying_conferences = schedule_standings.QUALIFYING_CHAMPIONSHIP_CONFERENCES
+        qualifying_conferences = {
+            row.get("conference")
+            for row in rows
+            if row.get("season") == season and row.get("conference")
+        }
 
     candidates: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for row in rows:
@@ -228,6 +230,9 @@ def identify_conference_championship_games(
             continue
         if _is_army_navy_pairing(row.get("team"), row.get("opponent")):
             continue  # see module docstring section above -- deliberate carve-out, not an oversight
+        if row.get("start_date") is None:
+            # Cannot be bucketed, so it can neither be nor rule out a championship game.
+            continue
         candidates[conf].append(row)
 
     result: Dict[str, int] = {}
@@ -504,6 +509,14 @@ def build_canonical_columns(
     else:
         army_navy_week = None
 
+    # The two derived numbers can legitimately collide -- an Army-Navy game played on
+    # championship weekend, or a season with no championship game where ccg_week is
+    # inferred as max(weeks)+1. Suffix BOTH when they do, so the header never shows two
+    # columns reading the same thing.
+    labels_collide = (
+        ccg_week is not None and army_navy_week is not None and ccg_week == army_navy_week
+    )
+
     def _postseason_label(week_n: Optional[int], suffix: str, fallback: str, always_suffix: bool) -> str:
         if week_n is None:
             return fallback
@@ -514,7 +527,9 @@ def build_canonical_columns(
         return f"Week {week_n}"
 
     ccg_label = _postseason_label(ccg_week, "CCG", CONF_CHAMPIONSHIP_SLOT[1], always_suffix=True)
-    army_navy_label = _postseason_label(army_navy_week, "Army-Navy", ARMY_NAVY_SLOT[1], always_suffix=False)
+    army_navy_label = _postseason_label(
+        army_navy_week, "Army-Navy", ARMY_NAVY_SLOT[1], always_suffix=labels_collide
+    )
 
     return week_columns + [
         (CONF_CHAMPIONSHIP_SLOT_ID, ccg_label),

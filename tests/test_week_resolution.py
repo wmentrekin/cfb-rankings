@@ -79,10 +79,60 @@ def test_latest_kickoff_of_the_season_does_not_trip_the_walk_back():
     assert resolved == 11, f"week 11 must not walk back, got {resolved}"
 
 
-def test_run_before_any_game_has_started_does_not_go_negative():
+def test_run_before_any_game_has_started_keeps_the_candidate():
+    """Nothing has kicked off, so no week qualifies -- the candidate must survive intact
+    rather than the scan walking down to some earlier week or below 1."""
     now = datetime.fromisoformat("2026-08-25 07:00:00")
     assert resolve_week_from_starts(0, STARTS, now, None) == 0
     assert resolve_week_from_starts(1, STARTS, now, None) == 1
+    assert resolve_week_from_starts(5, STARTS, now, None) == 5
+
+
+def test_walk_back_is_capped():
+    """A stale future-dated row must not drag the published week back indefinitely.
+
+    Here weeks 5, 4 and 3 all look incomplete. With MAX_WALK_BACK_WEEKS=2 the scan gives
+    up and keeps the date-derived week rather than silently publishing week 2's ratings.
+    """
+    now = datetime.fromisoformat("2026-10-04 07:00:00")
+    # One not-yet-started row in each of weeks 5, 4 and 3.
+    poisoned = STARTS + [
+        datetime.fromisoformat("2026-09-19 12:00:00").replace(year=2027),
+        datetime.fromisoformat("2026-09-26 12:00:00").replace(year=2027),
+        datetime.fromisoformat("2026-10-03 12:00:00").replace(year=2027),
+    ]
+    assert resolve_week_from_starts(5, poisoned, now, None) == 5
+
+
+def test_a_week_with_no_games_is_not_treated_as_complete():
+    """Bucket 16 holds no regular-season games in 2026. A late-December run must not
+    read that emptiness as 'complete' and republish it as a fresh week."""
+    now = datetime.fromisoformat("2026-12-27 07:00:00")
+    resolved = resolve_week_from_starts(16, STARTS, now, None)
+    assert resolved != 16, "an empty week must never resolve as complete"
+    assert resolved == 15, f"should fall back to Army-Navy week 15, got {resolved}"
+
+
+def test_monday_night_kickoff_groups_with_the_preceding_weekend():
+    """A Monday 8pm ET kickoff is 00:00 UTC Tuesday. Bucketing on the raw UTC date would
+    push it into the next week, undoing the Tuesday->Monday boundary for exactly the
+    games that boundary exists for. The real 2025 TCU/North Carolina Labor Day game."""
+    from utils import football_day
+    labor_day_night = datetime.fromisoformat("2025-09-02 00:00:00")   # Mon Sep 1, 8pm ET
+    assert football_day(labor_day_night).isoformat() == "2025-09-01"
+    assert get_cfb_week(football_day(labor_day_night), None) == get_cfb_week(
+        datetime.fromisoformat("2025-08-30 16:00:00").date(), None
+    ), "must land in the same week as the Saturday before it"
+
+
+def test_tbd_kickoff_placeholders_are_not_dragged_back_a_day():
+    """CFBD stores an unscheduled kickoff as midnight ET = 05:00 UTC. 2026 weeks 11-13 each
+    open with one. A rollover window wide enough to swallow those would pull whole weeks
+    backwards, so the window must stay under 5 hours."""
+    from utils import football_day
+    placeholder = datetime.fromisoformat("2026-11-17 05:00:00")       # Tue 00:00 ET
+    assert football_day(placeholder).isoformat() == "2026-11-17"
+    assert get_cfb_week(football_day(placeholder), None) == 12
 
 
 def test_empty_schedule_falls_back_to_the_candidate():

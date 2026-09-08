@@ -1,13 +1,14 @@
 import argparse
+from typing import Dict, Optional
 from model.model import get_ratings
 from database.model_to_db import ratings_to_df, insert_model_results_to_db
 from database.get_games import load_games_to_db
 from database.get_teams import load_teams_to_db
 from artifacts.r2 import publish_rankings_artifact
 from artifacts.schedule import publish_schedule_artifact
-from utils import get_cfb_week, setup_logging
+from utils import football_day, get_cfb_week, setup_logging
 import pandas as pd #type: ignore
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import os
 from dotenv import load_dotenv # type: ignore
 from sqlalchemy import create_engine # type: ignore
@@ -31,83 +32,75 @@ def teams_exist_for_year(year):
     engine.dispose()
     return int(count_df['n'].iloc[0]) > 0
 
+# A run delayed past more than this many week boundaries is an operational anomaly, not
+# something to silently resolve: walking back arbitrarily far lets a single stale
+# future-dated row drag the published week backwards. Beyond the cap the run keeps the
+# date-derived week and says so loudly; --week is the deliberate override for a genuinely
+# long delay.
+MAX_WALK_BACK_WEEKS = 2
+
+
+def _naive_utc(value) -> Optional[datetime]:
+    """Coerce one start_date to a naive-UTC datetime, or None if it cannot be read.
+
+    `games.start_date` is naive UTC today, but a NULL (NaT) or a tz-aware value must not
+    take down the run -- week selection is a convenience, never a reason to publish nothing.
+    """
+    if value is None:
+        return None
+    try:
+        stamp = pd.Timestamp(value)
+    except (ValueError, TypeError):
+        return None
+    if stamp is pd.NaT or pd.isna(stamp):
+        return None
+    moment = stamp.to_pydatetime()
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(timezone.utc).replace(tzinfo=None)
+    return moment
+
+
 def resolve_week_from_starts(candidate: int, start_dates, now: datetime, season_start_override=None) -> int:
     """The pure decision behind resolve_target_week(), split out so it is testable without a DB.
 
-    Walks back from `candidate` while that week still contains a game that has not
-    kicked off. Never walks below week 1 -- main() has its own week-0 guard, and a
-    season whose every week looks incomplete should surface there, not silently here.
+    Returns the greatest week at or below `candidate` that BOTH has games and has no game
+    still waiting to kick off. Requiring "has games" matters: without it an empty bucket --
+    e.g. week 16 in a season whose regular slate ends at 15 -- reads as vacuously complete
+    and the run republishes it as though it were new.
+
+    `now` must be naive UTC, matching `games.start_date`.
     """
-    unstarted_by_week = {}
-    for start in start_dates:
-        if start <= now:
+    games_by_week: Dict[int, int] = {}
+    unstarted_by_week: Dict[int, int] = {}
+    for raw in start_dates:
+        start = _naive_utc(raw)
+        if start is None:
             continue
-        bucket = get_cfb_week(today=start.date(), season_start_override=season_start_override)
-        unstarted_by_week[bucket] = unstarted_by_week.get(bucket, 0) + 1
+        bucket = get_cfb_week(football_day(start), season_start_override)
+        games_by_week[bucket] = games_by_week.get(bucket, 0) + 1
+        if start > now:
+            unstarted_by_week[bucket] = unstarted_by_week.get(bucket, 0) + 1
 
-    week = candidate
-    while week > 1 and unstarted_by_week.get(week, 0) > 0:
-        print(
-            f"resolve_target_week: week {week} still has {unstarted_by_week[week]} game(s) that "
-            f"have not started; stepping back to week {week - 1}."
-        )
-        week -= 1
-    return week
+    floor = max(1, candidate - MAX_WALK_BACK_WEEKS)
+    for week in range(candidate, floor - 1, -1):
+        if games_by_week.get(week, 0) == 0:
+            print(f"resolve_target_week: week {week} has no games; looking further back.")
+            continue
+        if unstarted_by_week.get(week, 0) > 0:
+            print(
+                f"resolve_target_week: week {week} still has {unstarted_by_week[week]} of "
+                f"{games_by_week[week]} game(s) yet to kick off; looking further back."
+            )
+            continue
+        if week != candidate:
+            print(f"resolve_target_week: resolved to week {week} (date-derived week was {candidate}).")
+        return week
 
-
-def resolve_target_week(year: int, today: date, season_start_override=None) -> int:
-    """The most recent week whose games have all kicked off -- not the week containing today.
-
-    get_cfb_week(today) answers "which week is it now", which is only the same
-    question as "which week should we publish" because the cron happens to fire on
-    a Sunday. Any run that slips past a week boundary mislabels the rankings: the
-    delayed 2026 Week 1 run (Tue Sep 8, after a Mon Sep 7 game) computed week 2 and
-    would have published Week 1's slate as Week 2, which is why that one run was
-    hand-pinned with --week 1.
-
-    So: start from the date-derived week and walk backwards while the candidate week
-    still contains a game that has not started. Bucketing reuses get_cfb_week on each
-    game's start_date, so the pipeline's notion of a week and the Season Grid's are the
-    same by construction.
-
-    COMPLETION TEST: "has kicked off" (start_date <= now), deliberately NOT
-    "kicked off at least N hours ago". A completion buffer reads as safer but breaks
-    the normal Sunday run: the cron fires 07:00 UTC and 2026's latest regular-season
-    kickoff is 04:00 UTC (week 11), so even a 3-hour buffer would mark a finished week
-    incomplete and walk it back one -- a regression on every ordinary week to guard a
-    case the 07:00 cron already clears by ~4 hours. The loose direction preserves
-    today's proven behavior; the strict direction would change it.
-
-    Falls back to the date-derived week when the season has no games loaded yet, or if
-    the lookup fails for any reason -- this must never be the thing that breaks a run.
-    """
-    candidate = get_cfb_week(today=today, season_start_override=season_start_override)
-    if candidate < 1:
-        return candidate
-
-    try:
-        load_dotenv()
-        db_url = (
-            f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
-            f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
-            "?sslmode=require"
-        )
-        engine = create_engine(db_url)
-        games_df = pd.read_sql_query(
-            f"SELECT start_date FROM games WHERE season = {int(year)} AND season_type = 'regular';",
-            engine,
-        )
-        engine.dispose()
-    except Exception as exc:  # noqa: BLE001 -- never let week selection break the run
-        print(f"resolve_target_week: DB lookup failed ({exc}); falling back to date-derived week={candidate}.")
-        return candidate
-
-    if games_df.empty:
-        print(f"resolve_target_week: no {year} games loaded yet; using date-derived week={candidate}.")
-        return candidate
-
-    start_dates = [pd.Timestamp(raw).to_pydatetime() for raw in games_df["start_date"]]
-    return resolve_week_from_starts(candidate, start_dates, datetime.now(), season_start_override)
+    print(
+        f"resolve_target_week: no completed week found within {MAX_WALK_BACK_WEEKS} week(s) of "
+        f"the date-derived week {candidate}; keeping {candidate}. Pass --week to override."
+    )
+    return candidate
 
 
 def main():

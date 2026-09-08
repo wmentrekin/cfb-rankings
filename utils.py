@@ -7,6 +7,28 @@ import pandas as pd #type: ignore
 import logging
 from datetime import datetime, date, timedelta
 
+# A kickoff at 8pm ET on a Monday is 00:00 UTC on TUESDAY. Bucketing on the raw UTC date
+# therefore pushes exactly the late Monday-night games -- the ones the Tuesday->Monday
+# boundary exists to capture -- into the following week anyway, leaving that fix half-done.
+# Rolling the day over a few hours after midnight UTC fixes it.
+#
+# The window is 4 hours, and the exact value matters. CFBD stores a game whose kickoff time
+# is not yet set as midnight ET, which is 05:00 UTC -- 2026 weeks 11, 12 and 13 each open
+# with such a row. A 6-hour rollover pulls those placeholders back onto the preceding Monday
+# and drags whole weeks with them; 4 hours leaves them on their real day while still
+# capturing a genuine Monday-night kickoff (8-10pm ET = 00:00-02:00 UTC Tuesday).
+#
+# Only MONDAY's classification actually affects a bucket, since Tuesday->Monday weeks put
+# Saturday and Sunday in the same week either way -- so a late Saturday west-coast game
+# (04:00 UTC Sunday) landing on "Sunday" is harmless.
+FOOTBALL_DAY_ROLLOVER_HOURS = 4
+
+
+def football_day(start: datetime) -> date:
+    """The calendar day a kickoff belongs to, rolling over at 06:00 UTC rather than midnight."""
+    return (start - timedelta(hours=FOOTBALL_DAY_ROLLOVER_HOURS)).date()
+
+
 def get_cfb_week(today: date, season_start_override: date) -> int:
     """
     Calculate the current CFB week number based on today's date and an optional season start override.
