@@ -22,6 +22,11 @@ constraints:
 
 assumptions: []
 
+repository_sync:
+  source: "docs/<feature>/status.yaml"
+  repositories_confirmed: []
+  accepted_unverified_states: []
+
 repo_context:
   relevant_paths: []
   systems_in_scope: []

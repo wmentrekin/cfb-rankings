@@ -31,6 +31,18 @@ execution_batches:
         title: ""
         objective: ""
         assigned_domain: ""
+        model_routing:
+          task_profile: "implementation"
+          uncertainty: "medium"
+          consequence: "medium"
+          scope_size: "bounded"
+          determinism: "interpretive"
+          requested_tier: "balanced"
+          requested_reasoning: "medium"
+          provider_model: ""
+          routing_enforced: false
+          escalation_tier: "frontier"
+          escalation_condition: ""
         owned_scope: []
         forbidden_scope: []
         dependencies: []
@@ -40,6 +52,8 @@ execution_batches:
 ordering_notes: []
 
 risks: []
+
+model_routing_notes: []
 
 open_questions: []
 

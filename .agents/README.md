@@ -5,6 +5,9 @@ Shared workflow assets for importing into project repos under `.agents/`. After 
 Works natively with Claude Code, Codex CLI, and Google Antigravity — see "Tool Compatibility" in
 `.agents/AGENTS.md` and `.agents/references/provider-notes.md` for how each tool discovers it.
 
+`$work` begins by safely synchronizing every repository involved, then routes each delegated task
+to a provider-neutral capability tier so frontier capacity is reserved for work that needs it.
+
 ```bash
 git remote add agent-skills https://github.com/wmentrekin/agent-skills.git
 git subtree add --prefix=.agents agent-skills main --squash

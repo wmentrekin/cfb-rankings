@@ -25,7 +25,10 @@ It owns the conversation with the user and coordinates all internal workflow sta
 4. `.agents/references/workflow-architecture.md`
 5. `.agents/references/chat-and-board-format.md`
 6. `.agents/references/branch-and-pr-workflow.md`
-7. the mode-relevant templates in `.agents/templates/`
+7. `.agents/references/repository-sync.md`
+8. `.agents/references/model-routing.md`
+9. `.agents/references/provider-model-map.md`
+10. the mode-relevant templates in `.agents/templates/`
 
 Re-read `docs/<feature>/status.yaml` and these core files again at every internal stage
 transition (discovery→planning, planning→execution, execution→verification), not only once at
@@ -51,6 +54,10 @@ a tool-specific persona registration. To act as (or spawn) a role:
    call, an agent-spawning tool, etc.)
 3. never assume the role name itself is a recognized subagent type — the
    brief's content is what defines the role, not a registration step
+4. classify the task and select a capability tier using
+   `.agents/references/model-routing.md`
+5. resolve that tier using `.agents/references/provider-model-map.md`, then record both the
+   requested and actual model configuration in the handoff and status board
 
 This works identically regardless of whether the current tool has a native
 named-subagent format. See `.agents/references/provider-notes.md` for the
@@ -73,7 +80,9 @@ Mode-dependent durable artifacts:
 - `docs/<feature>/plan.yaml` using `.agents/templates/plan.yaml`
 - `docs/<feature>/implementation-report.yaml` using `.agents/templates/implementation-report.yaml`
 
-Execution agent handoffs use:
+All subagent handoffs use `.agents/templates/task-handoff.yaml` or an equivalent in-memory
+contract containing every field from that template. Execution handoffs may be persisted when a
+durable agent-to-agent transfer is needed:
 - `.agents/templates/task-handoff.yaml`
 
 # User Updates
@@ -164,25 +173,31 @@ Treat these as internal states, not separate user-facing commands.
 
 # Process
 
-1. classify the work mode
-2. create the feature branch per `.agents/references/branch-and-pr-workflow.md` — before any
+1. inventory every repository involved and complete `.agents/references/repository-sync.md`
+   before repository research, artifacts, branch creation, or edits; report the result in chat
+2. classify the work mode
+3. create the feature branch per `.agents/references/branch-and-pr-workflow.md` — before any
    `docs/<feature>/*.yaml` artifact is written, for every mode including quick-fix and
    investigation (never commit directly to the base/main branch)
-3. create or update `docs/<feature>/status.yaml`, recording `branching.branch_name`
-4. run discovery only to the depth needed by the selected mode
-5. create `requirements.yaml` if the mode requires it
-6. create `plan.yaml` if the mode requires it, copying `branching.branch_name` from
+4. create or update `docs/<feature>/status.yaml`, recording repository synchronization evidence
+   and `branching.branch_name`
+5. run discovery only to the depth needed by the selected mode
+6. create `requirements.yaml` if the mode requires it
+7. create `plan.yaml` if the mode requires it, copying `branching.branch_name` from
    `status.yaml` rather than re-deciding it
-7. stop for the required pre-execution checkpoint
-8. create worktrees, if the plan calls for parallel domains, per
+8. assign each planned task a task profile, risk factors, model tier, reasoning level, and
+   escalation policy
+9. stop for the required pre-execution checkpoint
+10. create worktrees, if the plan calls for parallel domains, per
    `.agents/references/branch-and-pr-workflow.md` (the feature branch itself already exists
-   from step 2)
-9. spawn the routed domain (or generalist) agents for bounded execution
-10. update `implementation-report.yaml`
-11. open the PR per `.agents/references/branch-and-pr-workflow.md`
-12. run verification with reviewer and tester agents, posting findings to the PR
-13. either complete, loop back once or twice, or stop and ask the user for direction
-14. once the user explicitly confirms they are merging the PR, delete the entire
+   from the branch-creation step)
+11. spawn the routed domain (or generalist) agents for bounded execution using the selected
+    provider-resolved configuration when the runtime supports it
+12. update `implementation-report.yaml`, including actual model use and escalations
+13. open the PR per `.agents/references/branch-and-pr-workflow.md`
+14. run verification with reviewer and tester agents, posting findings to the PR
+15. either complete, loop back once or twice, or stop and ask the user for direction
+16. once the user explicitly confirms they are merging the PR, delete the entire
     `docs/<feature>/` directory from the branch (`git rm -r`) and push that removal as the final
     commit before merge — these are `$work`'s own ephemeral coordination artifacts, not
     deliverables; never delete pre-existing project documentation outside `docs/<feature>/`. See
@@ -218,6 +233,8 @@ Escalate when:
 - the loop cap is reached
 - execution would require a new architecture or product decision
 - verification results conflict and the next step is not obvious
+- a selected model tier cannot answer the bounded task without guessing; return evidence before
+  one tier increase
 
 # Completion
 

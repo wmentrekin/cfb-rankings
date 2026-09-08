@@ -1,0 +1,89 @@
+artifact: status
+feature: model-routing-preflight
+mode: bounded-feature
+stage: verification
+owner_skill: work
+
+objective: "Add mandatory multi-repository synchronization and task-instance model routing."
+
+repository_sync:
+  completed_before_work: true
+  checked_at: "2026-09-07"
+  repositories:
+    - path: "/Users/wentrekin/dev/agent-skills"
+      remote: "origin"
+      relevant_branch: "main"
+      local_commit_before: "d7bb620"
+      remote_commit_after_fetch: "d7bb620"
+      local_commit_after: "d7bb620"
+      result: "current"
+      notes: "Fast-forward-only pull confirmed origin/main was current before branch creation."
+
+branching:
+  branch_name: "work/model-routing-preflight"
+
+summary:
+  current_focus: "Await user review of PR #3."
+  last_completed: "PR review and verification passed after one correction cycle."
+  current_blocker: ""
+
+artifacts:
+  requirements: "docs/model-routing-preflight/requirements.yaml"
+  plan: "docs/model-routing-preflight/plan.yaml"
+  implementation_report: "docs/model-routing-preflight/implementation-report.yaml"
+
+pr:
+  number: 3
+  url: "https://github.com/wmentrekin/agent-skills/pull/3"
+  status: ready_for_review
+
+agents:
+  - id: orchestrator
+    role: orchestrator
+    task_profile: orchestration
+    requested_model_tier: frontier
+    requested_reasoning: high
+    requested_provider_model: "provider-resolved frontier tier"
+    actual_model: "runtime default; not exposed"
+    actual_reasoning: "not exposed"
+    routing_enforced: false
+    escalation_count: 0
+    status: completed
+    stage: verification
+    task: "Opened and reviewed PR #3."
+    last_update: "No remaining findings; contract assertions and PR checks pass."
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 1
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: approved
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+decisions:
+  - "Route by task instance using provider-neutral capability tiers."
+  - "Keep model names in a dated provider map rather than core workflow rules."
+  - "Require safe synchronization evidence for every repository before work."
+
+model_routing:
+  provider: codex
+  provider_map_verified_at: "2026-09-07"
+  substitutions: []
+  unresolved_limitations:
+    - "This runtime does not expose the actual underlying model name or reasoning setting."
+
+next_action: "User reviews PR #3 and decides whether to merge."
+next_recommended_command: "$work"
+user_input_needed: true

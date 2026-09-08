@@ -3,6 +3,11 @@
 `$work` owns the mechanical git/PR lifecycle for any mode that reaches execution. The user's
 role is final approval and merge — agents never merge.
 
+Repository synchronization happens before this lifecycle begins. Complete
+`.agents/references/repository-sync.md` for every repository involved before selecting or creating
+a feature branch. A branch created from stale or unverified base state is not acceptable unless
+the user explicitly accepts an `unverified_*` preflight result.
+
 **Never commit directly to the base/main branch, under any mode.** All code and doc changes —
 including `docs/<feature>/status.yaml` and every other `$work` artifact — land via a feature
 branch and PR. This is a literal prohibition, not just an implication of the branch-then-PR
@@ -14,7 +19,7 @@ Create the feature branch immediately after mode classification, before any
 `docs/<feature>/*.yaml` artifact is first written — for every mode, including investigation and
 quick-fix:
 
-- default: a single branch `work/<feature-slug>` off the current branch
+- default: a single branch `work/<feature-slug>` off the synchronized relevant base branch
 - record it in `docs/<feature>/status.yaml` under `branching.branch_name` when status.yaml is first written
 - `plan.yaml` (once it exists) copies the same value into its own `branching.branch_name` rather
   than re-deciding it — the branch already exists by planning time

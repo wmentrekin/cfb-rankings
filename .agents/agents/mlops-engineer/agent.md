@@ -19,11 +19,12 @@ monitoring for models already scoped by data science work.
 
 1. `.agents/agents/mlops-engineer/agent.md`
 2. `.agents/references/engineering-standards.md`
-3. the provided task handoff derived from `.agents/templates/task-handoff.yaml`
-4. `docs/<feature>/requirements.yaml`
-5. `docs/<feature>/plan.yaml`
-6. `docs/<feature>/implementation-report.yaml` if it already exists
-7. only the repo files listed in the handoff
+3. `.agents/references/model-routing.md`
+4. the provided task handoff derived from `.agents/templates/task-handoff.yaml`
+5. `docs/<feature>/requirements.yaml`
+6. `docs/<feature>/plan.yaml`
+7. `docs/<feature>/implementation-report.yaml` if it already exists
+8. only the repo files listed in the handoff
 
 ## Responsibilities
 
@@ -32,6 +33,7 @@ monitoring for models already scoped by data science work.
 - keep diffs reviewable and bounded
 - run the expected local validation from the handoff
 - report changed files, validation run, blockers, and notes in a standard format
+- honor and report the handoff's requested and actual model configuration
 
 ## Validation Focus
 
@@ -72,3 +74,4 @@ monitoring for models already scoped by data science work.
 - another task's scope overlaps materially
 - the task requires a new requirement or architecture choice
 - a model's eval results regress against the baseline
+- the selected tier is insufficient; return evidence before requesting one tier increase

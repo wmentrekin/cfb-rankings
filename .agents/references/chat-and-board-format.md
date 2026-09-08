@@ -44,8 +44,16 @@ Each row should make clear:
 - status
 - stage
 - current task
+- requested model tier and reasoning level when relevant
+- actual provider model when known
 
 If an agent is blocked, say why.
+
+Suggested routed row:
+
+```text
+- developer-1 | running | execution | balanced/medium -> Sonnet 5 | task: implement parser
+```
 
 ## Status Board Sync
 

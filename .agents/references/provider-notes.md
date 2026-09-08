@@ -56,6 +56,21 @@ its content to whatever generic delegation primitive the current tool exposes.
 This is intentional, not a gap — see `skills/work/SKILL.md`'s "Spawning a
 Role" section.
 
+## Model routing and enforcement
+
+Use `.agents/references/model-routing.md` for the stable task-routing policy and
+`.agents/references/provider-model-map.md` for dated model names. Provider controls differ:
+
+| Tool | Selection capability | Required behavior |
+|---|---|---|
+| Claude Code | Supports model aliases or full IDs in subagent frontmatter and per invocation. Subagents inherit whether extended thinking is enabled in the main conversation. | Select the mapped model per task when possible; record inherited-thinking limitations. |
+| Codex CLI | Model availability and delegation controls depend on the host and current configuration. Portable role briefs do not themselves enforce a model. | Request the mapped tier through the available delegation primitive; record the actual model when exposed, otherwise mark enforcement unavailable. |
+| Antigravity | `agy models` lists current models and `agy --model` selects a model for a CLI session. Role-level IDE enforcement is not established by the sources this framework relies on. | Resolve availability at runtime; use separate task-specific CLI sessions where appropriate, otherwise record selection as advisory. |
+
+Never infer that the requested model ran merely because its name appears in a handoff. Status and
+implementation reports distinguish requested tier, provider-resolved model, actual model, and
+whether routing was enforced.
+
 ## 2026-08-26 research: cross-tool drift / re-anchoring (context-parity feature)
 
 Findings from the `context-parity` feature's research, recorded here per this file's stated
@@ -121,3 +136,6 @@ format re-confirmed directly from antigravity.google/docs/rules-workflows/ on 20
 "2026-08-26 research" above for the rest of that pass's sourcing).
 Re-verify before trusting this table if it's more than a few months old —
 this space moves fast.
+
+Model-routing controls and mappings were separately verified on 2026-09-07; see
+`.agents/references/provider-model-map.md` for sources and its independent freshness date.

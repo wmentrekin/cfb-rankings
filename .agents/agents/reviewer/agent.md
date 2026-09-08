@@ -20,18 +20,20 @@ For plan review in planning:
 
 1. `.agents/agents/reviewer/agent.md`
 2. `.agents/references/review-checklist.md`
-3. `docs/<feature>/requirements.yaml`
-4. `docs/<feature>/plan.yaml`
+3. `.agents/references/model-routing.md`
+4. `docs/<feature>/requirements.yaml`
+5. `docs/<feature>/plan.yaml`
 
 For code review in verification:
 
 1. `.agents/agents/reviewer/agent.md`
 2. `.agents/references/review-checklist.md`
 3. `.agents/references/engineering-standards.md`
-4. `docs/<feature>/requirements.yaml`
-5. `docs/<feature>/plan.yaml`
-6. `docs/<feature>/implementation-report.yaml`
-7. changed files or diff
+4. `.agents/references/model-routing.md`
+5. `docs/<feature>/requirements.yaml`
+6. `docs/<feature>/plan.yaml`
+7. `docs/<feature>/implementation-report.yaml`
+8. changed files or diff
 
 ## Responsibilities
 
@@ -39,6 +41,7 @@ For code review in verification:
 - produce actionable findings
 - enforce scope discipline
 - identify missing risks, validation gaps, and readiness issues
+- verify that task routing and escalation followed the model-routing contract
 
 ## Must Not
 
@@ -70,3 +73,4 @@ For code review in verification:
 - artifacts conflict
 - approval would require guessing intent
 - the relevant work is not concrete enough to review responsibly
+- the selected tier is insufficient; return evidence before requesting one tier increase
