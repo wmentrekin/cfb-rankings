@@ -12,6 +12,10 @@ on:
     # single Sunday-only schedule) once the 2026 Week 1 run has shipped.
     - cron: '0 7 8 9 *'
   workflow_dispatch:
+    inputs:
+      week:
+        description: 'Optional week override (leave blank to compute from the date)'
+        required: false
 
 concurrency:
   group: weekly-rankings
@@ -73,8 +77,30 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          WEEK_INPUT: ${{ github.event.inputs.week }}
         run: |
-          uv run python main.py > output.log 2>&1 || true
+          # Week override, in priority order:
+          #   1. An explicit `week` input on a manual workflow_dispatch run.
+          #   2. ONE-OFF for 2026 Week 1. main.py derives its week from today's
+          #      date, but this run is deliberately delayed to Tue 2026-09-08 so
+          #      Monday's Week 1 games are final (see the schedule comment at the
+          #      top of this file). By then the date has crossed into Week 2's
+          #      window, so an un-overridden run would rate Week 1's slate but
+          #      publish it as week-02.json, and 2026 would never get a Week 1
+          #      snapshot. CFBD's own week 1 for 2026 spans 2026-08-29 through
+          #      2026-09-07 -- Week 0's Saturday through Monday night -- which is
+          #      exactly the slate this run should rate. Delete this branch (with
+          #      the one-off cron entry and the gate job) once it has shipped.
+          # Note this only labels/selects the week; the rating model itself reads
+          # CFBD's own `games.week` column, not the date-derived week.
+          EXTRA_ARGS=""
+          if [ -n "$WEEK_INPUT" ]; then
+            EXTRA_ARGS="--week $WEEK_INPUT"
+          elif [ "$(date -u +%Y-%m-%d)" = "2026-09-08" ]; then
+            EXTRA_ARGS="--week 1"
+          fi
+          echo "Running: main.py $EXTRA_ARGS"
+          uv run python main.py $EXTRA_ARGS > output.log 2>&1 || true
           tail -n 200 output.log || true
 
       - name: Upload output log artifact
