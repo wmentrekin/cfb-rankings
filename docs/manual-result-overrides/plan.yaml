@@ -1,0 +1,280 @@
+# Contract: durable execution plan created by $work when the selected mode needs explicit planning
+
+artifact: plan
+feature: "manual-result-overrides"
+mode: "bounded-feature"
+status: draft
+owner_skill: work
+based_on: "docs/manual-result-overrides/requirements.yaml"
+
+objective: >-
+  Add a version-controlled game-result override mechanism that re-applies itself on every pipeline
+  run, seed it with 2026 week 1 Michigan vs Western Michigan as Western Michigan 12 - Michigan 7,
+  then re-run production and rebuild the site.
+
+approach:
+  summary: >-
+    Overrides live in a checked-in JSON file, not in the database, so they are reviewable in the
+    PR and cannot be lost to a database restore. A new module reads that file, and main.py calls
+    it after both ingest calls and before the model runs. Because it runs after ingest on every
+    invocation, a re-ingest cannot win: the last writer before the model reads is always the
+    override. The score-derived fields are extracted out of the ingest transform into a shared
+    pure-function helper that both the ingest path and the override path call, so the two can
+    never drift apart.
+  key_decisions:
+    - id: "K1"
+      decision: "Overrides are a checked-in JSON file, not a database table."
+      rationale: >-
+        The repo is the source of truth for pipeline behavior (AGENTS.md); the database is
+        operational. A file is diffable, reviewable in the PR, survives a database restore, and
+        needs no migration. A table would be invisible to anyone reading the repo.
+    - id: "K2"
+      decision: "Key overrides on the CFBD game id, but require matching identity fields."
+      rationale: >-
+        `id` is the only key `games` actually enforces (games_pkey). But keying on an opaque
+        integer alone means a typo silently rewrites an unrelated game, so each entry also
+        declares season, week, home_team and away_team and the applier refuses on mismatch.
+    - id: "K3"
+      decision: "Apply after ingest rather than intercepting the ingest DataFrame."
+      rationale: >-
+        Intercepting inside get_games_by_year_week only corrects games that happen to be inside
+        the current fetch window. Applying afterwards, keyed by season, re-asserts every override
+        for the season on every run regardless of what was fetched -- including rows ingested
+        before the override existed.
+    - id: "K4"
+      decision: "Extract winner/margin/alpha derivation into a shared helper used by both paths."
+      rationale: >-
+        AC4. These are ingest-time Python computations with a non-obvious 0-0 guard and an alpha
+        rule that depends on `winner`. Duplicating them in the override path is the single most
+        likely way this feature silently produces an inconsistent row.
+    - id: "K5"
+      decision: "A mismatched or missing in-scope override raises and aborts the run."
+      rationale: >-
+        The failure mode being avoided is publishing rankings the operator believes are corrected
+        but are not. A loud failure is recoverable; a silent no-op is not. Overrides for other
+        seasons are filtered out before this check, so they are a no-op rather than an error.
+
+contracts:
+  interfaces:
+    - "database/game_derivations.py: compute_margin(home_score, away_score) -> int"
+    - "database/game_derivations.py: compute_winner(home_team, away_team, home_score, away_score) -> str | None"
+    - "database/game_derivations.py: compute_alpha(home_team, winner, neutral_site) -> float"
+    - "database/game_overrides.py: load_overrides(path=None) -> list[dict]"
+    - "database/game_overrides.py: overrides_for_season(overrides, season) -> list[dict]"
+    - "database/game_overrides.py: apply_game_result_overrides(year, engine=None) -> dict summary"
+  schemas:
+    - >-
+      database/game_result_overrides.json: {"version": 1, "overrides": [{game_id, season, week,
+      season_type, home_team, away_team, home_score, away_score, reason, declared_on}]}
+  config_changes:
+    - "None. No new environment variables, secrets, or workflow inputs."
+
+branching:
+  strategy: "single-branch"
+  branch_name: "work/manual-result-overrides"
+  worktrees: []
+
+execution_batches:
+  - id: "B1"
+    goal: "Implement the override mechanism, seed the first entry, and cover it with tests."
+    tasks:
+      - id: "T1"
+        title: "Extract the score-derivation helpers from the ingest transform"
+        objective: >-
+          Move the margin, winner and alpha computations out of get_games_by_year_week into
+          database/game_derivations.py as pure functions, and have get_games.py call them. Behavior
+          must be byte-identical, including the 0-0 'not yet played' guard and the pandas Int64
+          dtypes flowing through the DataFrame.
+        assigned_domain: "data-engineer"
+        model_routing:
+          task_profile: "implementation"
+          uncertainty: "medium"
+          consequence: "high"
+          scope_size: "bounded"
+          determinism: "interpretive"
+          requested_tier: "balanced"
+          requested_reasoning: "medium"
+          provider_model: "Claude Sonnet 5"
+          routing_enforced: true
+          escalation_tier: "frontier"
+          escalation_condition: "Preserving exact pandas dtype/NA semantics through the extraction is not provably safe."
+        owned_scope:
+          - "database/game_derivations.py (new)"
+          - "database/get_games.py (derivation block only)"
+        forbidden_scope:
+          - "The CFBD request, the column selection, the rename map, or the upsert."
+          - "model/, artifacts/, database/migrations/"
+        dependencies: []
+        parallelizable: false
+        expected_validation:
+          - "A test asserting the extracted helpers reproduce the ingest DataFrame's winner/margin/alpha for a fixture of real 2026 week 1 rows."
+          - "python -m pytest tests/ -q stays green."
+      - id: "T2"
+        title: "Add the override declaration file and the applier"
+        objective: >-
+          Create database/game_result_overrides.json with the single Michigan / Western Michigan
+          entry, and database/game_overrides.py implementing load/filter/apply per the contracts
+          above. apply_game_result_overrides re-derives winner/margin/alpha via T1's helpers,
+          verifies each entry's identity fields against the stored row, and UPDATEs
+          home_score, away_score, winner, margin, alpha. It returns a summary and logs each change.
+        assigned_domain: "data-engineer"
+        model_routing:
+          task_profile: "implementation"
+          uncertainty: "medium"
+          consequence: "high"
+          scope_size: "bounded"
+          determinism: "interpretive"
+          requested_tier: "balanced"
+          requested_reasoning: "medium"
+          provider_model: "Claude Sonnet 5"
+          routing_enforced: true
+          escalation_tier: "frontier"
+          escalation_condition: "The safe failure semantics conflict with the pipeline's continue-on-error style in a way the plan does not settle."
+        owned_scope:
+          - "database/game_overrides.py (new)"
+          - "database/game_result_overrides.json (new)"
+        forbidden_scope:
+          - "Executing anything against the live database."
+          - "database/get_games.py beyond importing the shared helpers."
+        dependencies: ["T1"]
+        parallelizable: false
+        expected_validation:
+          - "Unit tests over load/filter/identity-verification/derivation using a fake engine or by testing the pure parts directly."
+      - id: "T3"
+        title: "Wire the override step into main.py and document it"
+        objective: >-
+          Call apply_game_result_overrides(args.year) in main.py immediately after the postseason
+          load_games_to_db call and before get_ratings. Unlike the surrounding ingest blocks, this
+          one must NOT swallow exceptions -- a failed override means the run would publish
+          uncorrected rankings, so log and return. Add a short subsection to README.md's
+          Architecture Summary explaining the mechanism and how to add an entry.
+        assigned_domain: "data-engineer"
+        model_routing:
+          task_profile: "implementation"
+          uncertainty: "low"
+          consequence: "high"
+          scope_size: "narrow"
+          determinism: "deterministic"
+          requested_tier: "balanced"
+          requested_reasoning: "medium"
+          provider_model: "Claude Sonnet 5"
+          routing_enforced: true
+          escalation_tier: "frontier"
+          escalation_condition: "n/a"
+        owned_scope:
+          - "main.py (one new step plus its imports)"
+          - "README.md (Architecture Summary subsection)"
+        dependencies: ["T2"]
+        parallelizable: false
+        expected_validation:
+          - "tests/test_entry_point_resolves.py still passes; a test asserts the override step is ordered before the model call."
+      - id: "T4"
+        title: "Tests for the override mechanism"
+        objective: >-
+          Add tests/test_game_result_overrides.py in the repo's established pure-function fixture
+          style: derivation parity between the two paths; the seeded entry yields winner='Western
+          Michigan', margin=5, alpha=1.2; identity mismatch raises; wrong-season entries are
+          filtered to a no-op; the shipped JSON file parses and validates against the schema.
+          Mutation-check each test (inject the defect, confirm the test fails) and report it.
+        assigned_domain: "data-engineer"
+        model_routing:
+          task_profile: "test_design"
+          uncertainty: "medium"
+          consequence: "medium"
+          scope_size: "bounded"
+          determinism: "interpretive"
+          requested_tier: "balanced"
+          requested_reasoning: "medium"
+          provider_model: "Claude Sonnet 5"
+          routing_enforced: true
+          escalation_tier: "frontier"
+          escalation_condition: "A test cannot be made to discriminate without a live database."
+        owned_scope:
+          - "tests/test_game_result_overrides.py (new)"
+        dependencies: ["T3"]
+        parallelizable: false
+        expected_validation:
+          - "python -m pytest tests/ -q green; new test count reported; mutation results reported per test."
+
+  - id: "B2"
+    goal: "Production rollout, after the user merges the PR."
+    tasks:
+      - id: "T5"
+        title: "Run weekly-update.yml for 2026 week 1 and confirm the rollout"
+        objective: >-
+          Dispatch .github/workflows/weekly-update.yml with week=1, watch it to completion, then
+          verify: the games row, the ratings rows for season=2026 week=1, the R2 rankings and
+          schedule artifacts, and the live site after the Cloudflare Pages rebuild that the
+          workflow's deploy-hook step triggers.
+        assigned_domain: "platform-engineer"
+        model_routing:
+          task_profile: "orchestration"
+          uncertainty: "medium"
+          consequence: "high"
+          scope_size: "bounded"
+          determinism: "interpretive"
+          requested_tier: "frontier"
+          requested_reasoning: "high"
+          provider_model: "Claude Opus 5"
+          routing_enforced: true
+          escalation_tier: "frontier"
+          escalation_condition: "n/a -- orchestrator-run, not delegated."
+        owned_scope:
+          - "GitHub Actions dispatch; read-only verification queries against Supabase and the live site."
+        forbidden_scope:
+          - "Any direct write to the database. The pipeline must produce the change, or the mechanism is not proven."
+        dependencies: ["T4", "user merge"]
+        parallelizable: false
+        expected_validation:
+          - "AC8 and AC9."
+
+ordering_notes:
+  - "T1 through T4 are strictly sequential on one branch; no worktrees are warranted."
+  - "B2 runs only after the user merges. weekly-update.yml checks out the default branch, so the override file must be on main before the run."
+  - >-
+    Deliberate ordering detail: the override step goes after BOTH load_games_to_db calls. Putting
+    it between them would let the postseason load re-upsert an overridden postseason game.
+
+risks:
+  - id: "R1"
+    risk: "Extracting the derivation helpers changes ingest behavior for some edge case (NA handling, Int64 vs int comparison)."
+    mitigation: "T1's parity test runs the fixture through both the old inline expressions and the new helpers and asserts equality; whole suite must stay green."
+  - id: "R2"
+    risk: "The override raises mid-run and blocks the weekly publish entirely."
+    mitigation: >-
+      Accepted deliberately (K5), and narrow: it can only raise when a declared override's own
+      identity fields stop matching, which needs operator attention anyway. The alternative --
+      publishing silently uncorrected rankings -- is the failure this feature exists to prevent.
+  - id: "R3"
+    risk: "CFBD reassigns or retires game id 401858428, so the override stops matching."
+    mitigation: "R2's raise surfaces it immediately rather than silently reverting; the identity fields say what to search for."
+  - id: "R4"
+    risk: "The re-run recomputes every 2026 week 1 rating, not just the two teams', shifting other teams' ratings."
+    mitigation: >-
+      Expected and correct -- the model is a global optimization, so changing one result moves the
+      solution. Baseline captured before the run (Michigan #22 20.156 1-0, Western Michigan #87
+      0.197 0-1, Indiana #1 61.363) so the diff can be inspected rather than guessed at.
+  - id: "R5"
+    risk: "The published site presents an operator-altered result as the official one."
+    mitigation: "Flagged to the user as open question Q1; the override file records the reason regardless."
+
+model_routing_notes:
+  - "Discovery used balanced (Sonnet 5) for the data-path trace and fast (Haiku 4.5) for the ops/workflow scan; both returned usable results with no escalation."
+  - "Orchestration and the production rollout stay frontier (Opus 5) because a bad production run is expensive to undo."
+
+open_questions:
+  - id: "Q1"
+    question: "Mark overridden games in the published artifacts so the site can footnote them?"
+    blocking: false
+  - id: "Q2"
+    question: "Confirm the score reading: Western Michigan 12, Michigan 7."
+    blocking: false
+
+review:
+  status: draft
+  loop_count: 0
+  notes: []
+
+checkpoint:
+  required_before_execution: true
+  status: pending

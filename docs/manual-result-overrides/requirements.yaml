@@ -1,0 +1,170 @@
+# Contract: durable task-definition handoff created by $work when the selected mode needs explicit requirements
+
+artifact: requirements
+feature: "manual-result-overrides"
+mode: "bounded-feature"
+status: draft
+owner_skill: work
+
+summary:
+  problem: >-
+    The pipeline has no way to record an operator-declared correction to a game result. Every
+    ingest run upserts CollegeFootballData's values over the whole `games` row keyed on the CFBD
+    game id (database/get_games.py:169-176, on_conflict_do_update over every column but `id`), so
+    any manual UPDATE against `games` is silently reverted the next time that game is re-fetched.
+    There is also no shared derivation helper: `winner`, `margin`, and `alpha` are computed inline
+    during ingest, so a hand-written UPDATE that sets only the scores desynchronises the model's
+    inputs from the displayed result.
+  motivation: >-
+    The repo owner disputes the officiating decision that ended 2026 week 1 Michigan vs Western
+    Michigan and wants their ranking system to reflect the result they consider correct, durably,
+    without hand-repairing the database after every weekly run.
+  requested_outcome: >-
+    A version-controlled game-result override mechanism that re-asserts itself on every pipeline
+    run, seeded with one override for that game, followed by a production re-run and a site
+    rebuild so the corrected result reaches the published rankings and Season Grid.
+
+goals:
+  - "Introduce a checked-in, reviewable declaration of manual game-result overrides."
+  - >-
+    Apply overrides on every pipeline run after ingest and before the model reads games, so a
+    re-ingest can never win.
+  - >-
+    Keep `winner`, `margin`, and `alpha` derived by exactly the same code the ingest path uses, so
+    an override can never desynchronise them from the scores.
+  - >-
+    Refuse to act, loudly, if an override's identity fields do not match the row it names --
+    silently corrupting a different game is worse than not applying the override.
+  - "Seed the first override: game id 401858428 -> Western Michigan 12, Michigan 7."
+  - "Cover the mechanism with unit tests in the repo's existing pure-function style."
+  - "Re-run the production pipeline for 2026 week 1 and rebuild personal-site."
+
+non_goals:
+  - "Any change to personal-site. The Season Grid and rankings both derive from the corrected data automatically."
+  - >-
+    Surfacing an 'overridden' marker in the published artifacts or on the site. That is a real and
+    separate question (see open_questions) requiring an artifact schema change across both repos.
+  - "Retroactively recomputing ratings for weeks other than the one re-run."
+  - "A general admin UI or database-backed override table."
+  - "Changing the CFBD ingest itself, the rating model, or the artifact schema."
+
+constraints:
+  technical:
+    - "`games` has no natural-key constraint; `games_pkey` is on `id` alone (CFBD's game id). Overrides must key on `id`."
+    - >-
+      `alpha` is derived from `winner`, not just the scores:
+      `1 if neutral_site else (0.8 if home_team == winner else 1.2)` (database/get_games.py:90).
+      Flipping this game's winner to the away team therefore also moves alpha 0.8 -> 1.2.
+    - >-
+      A 0-0 score means 'not yet played', not a real draw (database/get_games.py:81-88). The
+      override path must preserve that guard rather than reimplement the comparison.
+    - >-
+      `schedule_grid` derives played/upcoming status from scores and start_date and ignores
+      `winner` entirely (database/migrations/0003_schedule_grid_view.sql). The Season Grid
+      therefore follows the corrected scores with no view change.
+    - >-
+      The rankings artifact reads the `ratings` table, not `games` (artifacts/rankings.py:31-42),
+      so the model must be re-run for the affected week before the corrected result can reach it.
+    - "No lint or type tooling is configured in the repo; pytest is present in .venv but not pinned in pyproject.toml."
+  product:
+    - "The published rankings will differ from the official record for this game. That is the explicit intent."
+  process:
+    - "No direct commits to main; feature branch plus PR, per .agents/references/branch-and-pr-workflow.md."
+    - "Independent code review before handoff."
+    - "Commits authored as wmentrekin <wmentrekin@gmail.com>, retaining the Co-Authored-By trailer."
+    - "The orchestrator does not merge the PR; the repo owner does."
+
+assumptions:
+  - id: "A1"
+    assumption: >-
+      'Last week' means the 2026 season, week 1, not 2025. Verified against the live DB: game id
+      401858428, 2026 week 1, regular season, 2026-09-05 23:30 UTC, Michigan Stadium, Michigan 13
+      Western Michigan 12. The 2025 season has no Michigan vs Western Michigan game at all
+      (Western Michigan's 2025 week 1 opponent was Michigan State).
+    confidence: "verified"
+  - id: "A2"
+    assumption: >-
+      'a western michigan victory with the score 12-7' means Western Michigan 12, Michigan 7 --
+      Western Michigan keeps the 12 it actually scored and Michigan's 13 becomes 7. Michigan is
+      the home team, so this is home_score=7, away_score=12.
+    confidence: "high, stated plainly for correction at the checkpoint"
+  - id: "A3"
+    assumption: >-
+      Re-running only 2026 week 1 is sufficient. 2026 has exactly one published week (ratings
+      exist for season=2026 week=1 only, 99 games carry a winner), and
+      insert_model_results_to_db upserts on (team, season, week), so the single re-run rewrites
+      every affected rating row.
+    confidence: "verified"
+
+repository_sync:
+  source: "docs/manual-result-overrides/status.yaml"
+  repositories_confirmed:
+    - "/home/user/cfb-rankings (current)"
+    - "/home/user/personal-site (updated to origin/main 500ed52)"
+  accepted_unverified_states: []
+
+repo_context:
+  relevant_paths:
+    - "database/get_games.py -- CFBD fetch, derivation of winner/margin/alpha, and the id-keyed upsert"
+    - "main.py -- run sequence; the override step's slot is after both load_games_to_db calls and before get_ratings"
+    - "model/process_data.py -- reads rankings_games; skips rows with a null winner; builds records from `winner`"
+    - "database/migrations/0001_rankings_games_view.sql -- rankings_games = games where season_type='regular'"
+    - "database/migrations/0003_schedule_grid_view.sql -- schedule_grid; status from scores + start_date"
+    - "artifacts/rankings.py, artifacts/r2.py -- rankings artifact built from the `ratings` table"
+    - "artifacts/schedule.py:1029 -- Season Grid artifact built from schedule_grid"
+    - "scripts/repair_unplayed_game_winners.py -- the repo's established one-off maintenance script pattern"
+    - ".github/workflows/weekly-update.yml -- production run; publishes to R2 and fires the personal-site deploy hook"
+  systems_in_scope:
+    - "Supabase Postgres (project oyqgmbgwohlnrxodvilt), tables `games` and `ratings`"
+    - "Cloudflare R2 artifact bucket"
+    - "Cloudflare Pages build of personal-site, triggered by the deploy hook"
+  prior_artifacts:
+    - "docs/schedule-grid/ (merged and removed) -- prior documentation of games/schedule_grid/rankings_games consumers"
+
+research:
+  repo_findings:
+    - "Ingest upsert overwrites every non-id column on conflict, so re-ingest always beats a direct UPDATE."
+    - "winner/margin/alpha are Python-side ingest-time computations; there are no SQL triggers or generated columns."
+    - "No override, exclusion, or manual-correction mechanism exists anywhere in the pipeline today."
+    - "There is no checked-in CREATE TABLE for `games`; migrations start at 0001 and only ALTER or add views."
+    - "Live schema confirms games_pkey is on `id` alone and there is no natural-key unique constraint."
+  platform_findings:
+    - "weekly-update.yml workflow_dispatch is never suppressed by the gate job (only `schedule` events are gated), and a `week` input maps to `main.py --week N`."
+    - "weekly-update.yml is the only workflow that publishes to R2 and curls PERSONAL_SITE_DEPLOY_HOOK_URL; test-week-run.yml does neither."
+    - "personal-site has no GitHub Actions at all; Cloudflare Pages builds it, and prebuild (scripts/fetch-rankings-data.mjs) bakes the R2 artifacts in at build time, so a rebuild is required."
+
+acceptance_criteria:
+  - id: "AC1"
+    criterion: "A checked-in override declaration file exists, carries the reason for each entry, and is the single place an override is added."
+  - id: "AC2"
+    criterion: "main.py applies overrides on every run, after both load_games_to_db calls and before get_ratings."
+  - id: "AC3"
+    criterion: "Re-running ingest for 2026 week 1 and then the override step leaves the row at home_score=7, away_score=12, winner='Western Michigan', margin=5, alpha=1.2."
+  - id: "AC4"
+    criterion: "winner/margin/alpha for an override are produced by the same helper the ingest path uses; a unit test fails if the two paths diverge."
+  - id: "AC5"
+    criterion: "An override whose season/week/home_team/away_team do not match the named row raises rather than writing."
+  - id: "AC6"
+    criterion: "An override for a season other than the one being run is a no-op, not an error."
+  - id: "AC7"
+    criterion: "The existing test suite still passes and new tests cover the override path; a mutation check shows each new test discriminates."
+  - id: "AC8"
+    criterion: "After the production re-run, ratings for season=2026 week=1 show Western Michigan 1-0 and Michigan 0-1, and the R2 rankings and schedule artifacts reflect it."
+  - id: "AC9"
+    criterion: "The live site shows the corrected result in both the rankings table and the Season Grid after the Cloudflare Pages rebuild."
+
+open_questions:
+  - id: "Q1"
+    question: >-
+      Should the published artifacts mark this game as operator-overridden so the site can show a
+      footnote, rather than presenting it as the official result? Out of scope as written; it
+      would need an artifact schema change and a personal-site change.
+    blocking: false
+  - id: "Q2"
+    question: >-
+      Confirm the score reading in A2: Western Michigan 12, Michigan 7 (the real score was
+      Michigan 13, Western Michigan 12).
+    blocking: false
+
+ready_for_planning: true
+planning_blockers: []
