@@ -34,7 +34,8 @@ goals:
     an override can never desynchronise them from the scores.
   - >-
     Refuse to act, loudly, if an override's identity fields do not match the row it names --
-    silently corrupting a different game is worse than not applying the override.
+    silently corrupting a different game is worse than not applying the override. Loudly means
+    a red CI job, and refusing means skipping that one entry, not halting the pipeline.
   - "Seed the first override: game id 401858428 -> Western Michigan 12, Michigan 7."
   - "Cover the mechanism with unit tests in the repo's existing pure-function style."
   - "Re-run the production pipeline for 2026 week 1 and rebuild personal-site."
@@ -143,9 +144,16 @@ acceptance_criteria:
   - id: "AC4"
     criterion: "winner/margin/alpha for an override are produced by the same helper the ingest path uses; a unit test fails if the two paths diverge."
   - id: "AC5"
-    criterion: "An override whose season/week/home_team/away_team do not match the named row raises rather than writing."
+    criterion: >-
+      An override whose season, week, season_type, home_team or away_team does not match the named
+      row writes nothing, is reported as a failure, and turns the workflow job red -- without
+      halting the model run or the artifact publishes.
   - id: "AC6"
     criterion: "An override for a season other than the one being run is a no-op, not an error."
+  - id: "AC7a"
+    criterion: "Applying the overrides twice in a row leaves the row identical; the second pass derives from the declared scores, not from the already-corrected row."
+  - id: "AC7b"
+    criterion: "`neutral_site` is read from the stored row, proven by a fixture where a hardcoded False would produce the wrong alpha."
   - id: "AC7"
     criterion: "The existing test suite still passes and new tests cover the override path; a mutation check shows each new test discriminates."
   - id: "AC8"
