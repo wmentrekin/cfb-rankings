@@ -114,3 +114,18 @@ jobs:
           DEPLOY_HOOK_URL: ${{ secrets.PERSONAL_SITE_DEPLOY_HOOK_URL }}
         run: |
           curl -fsS -X POST "$DEPLOY_HOOK_URL" || echo "Deploy hook trigger failed (non-fatal)."
+
+      - name: Fail job on manual result override failure
+        # Deliberately the LAST step. The whole point of the override design is that a failed
+        # override never halts publishing (K5): the run completes, the artifacts publish, and
+        # the site still rebuilds -- an unapplied override just shows the real CFBD result,
+        # whereas a blocked rebuild would leave the site stale for a week. This step only
+        # raises the alarm. It has to exist as a step at all because the model step above ends
+        # in `|| true`, so a nonzero exit from main.py is invisible and the job goes green.
+        run: |
+          if grep -q "OVERRIDE_FAILURE" output.log; then
+            echo "::error::Manual result override failure(s) found in output.log:"
+            grep "OVERRIDE_FAILURE" output.log
+            exit 1
+          fi
+

@@ -1,0 +1,131 @@
+# Contract: durable execution and handoff report maintained by $work
+
+artifact: implementation_report
+feature: "manual-result-overrides"
+mode: "bounded-feature"
+status: "execution complete, verification pending"
+owner_skill: work
+based_on: "docs/manual-result-overrides/plan.yaml"
+
+summary:
+  scope_executed: "Execution batch B1, tasks T1-T4."
+  outcome: >-
+    The override mechanism is implemented, seeded with the single Michigan / Western Michigan
+    entry, wired into main.py and weekly-update.yml, and covered by 16 new tests. B2 (the
+    production re-run) is blocked on the user merging the PR, because weekly-update.yml checks
+    out the default branch.
+
+task_batches_attempted: ["B1"]
+task_batches_completed: ["B1"]
+
+domains_touched: ["data-engineer"]
+
+model_usage:
+  tasks:
+    - task_id: "D1"
+      role: "repo-researcher"
+      requested_tier: "balanced"
+      requested_model: "Claude Sonnet 5"
+      actual_model: "claude-sonnet-5"
+      requested_reasoning: "medium"
+      actual_reasoning: "medium"
+      accepted_first_attempt: true
+      escalation_count: 0
+      tool_calls: 45
+      wall_time_seconds: 143
+    - task_id: "D2"
+      role: "repo-researcher"
+      requested_tier: "fast"
+      requested_model: "Claude Haiku 4.5"
+      actual_model: "claude-haiku-4-5"
+      requested_reasoning: "low"
+      actual_reasoning: "low"
+      accepted_first_attempt: true
+      escalation_count: 0
+      tool_calls: 23
+      wall_time_seconds: 78
+    - task_id: "plan-review-1"
+      role: "reviewer"
+      requested_tier: "balanced"
+      requested_model: "Claude Sonnet 5"
+      actual_model: "claude-sonnet-5"
+      requested_reasoning: "medium"
+      actual_reasoning: "medium"
+      accepted_first_attempt: false
+      escalation_count: 0
+      tool_calls: 29
+      wall_time_seconds: 331
+    - task_id: "T1-T4"
+      role: "data-engineer"
+      requested_tier: "balanced"
+      requested_model: "Claude Sonnet 5"
+      actual_model: "claude-sonnet-5"
+      requested_reasoning: "medium"
+      actual_reasoning: "medium"
+      accepted_first_attempt: true
+      escalation_count: 0
+      tool_calls: 74
+      wall_time_seconds: 598
+  routing_notes:
+    - "No escalations. The one balanced-tier review returned findings the frontier orchestrator agreed with without re-review."
+    - "Two orchestrator-made corrections after the batch landed; both were plan-text errors of mine, not agent errors (see open_issues)."
+
+pr:
+  number: null
+  url: null
+
+changes:
+  files:
+    - "database/game_derivations.py (new) -- compute_margin / compute_winner / compute_alpha"
+    - "database/game_overrides.py (new) -- load_overrides / overrides_for_season / apply_game_result_overrides"
+    - "database/game_result_overrides.json (new) -- one seeded entry, game 401858428"
+    - "database/get_games.py -- derivation block now calls the shared helpers"
+    - "main.py -- override step between the postseason ingest and get_ratings"
+    - ".github/workflows/weekly-update.yml -- OVERRIDE_FAILURE marker check as the final step"
+    - "README.md -- Manual Result Overrides subsection"
+    - "tests/test_game_result_overrides.py (new) -- 16 tests"
+  modules: ["database", "main", "tests"]
+  docs_updated: ["README.md"]
+
+local_validation:
+  checks_run:
+    - "python -m pytest tests/ -q: 58 passed before, 74 passed after (16 new, 0 regressions). Re-run by the orchestrator after its two corrections: still 74 passed."
+    - "tests/test_entry_point_resolves.py passes, which statically resolves every name main.py calls and so covers the new import."
+    - "Workflow YAML parses; step order confirmed as Run model -> Upload log -> Trigger rebuild -> Fail on override failure."
+    - "AST check: load_games_to_db x2 -> apply_game_result_overrides -> get_ratings."
+    - "All 16 new tests mutation-checked by the implementing agent: defect injected, test confirmed failing, defect reverted."
+  failures: []
+  skipped:
+    - "Nothing was executed against the live database or R2 during implementation, by design."
+
+review_summary:
+  status: "plan review complete (cycle 1); code review pending"
+  key_findings:
+    - "Plan review reversed the abort-on-failure design, pinned the SQL shape, and specified the neutral_site source."
+
+test_summary:
+  status: "unit tests green; production verification pending"
+  checks_run: ["python -m pytest tests/ -q -> 74 passed"]
+  failures: []
+  gaps:
+    - "AC8 and AC9 are only checkable after the production re-run, which needs the merge."
+
+open_issues:
+  - id: "O1"
+    issue: >-
+      The workflow's OVERRIDE_FAILURE check was originally placed before the deploy-hook step,
+      so a failed override would have blocked the site rebuild -- a partial publishing halt,
+      contrary to K5. Moved to be the final step. This was an error in my T3 wording ("after the
+      log upload"), not in the implementation.
+    status: fixed
+  - id: "O2"
+    issue: >-
+      main.py's outer except logged without the OVERRIDE_FAILURE token, so an unexpected
+      exception in the override step would have left the job green -- the exact blind spot the
+      check exists to close. Token added to that message.
+    status: fixed
+
+handoff:
+  current_state: "ready for PR and verification"
+  next_owner: "reviewer + tester, then the user for merge"
+  next_action: "Open the PR, run code review and the test pass against it, then hand to the user."

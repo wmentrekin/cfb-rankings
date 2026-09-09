@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "overrides": [
+    {
+      "game_id": 401858428,
+      "season": 2026,
+      "week": 1,
+      "season_type": "regular",
+      "home_team": "Michigan",
+      "away_team": "Western Michigan",
+      "home_score": 7,
+      "away_score": 12,
+      "reason": "Operator-declared correction: the repo owner disputes the officiating decision that ended this game and has directed that the recorded result reflect Western Michigan winning 12-7 rather than the result CFBD reports.",
+      "declared_on": "2026-09-09"
+    }
+  ]
+}

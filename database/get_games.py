@@ -5,6 +5,8 @@ import os
 from sqlalchemy import create_engine, Table, MetaData # type:ignore
 from sqlalchemy.dialects.postgresql import insert # type:ignore
 
+from database.game_derivations import compute_margin, compute_winner, compute_alpha
+
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
 BASE_URL = "https://api.collegefootballdata.com"
@@ -68,7 +70,9 @@ def get_games_by_year_week(year, week=None, season_type='regular'):
     games_df["venueId"] = pd.to_numeric(games_df["venueId"], errors="coerce").fillna(0).astype(int)
     games_df["homePoints"] = pd.to_numeric(games_df["homePoints"], errors="coerce").fillna(0).astype("Int64")
     games_df["awayPoints"] = pd.to_numeric(games_df["awayPoints"], errors="coerce").fillna(0).astype("Int64")
-    games_df["margin"]  = abs(games_df["homePoints"] - games_df["awayPoints"])
+    games_df["margin"] = games_df.apply(
+        lambda row: compute_margin(row["homePoints"], row["awayPoints"]), axis=1,
+    )
     # CFBD stores an unplayed/future game as home_score=away_score=0, not NULL
     # (confirmed repeatedly elsewhere in this pipeline, e.g. schedule_grid's
     # status derivation). Without this guard, `0 > 0` is False, so every
@@ -83,12 +87,13 @@ def get_games_by_year_week(year, week=None, season_type='regular'):
     # the safe reading -- model/process_data.py is responsible for skipping
     # these rows entirely rather than miscounting them as a decided game.
     games_df["winner"] = games_df.apply(
-        lambda row: None if (row["homePoints"] == 0 and row["awayPoints"] == 0)
-        else (row["homeTeam"] if row["homePoints"] > row["awayPoints"] else row["awayTeam"]),
+        lambda row: compute_winner(row["homeTeam"], row["awayTeam"], row["homePoints"], row["awayPoints"]),
         axis=1,
     )
-    games_df["alpha"] = games_df.apply(lambda row: 1 if row["neutralSite"] else (0.8 if row["homeTeam"] == row["winner"] else 1.2), axis=1)
-    
+    games_df["alpha"] = games_df.apply(
+        lambda row: compute_alpha(row["homeTeam"], row["winner"], row["neutralSite"]), axis=1,
+    )
+
     games_df = games_df.rename(columns={
         'seasonType': 'season_type',
         'startDate': 'start_date',
