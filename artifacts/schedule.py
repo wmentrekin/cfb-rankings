@@ -868,6 +868,7 @@ def build_schedule_payload(
     teams_meta: Dict[str, Dict[str, Any]],
     season: int,
     team_ranks: Optional[Dict[str, int]] = None,
+    non_fbs_logos: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Args:
@@ -887,10 +888,20 @@ def build_schedule_payload(
                     input that carries no ratings at all. A team not present in this dict --
                     including every team, when the season has no ratings rows whatsoever -- emits
                     rank: null rather than raising or being silently omitted from the grid.
+        non_fbs_logos: Dict[school -> logos list|None] from the `non_fbs_teams` table -- the
+                    FCS/DII/DIII opponents that appear on FBS schedules but are deliberately
+                    absent from `teams`. Used for OPPONENT LOGOS ONLY and merged into
+                    logos_by_team below, never into teams_meta: teams_meta's KEYS define which
+                    teams get a Season Grid row and which conference each is grouped under
+                    (see fbs_team_names and member_teams below), so a non-FBS entry there would
+                    give every FCS opponent its own row in a fabricated conference. Optional and
+                    defaults to empty, which reproduces the pre-existing behavior exactly (a
+                    non-FBS opponent renders its name as text).
     Returns:
         The full Season Grid JSON payload per plan.yaml's contracts.interfaces.
     """
     team_ranks = team_ranks or {}
+    non_fbs_logos = non_fbs_logos or {}
     # Division is injected into the standings computation rather than looked up there:
     # schedule_standings does no DB I/O and schedule_grid carries no division column, so the
     # `teams`-sourced map has to come from here. It is what lets a divisional conference (the
@@ -905,7 +916,12 @@ def build_schedule_payload(
     canonical_columns = build_canonical_columns(rows, season, champ_game_ids, army_navy_game_id)
     week_slot_ids_sorted = [slot_id for slot_id, _label in canonical_columns if slot_id.startswith("week-")]
     team_slot_rows = _build_team_slot_rows(rows, fbs_team_names, champ_game_ids, army_navy_game_id, week_slot_ids_sorted)
-    logos_by_team = {team: meta.get("logos") for team, meta in teams_meta.items()}
+    # Non-FBS entries first so an FBS row always wins on a name collision. The two tables are
+    # disjoint by construction (the ingest filters `classification != 'fbs'` before writing
+    # non_fbs_teams), so there should be no collision at all -- this ordering just makes the
+    # rating model's own team list authoritative if that invariant ever breaks upstream.
+    logos_by_team: Dict[str, Any] = dict(non_fbs_logos)
+    logos_by_team.update({team: meta.get("logos") for team, meta in teams_meta.items()})
 
     def team_conference(team: str) -> Optional[str]:
         st = standings.get(team)
@@ -1038,6 +1054,28 @@ def _fetch_teams_meta(engine, season: int) -> Dict[str, Dict[str, Any]]:
     }
 
 
+def _fetch_non_fbs_logos(engine, season: int) -> Dict[str, Any]:
+    """
+    Opponent-logo lookup for the non-FBS Division-I teams that appear on FBS schedules.
+
+    This is the consuming half of the `non_fbs_teams` table: the ingest
+    (database/get_non_fbs_teams.py) populates it every run, and until this existed nothing
+    read it, so an FCS opponent still rendered as plain text in the grid despite the data
+    being present. Kept as its own query rather than a UNION into _fetch_teams_meta for the
+    reason migration 0004 spells out at length -- teams_meta's key set IS the FBS universe for
+    four different consumers, and this table must never merge into it.
+
+    Returns:
+        Dict[school -> logos]: empty dict if the table has no rows for `season` (a season
+        ingested before migration 0004, say), which degrades to the previous text-name
+        rendering rather than raising.
+    """
+    df = pd.read_sql_query(
+        f"SELECT school, logos FROM non_fbs_teams WHERE season = {int(season)};", engine
+    )
+    return {row["school"]: row["logos"] for row in df.to_dict("records")}
+
+
 def _fetch_team_ranks(engine, season: int) -> Dict[str, int]:
     """
     Season-scoped current-rank lookup (T5): the `ratings` table has no rank column of its own
@@ -1167,6 +1205,16 @@ def publish_schedule_artifact(year: int) -> None:
             rows = _fetch_schedule_grid_rows(engine, year)
             teams_meta = _fetch_teams_meta(engine, year)
             team_ranks = _fetch_team_ranks(engine, year)
+            # Supplementary and non-fatal: a missing/empty non_fbs_teams table must not stop
+            # the artifact publishing, it just means FCS opponents keep rendering as text.
+            try:
+                non_fbs_logos = _fetch_non_fbs_logos(engine, year)
+            except Exception as e:
+                logger.warning(
+                    "Could not read non_fbs_teams for season=%s; FCS opponents will render "
+                    "as text. Exception: %s", year, e,
+                )
+                non_fbs_logos = {}
         finally:
             engine.dispose()
 
@@ -1177,7 +1225,7 @@ def publish_schedule_artifact(year: int) -> None:
             logger.warning("No schedule_grid rows found for season=%s; skipping schedule artifact publish", year)
             return
 
-        payload = build_schedule_payload(rows, teams_meta, year, team_ranks)
+        payload = build_schedule_payload(rows, teams_meta, year, team_ranks, non_fbs_logos)
 
         client = get_r2_client()
         if client is None:
