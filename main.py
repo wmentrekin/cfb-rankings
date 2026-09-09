@@ -5,6 +5,7 @@ from database.model_to_db import ratings_to_df, insert_model_results_to_db
 from database.get_games import load_games_to_db
 from database.get_teams import load_teams_to_db
 from database.get_non_fbs_teams import load_non_fbs_teams_to_db
+from database.game_overrides import apply_game_result_overrides
 from artifacts.r2 import publish_rankings_artifact
 from artifacts.schedule import publish_schedule_artifact
 from utils import football_day, get_cfb_week, setup_logging
@@ -337,6 +338,38 @@ def main():
         load_games_to_db(args.year, week=None, season_type='postseason')
     except Exception as e:
         logger.warning("Postseason games loading raised an exception (they may already be loaded). Continuing. Exception: %s", e)
+
+    # APPLY MANUAL RESULT OVERRIDES
+    # Re-asserts every checked-in override (database/game_result_overrides.json) for this
+    # season, after both ingest calls above and before the model reads games, so a re-ingest
+    # can never win (K3). apply_game_result_overrides never raises for a per-entry problem --
+    # this try/except is a second line of defense (K5): an unexpected exception here must not
+    # cost the season its rankings, so it is logged and the run continues regardless.
+    try:
+        override_result = apply_game_result_overrides(args.year)
+        for game_id in override_result["applied"]:
+            logger.info("Applied manual result override for game_id=%s.", game_id)
+        for failure in override_result["failures"]:
+            logger.error(
+                "OVERRIDE_FAILURE: game_id=%s reason=%s",
+                failure.get("game_id"), failure.get("reason"),
+            )
+        for skipped in override_result.get("skipped_other_season_entries", []):
+            # Logged per-entry, not just as a count: overrides_for_season filters a
+            # wrong-season entry out before the identity check (AC6), so it can never turn
+            # this job red by construction -- a fat-fingered season would otherwise sit
+            # silently unapplied forever under a green check, indistinguishable in the logs
+            # from the correct steady state once the year rolls over. game_id and the
+            # entry's own declared season are what an operator needs to tell those apart.
+            logger.info(
+                "Skipped override for game_id=%s: declared for season=%s, not the season "
+                "being run (year=%s).",
+                skipped.get("game_id"), skipped.get("season"), args.year,
+            )
+    except Exception as e:
+        # The token has to appear here too. Without it an unexpected exception in this step
+        # leaves the job green, which is the exact blind spot the workflow check exists to close.
+        logger.exception("OVERRIDE_FAILURE: applying manual result overrides raised an unexpected exception. Continuing. Exception: %s", e)
 
     # RUN MODEL
     logger.info("Running model.get_ratings(year=%s, week=%s)", args.year, args.week)

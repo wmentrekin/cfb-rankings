@@ -46,3 +46,15 @@ jobs:
         with:
           name: weekly-run-log
           path: output.log
+
+      - name: Fail job on manual result override failure
+        # Deliberately the LAST step, matching weekly-update.yml: a failed override never
+        # halts publishing (K5), it only needs to raise the alarm. This run also writes to
+        # the production database without --staging and also ends in `> output.log 2>&1 ||
+        # true`, so without this step a manual-run override failure would go green here too.
+        run: |
+          if grep -q "OVERRIDE_FAILURE" output.log; then
+            echo "::error::Manual result override failure(s) found in output.log:"
+            grep "OVERRIDE_FAILURE" output.log
+            exit 1
+          fi
