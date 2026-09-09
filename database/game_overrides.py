@@ -39,6 +39,15 @@ _REQUIRED_ENTRY_FIELDS = {
     "home_score", "away_score", "reason", "declared_on",
 }
 
+# Fields required to be a genuine int (not a float, and not a bool -- `isinstance(True, int)`
+# is True in Python, so a JSON `true`/`false` would otherwise silently pass an int check).
+_INT_FIELDS = ("game_id", "season", "week", "home_score", "away_score")
+_STR_FIELDS = ("season_type", "home_team", "away_team", "reason", "declared_on")
+
+
+def _is_strict_int(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
 SELECT_GAME = text(
     "SELECT season, week, season_type, home_team, away_team, neutral_site "
     "FROM games WHERE id = :game_id"
@@ -67,9 +76,11 @@ def load_overrides(path: Optional[str] = None) -> list:
     """Load and validate database/game_result_overrides.json (or `path`).
 
     Raises (FileNotFoundError, json.JSONDecodeError, ValueError) on a missing,
-    unreadable, or malformed file/schema. apply_game_result_overrides is
-    responsible for turning that into a reported failure rather than letting
-    it crash the caller.
+    unreadable, or malformed file/schema -- including a wrong field type (a
+    float or bool where an int is declared) and a duplicate game_id, both of
+    which would otherwise apply silently with a last-write-wins result.
+    apply_game_result_overrides is responsible for turning any of this into a
+    reported failure rather than letting it crash the caller.
     """
     target = Path(path) if path is not None else DEFAULT_OVERRIDES_PATH
     with open(target, "r") as f:
@@ -88,6 +99,25 @@ def load_overrides(path: Optional[str] = None) -> list:
         missing = _REQUIRED_ENTRY_FIELDS - set(entry)
         if missing:
             raise ValueError(f"{target}: overrides[{i}] missing field(s): {sorted(missing)}")
+
+        bad_int_fields = [f for f in _INT_FIELDS if not _is_strict_int(entry[f])]
+        if bad_int_fields:
+            raise ValueError(
+                f"{target}: overrides[{i}] field(s) must be int, not "
+                f"{[type(entry[f]).__name__ for f in bad_int_fields]}: {bad_int_fields}"
+            )
+
+        bad_str_fields = [f for f in _STR_FIELDS if not isinstance(entry[f], str)]
+        if bad_str_fields:
+            raise ValueError(
+                f"{target}: overrides[{i}] field(s) must be str, not "
+                f"{[type(entry[f]).__name__ for f in bad_str_fields]}: {bad_str_fields}"
+            )
+
+    game_ids = [entry["game_id"] for entry in overrides]
+    duplicates = sorted({g for g in game_ids if game_ids.count(g) > 1})
+    if duplicates:
+        raise ValueError(f"{target}: duplicate game_id(s) declared more than once: {duplicates}")
 
     return overrides
 
@@ -112,7 +142,15 @@ def apply_game_result_overrides(year: int, engine=None) -> dict:
 
     Never raises. Returns:
         {"applied": [game_id, ...], "skipped_other_season": n,
+         "skipped_other_season_entries": [{"game_id": ..., "season": ...}, ...],
          "failures": [{"game_id": ..., "reason": ...}, ...]}
+
+    `skipped_other_season_entries` carries the identity of each skipped entry
+    (not just the count) -- a wrong-season entry can never turn the CI job red
+    (AC6: it is filtered out before the identity check, by design), so this is
+    the only signal that distinguishes a fat-fingered season from the correct
+    steady state once the year rolls over. Additive alongside
+    `skipped_other_season`, which existing callers keep reading unchanged.
     """
     try:
         all_overrides = load_overrides()
@@ -120,20 +158,26 @@ def apply_game_result_overrides(year: int, engine=None) -> dict:
         return {
             "applied": [],
             "skipped_other_season": 0,
+            "skipped_other_season_entries": [],
             "failures": [{"game_id": None, "reason": f"could not load override file: {exc}"}],
         }
 
     season_overrides = overrides_for_season(all_overrides, year)
-    skipped_other_season = len(all_overrides) - len(season_overrides)
-
-    owns_engine = engine is None
-    if engine is None:
-        engine = _build_engine()
+    skipped_entries = [entry for entry in all_overrides if entry["season"] != year]
+    skipped_other_season_entries = [
+        {"game_id": entry.get("game_id"), "season": entry.get("season")} for entry in skipped_entries
+    ]
 
     applied: list = []
     failures: list = []
+    owns_engine = engine is None
+    engine_built = False
 
     try:
+        if engine is None:
+            engine = _build_engine()
+            engine_built = True
+
         for entry in season_overrides:
             game_id = entry.get("game_id")
             try:
@@ -167,8 +211,25 @@ def apply_game_result_overrides(year: int, engine=None) -> dict:
                 applied.append(game_id)
             except Exception as exc:
                 failures.append({"game_id": game_id, "reason": str(exc)})
+    except Exception as exc:
+        # Anything that escapes the per-entry try above is a whole-run problem -- most
+        # realistically _build_engine() itself failing (e.g. a DB_* env var missing or the
+        # database unreachable). BEHAVIOR CHANGE (cycle-1 review item 3): this used to sit
+        # outside the try entirely, so it raised straight out of this function -- violating
+        # the "never raises" contract documented above, even though main.py's own try/except
+        # happened to catch it anyway. Folded into `failures` here instead, so a transient
+        # Postgres outage now reds the weekly job via OVERRIDE_FAILURE, where it previously
+        # logged main.py's generic warning and returned green. That is a deliberate
+        # improvement, not a side effect: an unreachable database silently leaving every
+        # override unapplied is exactly the kind of failure this feature exists to surface.
+        failures.append({"game_id": None, "reason": f"could not apply overrides: {exc}"})
     finally:
-        if owns_engine:
+        if owns_engine and engine_built and engine is not None:
             engine.dispose()
 
-    return {"applied": applied, "skipped_other_season": skipped_other_season, "failures": failures}
+    return {
+        "applied": applied,
+        "skipped_other_season": len(skipped_entries),
+        "skipped_other_season_entries": skipped_other_season_entries,
+        "failures": failures,
+    }

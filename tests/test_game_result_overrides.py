@@ -12,8 +12,10 @@ this file covers.
 
 Run: python -m pytest tests/ -q   (or: python tests/test_game_result_overrides.py)
 """
+import ast
 import contextlib
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -95,6 +97,15 @@ def _override_entry():
         "home_score": 7, "away_score": 12,
         "reason": "test fixture", "declared_on": "2026-09-09",
     }
+
+
+def _write_temp_overrides_file(entries):
+    """A standalone database/game_result_overrides.json-shaped file for load_overrides
+    tests that need to exercise real file/JSON parsing rather than the in-memory
+    _with_overrides monkeypatch. Caller is responsible for unlinking the returned path."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump({"version": 1, "overrides": entries}, f)
+        return f.name
 
 
 def _stored_row_matching(entry, **field_overrides):
@@ -392,6 +403,191 @@ def test_shipped_override_file_is_raw_valid_json():
         data = json.load(f)
     assert data["version"] == 1
     assert isinstance(data["overrides"], list)
+
+
+# ===========================================================================
+# Fix cycle 1, item 1: load_overrides validates field presence but must also
+# validate type. A float score would apply and Postgres would silently ROUND
+# it on the implicit cast to integer -- exactly the failure mode this feature
+# exists to prevent. isinstance(True, int) is True in Python, so a JSON `true`
+# must be rejected explicitly rather than passing an int check by accident.
+# ===========================================================================
+def test_load_overrides_rejects_a_float_score():
+    entry = _override_entry()
+    entry["home_score"] = 7.4
+    entry["away_score"] = 12.6
+    bad_path = _write_temp_overrides_file([entry])
+    try:
+        raised = False
+        try:
+            game_overrides.load_overrides(path=bad_path)
+        except ValueError:
+            raised = True
+        assert raised, "a float score must be rejected, not silently applied and rounded by Postgres"
+    finally:
+        Path(bad_path).unlink(missing_ok=True)
+
+
+def test_load_overrides_rejects_a_bool_for_an_int_field():
+    entry = _override_entry()
+    entry["week"] = True  # isinstance(True, int) is True -- must be rejected explicitly
+    bad_path = _write_temp_overrides_file([entry])
+    try:
+        raised = False
+        try:
+            game_overrides.load_overrides(path=bad_path)
+        except ValueError:
+            raised = True
+        assert raised, "a JSON boolean must be rejected for an int-typed field"
+    finally:
+        Path(bad_path).unlink(missing_ok=True)
+
+
+# ===========================================================================
+# Fix cycle 1, item 2: two entries for the same game_id must not silently
+# last-write-win -- every other identity problem in this design refuses
+# loudly, and a duplicate should too.
+# ===========================================================================
+def test_load_overrides_rejects_a_duplicate_game_id():
+    entry = _override_entry()
+    duplicate = dict(entry)
+    duplicate["week"] = 2  # different week, same game_id -- still a duplicate identity
+    bad_path = _write_temp_overrides_file([entry, duplicate])
+    try:
+        raised = False
+        try:
+            game_overrides.load_overrides(path=bad_path)
+        except ValueError:
+            raised = True
+        assert raised, "two entries sharing a game_id must be rejected, not last-write-wins"
+    finally:
+        Path(bad_path).unlink(missing_ok=True)
+
+
+# ===========================================================================
+# Fix cycle 1, item 5: ordering IS the mechanism. All 16 tests above call
+# apply_game_result_overrides directly, so none of them would notice a
+# refactor that hoists the call above the postseason ingest (or below
+# get_ratings) in main.py -- this test reads main.py itself via ast.
+# ===========================================================================
+TARGET_CALL_NAMES = ("load_games_to_db", "apply_game_result_overrides", "get_ratings")
+
+
+def _main_call_order():
+    main_py = Path(__file__).resolve().parent.parent / "main.py"
+    tree = ast.parse(main_py.read_text())
+    main_fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main")
+    order = []
+    for node in ast.walk(main_fn):
+        if isinstance(node, ast.Call):
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+            if name in TARGET_CALL_NAMES:
+                order.append((node.lineno, name))
+    order.sort()
+    return [name for _, name in order]
+
+
+def test_override_step_is_positioned_between_ingest_and_model():
+    call_order = _main_call_order()
+    load_games_positions = [i for i, name in enumerate(call_order) if name == "load_games_to_db"]
+    override_positions = [i for i, name in enumerate(call_order) if name == "apply_game_result_overrides"]
+    ratings_positions = [i for i, name in enumerate(call_order) if name == "get_ratings"]
+
+    assert len(load_games_positions) == 2, f"expected 2 load_games_to_db calls in main(), found order={call_order}"
+    assert len(override_positions) == 1, f"expected exactly 1 apply_game_result_overrides call, found order={call_order}"
+    assert len(ratings_positions) == 1, f"expected exactly 1 get_ratings call, found order={call_order}"
+
+    assert max(load_games_positions) < override_positions[0], (
+        "apply_game_result_overrides must come after BOTH load_games_to_db calls (K3) -- "
+        f"call order was {call_order}"
+    )
+    assert override_positions[0] < ratings_positions[0], (
+        f"apply_game_result_overrides must come before get_ratings -- call order was {call_order}"
+    )
+
+
+# ===========================================================================
+# Fix cycle 1, item 6: the OVERRIDE_FAILURE token main.py emits and the token
+# the workflows grep for must be the literal same string. Drift here
+# reproduces the exact silent-green publish test_entry_point_resolves.py
+# exists to prevent, just one file over.
+# ===========================================================================
+OVERRIDE_FAILURE_TOKEN = "OVERRIDE_FAILURE"
+
+
+def test_override_failure_token_matches_between_main_and_workflows():
+    repo_root = Path(__file__).resolve().parent.parent
+    main_src = (repo_root / "main.py").read_text()
+
+    assert main_src.count(OVERRIDE_FAILURE_TOKEN) >= 2, (
+        f"expected the literal {OVERRIDE_FAILURE_TOKEN!r} token in both main.py emitters "
+        "(the per-failure log line, and the outer except's log line)"
+    )
+
+    for workflow_name in ("weekly-update.yml", "test-week-run.yml"):
+        workflow_src = (repo_root / ".github" / "workflows" / workflow_name).read_text()
+        match = re.search(r'grep -q "([^"]+)" output\.log', workflow_src)
+        assert match is not None, f"{workflow_name} must grep output.log for a quoted token"
+        assert match.group(1) == OVERRIDE_FAILURE_TOKEN, (
+            f"{workflow_name} greps for {match.group(1)!r}, which does not match the literal "
+            f"{OVERRIDE_FAILURE_TOKEN!r} token main.py actually emits"
+        )
+
+
+# ===========================================================================
+# Fix cycle 1, item 7: an override naming a game_id absent from `games` (the
+# R3 scenario -- CFBD retires/reassigns the id) must fail intelligibly, not
+# with a raw TypeError from indexing a None row. Deleting the LookupError
+# guard in game_overrides.py currently leaves every other test green.
+# ===========================================================================
+def test_absent_game_id_reports_an_intelligible_failure():
+    entry = _override_entry()
+    engine = _make_engine([])  # no games rows at all
+
+    with _with_overrides([entry]):
+        result = apply_game_result_overrides(2026, engine=engine)
+
+    assert result["applied"] == []
+    assert len(result["failures"]) == 1
+    reason = result["failures"][0]["reason"]
+    assert reason == f"no games row found for id={entry['game_id']}", reason
+
+
+# ===========================================================================
+# Fix cycle 1, item 8: a bad entry must not block a good one -- pins the
+# per-entry-transaction design (one engine.begin() per override, not one for
+# the whole season, which would roll back good overrides alongside bad ones).
+# ===========================================================================
+def test_multi_entry_partial_failure_does_not_block_a_good_entry():
+    bad_entry = _override_entry()  # game_id 401858428
+    bad_stored = _stored_row_matching(bad_entry)
+    bad_stored["home_team"] = "Wrong Team"  # forces an identity-mismatch failure
+
+    good_entry = {
+        "game_id": 999002, "season": 2026, "week": 2, "season_type": "regular",
+        "home_team": "Iowa", "away_team": "Iowa State",
+        "home_score": 24, "away_score": 21,
+        "reason": "test fixture", "declared_on": "2026-09-09",
+    }
+    good_stored = {
+        "id": 999002, "season": 2026, "week": 2, "season_type": "regular",
+        "home_team": "Iowa", "away_team": "Iowa State",
+        "home_score": 10, "away_score": 21, "neutral_site": 0,
+        "winner": "Iowa State", "margin": 11, "alpha": 1.2,
+    }
+
+    engine = _make_engine([bad_stored, good_stored])
+    with _with_overrides([bad_entry, good_entry]):
+        result = apply_game_result_overrides(2026, engine=engine)
+
+    assert result["applied"] == [999002], "the good entry must still apply despite the bad one"
+    assert len(result["failures"]) == 1
+    assert result["failures"][0]["game_id"] == bad_entry["game_id"]
+
+    good_row = _fetch(engine, 999002)
+    assert good_row["home_score"] == 24
+    assert good_row["winner"] == "Iowa"
 
 
 if __name__ == "__main__":

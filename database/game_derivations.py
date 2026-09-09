@@ -4,14 +4,22 @@ Extracted out of get_games.py's ingest transform so the override path
 (database/game_overrides.py) can produce byte-identical winner/margin/alpha
 values without duplicating -- and risking drift from -- the ingest logic.
 """
+from typing import Any, Optional
 
 
-def compute_margin(home_score, away_score) -> int:
-    """Absolute point differential between the two teams."""
+def compute_margin(home_score, away_score) -> Any:
+    """Absolute point differential between the two teams.
+
+    Typed Any rather than int: `abs(home_score - away_score)` propagates
+    pandas.NA if either score is itself NA. Neither call path passes NA in
+    practice today -- get_games.py fills scores to 0 before calling this, and
+    the override path's scores come from validated JSON -- but the function
+    itself does not guarantee an int back.
+    """
     return abs(home_score - away_score)
 
 
-def compute_winner(home_team, away_team, home_score, away_score):
+def compute_winner(home_team, away_team, home_score, away_score) -> Optional[str]:
     """The winning team's name, or None if the game hasn't been played yet.
 
     CFBD stores an unplayed/future game as home_score=away_score=0, not NULL
@@ -38,4 +46,4 @@ def compute_winner(home_team, away_team, home_score, away_score):
 
 def compute_alpha(home_team, winner, neutral_site) -> float:
     """Home-field weighting factor used by the rating model."""
-    return 1 if neutral_site else (0.8 if home_team == winner else 1.2)
+    return 1.0 if neutral_site else (0.8 if home_team == winner else 1.2)

@@ -3,7 +3,7 @@
 artifact: status
 feature: "manual-result-overrides"
 mode: "bounded-feature"
-stage: "execution"
+stage: "verification"
 owner_skill: work
 
 objective: >-
@@ -41,8 +41,8 @@ branching:
   branch_name: "work/manual-result-overrides"
 
 summary:
-  current_focus: "Execution batch B1: shared derivation helpers, the override file and applier, main.py plus workflow wiring, and tests."
-  last_completed: "Plan review cycle 1 closed (5 required changes applied); user approved at the pre-execution checkpoint."
+  current_focus: "PR #13 is ready for the user's review and merge. B2 (the production re-run) is blocked on that merge."
+  last_completed: "Verification cycle 1: code review found no correctness defect; all 9 findings from the review and tester closed. Suite at 81 passed."
   current_blocker: ""
 
 artifacts:
@@ -51,9 +51,9 @@ artifacts:
   implementation_report: "docs/manual-result-overrides/implementation-report.yaml"
 
 pr:
-  number: null
-  url: null
-  status: "not_opened"
+  number: 13
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/13"
+  status: "open, reviewed, awaiting the user's merge"
 
 agents:
   - id: "orchestrator"
@@ -67,7 +67,7 @@ agents:
     routing_enforced: true
     escalation_count: 0
     status: "active"
-    stage: "execution"
+    stage: "verification"
     task: "Coordinate discovery of the ingest/model/artifact path for game results."
     last_update: "2026-09-09"
     blocker: ""
@@ -77,7 +77,7 @@ loops:
     count: 1
     max: 2
   execution_verification:
-    count: 0
+    count: 1
     max: 2
 
 checkpoint:
@@ -117,6 +117,9 @@ model_routing:
   unresolved_limitations:
     - "Subagents inherit the main conversation's extended-thinking setting; per-agent reasoning level is advisory."
 
-next_action: "Spawn data-engineer for B1 (T1-T4) on work/manual-result-overrides."
+next_action: >-
+  Wait for the user to merge PR #13, then dispatch weekly-update.yml with week=1 and verify
+  AC8/AC9. Before the merge, delete docs/manual-result-overrides/ from the branch per
+  .agents/references/branch-and-pr-workflow.md's Completion section.
 next_recommended_command: "$work"
-user_input_needed: false
+user_input_needed: true

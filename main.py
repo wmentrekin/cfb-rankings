@@ -354,10 +354,17 @@ def main():
                 "OVERRIDE_FAILURE: game_id=%s reason=%s",
                 failure.get("game_id"), failure.get("reason"),
             )
-        if override_result["skipped_other_season"]:
+        for skipped in override_result.get("skipped_other_season_entries", []):
+            # Logged per-entry, not just as a count: overrides_for_season filters a
+            # wrong-season entry out before the identity check (AC6), so it can never turn
+            # this job red by construction -- a fat-fingered season would otherwise sit
+            # silently unapplied forever under a green check, indistinguishable in the logs
+            # from the correct steady state once the year rolls over. game_id and the
+            # entry's own declared season are what an operator needs to tell those apart.
             logger.info(
-                "Skipped %d override(s) declared for a different season.",
-                override_result["skipped_other_season"],
+                "Skipped override for game_id=%s: declared for season=%s, not the season "
+                "being run (year=%s).",
+                skipped.get("game_id"), skipped.get("season"), args.year,
             )
     except Exception as e:
         # The token has to appear here too. Without it an unexpected exception in this step

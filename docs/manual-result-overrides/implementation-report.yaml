@@ -3,7 +3,7 @@
 artifact: implementation_report
 feature: "manual-result-overrides"
 mode: "bounded-feature"
-status: "execution complete, verification pending"
+status: "verification cycle 1 complete"
 owner_skill: work
 based_on: "docs/manual-result-overrides/plan.yaml"
 
@@ -71,8 +71,8 @@ model_usage:
     - "Two orchestrator-made corrections after the batch landed; both were plan-text errors of mine, not agent errors (see open_issues)."
 
 pr:
-  number: null
-  url: null
+  number: 13
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/13"
 
 changes:
   files:
@@ -99,16 +99,44 @@ local_validation:
     - "Nothing was executed against the live database or R2 during implementation, by design."
 
 review_summary:
-  status: "plan review complete (cycle 1); code review pending"
+  status: "plan review cycle 1 and code review cycle 1 both complete; all findings closed"
   key_findings:
     - "Plan review reversed the abort-on-failure design, pinned the SQL shape, and specified the neutral_site source."
+    - >-
+      Code review (frontier/Opus 5) found NO correctness defect. It traced the T1 margin
+      extraction value-by-value and confirmed it inert: in a mixed-dtype frame pandas boxes each
+      row into an object Series where Int64 arrives as plain Python int, and both forms
+      .astype("Int64") to identical Series. It confirmed alpha=1.2 is the right direction by
+      reading model/model.py:95, and confirmed the marker step is genuinely last in the parsed YAML.
+    - >-
+      The one real bug it did find: load_overrides validated field presence but not type, so a
+      float score applied and Postgres would silently round it on the implicit cast to integer.
+      Fixed with strict int validation that also rejects bools, since isinstance(True, int) is True.
+    - "apply_game_result_overrides' documented never-raises contract was false -- _build_engine sat outside the try. Fixed."
+    - "The skipped_other_season log was the one failure a typo could hide behind a green check, since AC6 filters wrong-season entries before the identity check by design. Now logs game_id and declared season per entry."
+    - "Tester found duplicate game_id entries silently last-write-wins. Fixed with a dedup guard in load_overrides."
+    - "Two plan-required tests were missing (step ordering, and the OVERRIDE_FAILURE token contract across main.py and both workflows). Added."
 
 test_summary:
   status: "unit tests green; production verification pending"
-  checks_run: ["python -m pytest tests/ -q -> 74 passed"]
+  checks_run:
+    - "python -m pytest tests/ -q -> 58 before the feature, 74 after B1, 81 after fix cycle 1. Zero regressions at each step."
+    - >-
+      The tester confirmed the 58 baseline itself by building main in a disposable worktree
+      rather than trusting the implementation report.
+    - >-
+      Durability probe (the claim the whole change rests on): apply the override, simulate a
+      CFBD re-ingest reverting the row, re-apply -- the override reasserts. Passes.
+    - "All 23 new tests mutation-checked. The absent-row mutation that survived cycle 1 now fails exactly one test, confirmed by re-running the suite with the LookupError block deleted."
+    - "Orchestrator sanity check against the shipped file: loads, and the seeded entry derives winner='Western Michigan', margin=5, alpha=1.2; the 2025 filter is empty."
   failures: []
   gaps:
     - "AC8 and AC9 are only checkable after the production re-run, which needs the merge."
+    - >-
+      Pre-existing and deliberately not fixed here: compute_winner declares a genuine non-zero
+      tie an away win and raises on raw pd.NA. Both are inherited byte-identical from the
+      pre-change inline code and unreachable through either path today.
+    - "No CI runs pytest in this repo at all (pre-existing), so every test-resident guard depends on a human running the suite."
 
 open_issues:
   - id: "O1"
@@ -124,8 +152,17 @@ open_issues:
       exception in the override step would have left the job green -- the exact blind spot the
       check exists to close. Token added to that message.
     status: fixed
+  - id: "O3"
+    issue: >-
+      test-week-run.yml also runs main.py against the production database without --staging and
+      also ends in `|| true`, so overrides applied there had failures going green. Given the same
+      OVERRIDE_FAILURE check as weekly-update.yml. A small scope extension beyond the plan's
+      owned_scope, taken because it serves the feature's own safety property rather than widening it.
+    status: fixed
 
 handoff:
-  current_state: "ready for PR and verification"
-  next_owner: "reviewer + tester, then the user for merge"
-  next_action: "Open the PR, run code review and the test pass against it, then hand to the user."
+  current_state: "PR #13 open, reviewed, all findings closed"
+  next_owner: "the user, for merge"
+  next_action: >-
+    User merges PR #13. Then B2/T5: dispatch weekly-update.yml with week=1, which runs the
+    pipeline, publishes to R2 and fires the personal-site deploy hook; then verify AC8 and AC9.
