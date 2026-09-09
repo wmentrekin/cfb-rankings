@@ -3,7 +3,7 @@
 artifact: status
 feature: "manual-result-overrides"
 mode: "bounded-feature"
-stage: "discovery"
+stage: "execution"
 owner_skill: work
 
 objective: >-
@@ -41,14 +41,14 @@ branching:
   branch_name: "work/manual-result-overrides"
 
 summary:
-  current_focus: "Discovery: how games are ingested, stored, and consumed, and where an override can survive re-ingest."
-  last_completed: "Repository sync preflight for both repos; feature branch created."
+  current_focus: "Execution batch B1: shared derivation helpers, the override file and applier, main.py plus workflow wiring, and tests."
+  last_completed: "Plan review cycle 1 closed (5 required changes applied); user approved at the pre-execution checkpoint."
   current_blocker: ""
 
 artifacts:
-  requirements: null
-  plan: null
-  implementation_report: null
+  requirements: "docs/manual-result-overrides/requirements.yaml"
+  plan: "docs/manual-result-overrides/plan.yaml"
+  implementation_report: "docs/manual-result-overrides/implementation-report.yaml"
 
 pr:
   number: null
@@ -67,14 +67,14 @@ agents:
     routing_enforced: true
     escalation_count: 0
     status: "active"
-    stage: "discovery"
+    stage: "execution"
     task: "Coordinate discovery of the ingest/model/artifact path for game results."
     last_update: "2026-09-09"
     blocker: ""
 
 loops:
   planning_review:
-    count: 0
+    count: 1
     max: 2
   execution_verification:
     count: 0
@@ -82,7 +82,7 @@ loops:
 
 checkpoint:
   pre_execution_required: true
-  pre_execution_status: pending
+  pre_execution_status: "proceed (user-confirmed)"
   options:
     - proceed
     - revise_plan
@@ -91,6 +91,19 @@ checkpoint:
 
 blockers: []
 decisions:
+  - id: "D4"
+    decision: >-
+      No overridden-game marker in the artifacts or on the site for now (user decision at the
+      checkpoint). The reason lives in the checked-in override file and the README.
+  - id: "D3"
+    decision: >-
+      Score confirmed by the user: Western Michigan 12, Michigan 7. Michigan is the home team,
+      so home_score=7, away_score=12, margin=5, winner='Western Michigan', alpha=1.2.
+  - id: "D2"
+    decision: >-
+      A failed override no longer halts the run (reversed after review). It is recorded, the run
+      completes, and weekly-update.yml fails the job on an OVERRIDE_FAILURE marker in output.log,
+      because `main.py ... || true` means a nonzero exit alone is invisible.
   - id: "D1"
     decision: >-
       Continue the branch convention already in use and merged across this project
@@ -104,6 +117,6 @@ model_routing:
   unresolved_limitations:
     - "Subagents inherit the main conversation's extended-thinking setting; per-agent reasoning level is advisory."
 
-next_action: "Spawn repo-researcher to map the games ingest -> model -> artifact path and identify override insertion points."
+next_action: "Spawn data-engineer for B1 (T1-T4) on work/manual-result-overrides."
 next_recommended_command: "$work"
 user_input_needed: false
