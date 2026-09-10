@@ -1,0 +1,79 @@
+name: Publish Season Schedule Artifact
+
+# Season-scoped republish of the Season Grid artifact only -- no CFBD ingest, no rating
+# model, no ratings/rankings write. See scripts/publish_season_schedule_artifact.py for the
+# full rationale. Manual dispatch only: this is a one-off/occasional republish path, not a
+# recurring job, and `dry_run` defaults to true so the first look at any season costs
+# nothing and overwrites nothing. No deploy-hook step here -- the site rebuild is
+# deliberately triggered later, by merging the personal-site guard-removal PR, and only
+# after the uploaded payload has been verified (plan.yaml K4).
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: 'Season year to publish (e.g. 2025)'
+        required: true
+      dry_run:
+        description: 'Build and write the payload without uploading to R2'
+        type: boolean
+        default: true
+
+jobs:
+  publish_schedule_artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra pipeline
+
+      - name: Run publish script
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          # Dispatch inputs reach the shell as environment variables, never interpolated
+          # into the script body. `${{ ... }}` is substituted before bash sees the line, so
+          # an input like `2025"; curl ...` would run as its own command. Only collaborators
+          # can dispatch this workflow, but the safe form costs nothing.
+          SEASON: ${{ github.event.inputs.season }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          EXTRA_ARGS=""
+          if [ "$DRY_RUN" = "true" ]; then
+            EXTRA_ARGS="--dry-run"
+          fi
+          echo "Running: publish_season_schedule_artifact.py --season $SEASON --out payload.json $EXTRA_ARGS"
+          # Deliberately NOT wrapped in `|| true` -- unlike the weekly pipeline, a failure
+          # here must fail the job rather than go unnoticed.
+          uv run python scripts/publish_season_schedule_artifact.py \
+            --season "$SEASON" \
+            --out payload.json \
+            $EXTRA_ARGS
+
+      - name: Upload payload artifact
+        # Always runs, dry run or not -- this is the only way the built/published payload
+        # can be inspected without R2 read access.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schedule-payload-season-${{ github.event.inputs.season }}
+          path: payload.json
