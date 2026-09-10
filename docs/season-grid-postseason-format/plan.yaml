@@ -1,0 +1,211 @@
+artifact: plan
+feature: "season-grid-postseason-format"
+mode: "large-initiative"
+status: draft
+owner_skill: work
+based_on: "docs/season-grid-postseason-format/requirements.yaml"
+
+objective: >-
+  Fix the four defects the owner found in the rendered 2025 Season Grid: uneven row heights from
+  long postseason labels, conference records that count the title game, champions invisible in
+  the conference order, and first-round byes reading as bowl eligibility.
+
+approach:
+  summary: >-
+    Two batches in cfb-rankings (standings, then postseason cells), one in personal-site
+    (rendering), then a republish. The standings work is done first because items 2 and 4 are one
+    coupled change: excluding the title game is what creates the case the champion sort exists to
+    resolve.
+  key_decisions:
+    - id: "K1"
+      decision: >-
+        Thread the championship game ids down through compute_standings into compute_team_records
+        as a new optional parameter, rather than adjusting conf_wins/conf_losses in schedule.py
+        after the fact.
+      rationale: >-
+        The alternative duplicates "is this row the identified championship game" outside the
+        module that owns the tally, leaving two places that must agree forever. Optional with a
+        None default means every existing caller and test keeps working unchanged.
+    - id: "K2"
+      decision: "Reorder build_schedule_payload so identification happens before compute_standings."
+      rationale: >-
+        Identification is at :914 and standings at :911 today, so the ids do not exist yet when
+        the tally runs. Moving the identify call above it is the whole enabling change and touches
+        nothing else.
+    - id: "K3"
+      decision: >-
+        A champion is the team with a winning row in the identified championship game. A team that
+        has merely clinched does not sort first.
+      rationale: >-
+        The owner's words were "winners of conference championship games". A clinched projection
+        and a played result are structurally different signals, and promoting a projection would
+        reorder a conference on the strength of a prediction.
+    - id: "K4"
+      decision: "is_champion becomes the top sort tier AND joins the head-to-head grouping key."
+      rationale: >-
+        The head-to-head pass swaps adjacent pairs tied on (conf_pct, conf_played). Without
+        including champion status in that grouping, a champion could be swapped back below a team
+        that beat it earlier in the season -- silently undoing the rule. Not a live case for the
+        2025 ACC, where the records differ after exclusion, but a latent one.
+    - id: "K5"
+      decision: "Add a nullable `playoff_round` field to the cell, carrying playoff_round_name."
+      rationale: >-
+        The frontend needs to know a cell is a playoff game to badge it. The alternative is
+        string-matching "College Football Playoff" in game_name, which couples presentation to a
+        label we intend to shorten in the very same pass. A round name is data; deriving it in the
+        frontend from prose is not.
+    - id: "K6"
+      decision: "Bowl-name shortening lives in personal-site, not cfb-rankings."
+      rationale: >-
+        Consistent with the precedent already set by src/lib/conferences.ts, which maps artifact
+        tokens to display names on the site side. The artifact keeps the full official name; the
+        site decides how to abbreviate it. That also keeps the artifact contract stable.
+    - id: "K7"
+      decision: "The short label is rendered with the full name in both `title` and an aria-label, on a focusable element."
+      rationale: >-
+        AC7. A title attribute alone is mouse-only. Making the cell's label focusable and
+        labelled means keyboard and screen-reader users reach the full name too. Touch users get
+        it on tap via the same focus path.
+    - id: "K8"
+      decision: "Seed-aware bye text is conditional on B0 and falls back to a plain CFP Bye."
+      rationale: >-
+        No seed exists in our data. Deriving one from quarterfinal bracket slots agrees with 2025
+        but rests on one season. A wrong seed on a public page is worse than an absent one.
+
+execution_batches:
+  - id: "B0"
+    goal: "Resolve whether a CFP seed is sourceable. Running now; gates only the bye label text."
+    tasks:
+      - id: "T0"
+        title: "CFBD seed availability"
+        objective: "Establish from CFBD's public documentation whether a playoff seed is exposed, and on which endpoint and tier."
+        assigned_domain: "platform-researcher"
+        model_routing: {task_profile: research, uncertainty: high, consequence: low, scope_size: narrow, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5"}
+        owned_scope: ["External documentation only."]
+        dependencies: []
+        expected_validation: ["A cited yes/no, with 'unclear' accepted as an answer."]
+
+  - id: "B1"
+    goal: "Conference records and the champion sort, in cfb-rankings. Items 2 and 4."
+    tasks:
+      - id: "T1"
+        title: "Exclude the championship game from conference records"
+        objective: >-
+          Move the identify_conference_championship_games call above compute_standings in
+          build_schedule_payload. Add an optional champ_game_ids parameter to compute_standings
+          and compute_team_records, defaulting to None so no existing caller changes. Exclude
+          those game_ids from the conf_rows tally only -- overall records must be untouched.
+        assigned_domain: "data-engineer"
+        model_routing: {task_profile: implementation, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", escalation_tier: frontier}
+        owned_scope: ["artifacts/schedule_standings.py", "artifacts/schedule.py (the reorder and the pass-through only)"]
+        forbidden_scope: ["identify_conference_championship_games itself", "any change to overall win/loss tallies"]
+        dependencies: []
+        expected_validation:
+          - "Duke 6-2 and Virginia 7-1 on a 2025-shaped fixture."
+          - "A conference with no identified championship game is unchanged."
+      - id: "T2"
+        title: "Sort conference champions first"
+        objective: >-
+          Derive the champion per conference in build_schedule_payload from the identified game's
+          winning row, inject it into the entries, and make it the top sort tier in
+          _sort_conference_teams -- reading it with a default so hand-built entries in existing
+          tests keep working. Include it in the head-to-head grouping key per K4.
+        assigned_domain: "data-engineer"
+        model_routing: {task_profile: implementation, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", escalation_tier: frontier}
+        owned_scope: ["artifacts/schedule.py (_sort_conference_teams and the entry construction)"]
+        dependencies: ["T1"]
+        expected_validation:
+          - "Duke above Virginia despite the worse conference record."
+          - "Independents and championship-less conferences order exactly as before."
+          - "A champion is not swapped below a team that beat it in the regular season."
+      - id: "T3"
+        title: "Tests for both, including the behaviour that had none"
+        objective: >-
+          The conference-record exclusion has zero characterization today, positive or negative.
+          Add fixtures with a genuinely identified championship game -- note the existing
+          division fixture was deliberately built to AVOID identifying one, so a new fixture is
+          required. Cover the champion sort, the head-to-head interaction, championship-less
+          conferences, in-progress seasons and Independents. Mutation-check each.
+        assigned_domain: "data-engineer"
+        model_routing: {task_profile: test_design, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5"}
+        owned_scope: ["tests/test_conference_championship_records.py (new)"]
+        dependencies: ["T2"]
+        expected_validation: ["Suite green; every new test mutation-checked."]
+
+  - id: "B2"
+    goal: "Postseason cells, in cfb-rankings. Item 3 plus the badge's data support."
+    tasks:
+      - id: "T4"
+        title: "First-round bye state and the playoff_round cell field"
+        objective: >-
+          In _build_team_weeks, when the cfp-r1-bowls slot has no real row for a team but
+          cfp-quarterfinals does, emit a bye cell with a new distinct status instead of the bowl
+          eligibility placeholder. Add a nullable playoff_round to every cell, carrying
+          playoff_round_name for real postseason games and null elsewhere. Seed text per K8 and
+          B0's outcome.
+        assigned_domain: "data-engineer"
+        model_routing: {task_profile: implementation, uncertainty: medium, consequence: medium, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5"}
+        owned_scope: ["artifacts/schedule.py (cell constructors and _build_team_weeks)", "tests/test_postseason_slots.py"]
+        dependencies: ["T3"]
+        expected_validation:
+          - "Indiana 2025 yields the bye status; a non-playoff team still yields its eligibility placeholder."
+          - "playoff_round is populated for CFP games and null for ordinary bowls and week cells."
+
+  - id: "B3"
+    goal: "Rendering, in personal-site. Item 1 plus the badge."
+    tasks:
+      - id: "T5"
+        title: "Short labels, reachable full names, CFP badge, bye state"
+        objective: >-
+          Add src/lib/bowls.ts mapping full names to short display names, mirroring
+          conferences.ts. Render one line in the cell with the full name reachable per K7. Badge
+          cells whose playoff_round is non-null. Add the new bye status to STATUS_TEXT_BY_SLOT.
+          Every one of these changes must be made in BOTH ScheduleGrid.astro and the hand-mirrored
+          client script in index.astro -- nothing enforces they agree.
+        assigned_domain: "frontend-engineer"
+        model_routing: {task_profile: implementation, uncertainty: medium, consequence: medium, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5"}
+        owned_scope: ["src/lib/bowls.ts (new)", "src/components/ScheduleGrid.astro", "src/pages/projects/cfb-rankings/index.astro (client mirror only)"]
+        dependencies: ["T4"]
+        expected_validation:
+          - "Row heights uniform; measure them, do not eyeball."
+          - "Server and client DOM byte-identical after normalisation."
+          - "Full name reachable by keyboard; astro check clean."
+
+  - id: "B4"
+    goal: "Republish and verify. Orchestrator-run."
+    tasks:
+      - id: "T6"
+        title: "Republish 2025 and verify end to end"
+        objective: >-
+          After the cfb-rankings PR merges, dispatch publish-schedule-artifact.yml for 2025 (dry
+          run, verify, then publish), then rebuild the site branch and confirm every acceptance
+          criterion against the real preview.
+        assigned_domain: "platform-engineer"
+        model_routing: {task_profile: orchestration, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: frontier, requested_reasoning: high, provider_model: "Claude Opus 5"}
+        dependencies: ["T5", "user merge"]
+        expected_validation: ["AC1 through AC10 against the deployed preview."]
+
+ordering_notes:
+  - "B1 before B2 before B3. B3 consumes playoff_round and the bye status, so it cannot be verified until a republished artifact carries them."
+  - "The personal-site branch is stacked on PR #23; rebase onto main once that merges."
+  - "Two PRs, cfb-rankings first, since the site changes render fields the artifact does not yet contain."
+
+risks:
+  - id: "R1"
+    risk: "No CFP seed is sourceable."
+    mitigation: "B0 settles it. Falls back to a plain CFP Bye; affects label text only, nothing structural."
+  - id: "R2"
+    risk: "The champion sort silently loses to the head-to-head swap."
+    mitigation: "K4 puts champion status in the grouping key, with a test for exactly that case."
+  - id: "R3"
+    risk: "The two hand-mirrored frontend render paths drift, so a season switch loses the new states."
+    mitigation: "Byte-compare server and client DOM, as previous passes did. This is the repo's most repeated defect."
+  - id: "R4"
+    risk: "Excluding the championship game changes conference records for every season, not just 2025."
+    mitigation: >-
+      Intended -- it is a correctness fix, not a 2025 patch. But it means every published season's
+      artifact is now stale in this respect, and only 2025 and 2026 are republished. Worth stating
+      to the owner rather than discovering later.
+
+review: {status: draft, loop_count: 0, notes: []}
+checkpoint: {required_before_execution: true, status: pending}
