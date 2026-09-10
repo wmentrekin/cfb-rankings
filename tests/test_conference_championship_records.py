@@ -48,6 +48,7 @@ from artifacts import schedule_standings  # noqa: E402
 from artifacts.schedule import (  # noqa: E402
     CONF_CHAMPIONSHIP_SLOT_ID,
     _exclude_championship_games_from_conf_records,
+    _resolve_conference_champions,
     _sort_conference_teams,
     build_schedule_payload,
 )
@@ -261,6 +262,16 @@ def test_identified_but_unplayed_championship_game_does_not_change_status():
     payload = build_schedule_payload(rows, _k1_teams_meta(), SEASON)
     entries = {e["team"]: e for e in _conf_entries(payload, "ACC")}
 
+    # Fix-cycle-1: pin the DISPLAYED conf_record itself, not just championship_status -- an
+    # unplayed championship game must leave conf_record identical to what compute_standings
+    # produced, for both participants. Widening the win/loss gate in
+    # _exclude_championship_games_from_conf_records to also match status='upcoming' passed every
+    # existing assertion in this test (championship_status alone doesn't catch it) while actually
+    # producing a negative loss count, e.g. {"wins": 3, "losses": -1}, during championship week.
+    for team in ("Duke", "Virginia"):
+        assert entries[team]["conf_record"] == direct[team]["conf_record"], (team, entries[team]["conf_record"])
+        assert entries[team]["conf_record"] == {"wins": 3, "losses": 0}, entries[team]["conf_record"]
+
     # Duke/Virginia are playing IN the identified game, so their own cell is the real
     # (still-upcoming) game, not a placeholder status.
     assert _cell(entries["Duke"], CONF_CHAMPIONSHIP_SLOT_ID)["status"] == "upcoming"
@@ -281,6 +292,38 @@ def test_identified_but_unplayed_championship_game_does_not_change_status():
     ]
     baseline_order = [e["team"] for e in _sort_conference_teams(baseline_entries, rows, SEASON)]
     assert _conf_names(payload, "ACC") == baseline_order
+
+
+def test_exclude_championship_games_ignores_a_non_conference_game_row():
+    """Fix-cycle-1 hardening: _exclude_championship_games_from_conf_records now also requires
+    conference_game=True on the row itself, duplicating the invariant
+    identify_conference_championship_games already enforces when it builds champ_game_ids.
+    Structurally unreachable through the real pipeline today (every row sharing a champ_game_ids
+    game_id already IS a conference game, since both perspectives of one game share a
+    conference_game value) -- so exercised directly against the function, the only way to
+    construct the case: a row that shares a champ_game_ids game_id but carries
+    conference_game=False must not be subtracted."""
+    standings = {"Duke": {"conf_record": {"wins": 5, "losses": 1}}}
+    rows = [dict(season=SEASON, game_id=99, team="Duke", status="win", conference_game=False)]
+    _exclude_championship_games_from_conf_records(standings, rows, SEASON, {99})
+    assert standings["Duke"]["conf_record"] == {"wins": 5, "losses": 1}
+
+
+def test_resolve_conference_champions_warns_on_a_shared_game_id_collision(caplog):
+    """Fix-cycle-1 hardening: champ_games_by_conf (Dict[conference -> game_id]) inverted into
+    Dict[game_id -> conference] is silently LOSSY if two different conferences were ever
+    identified against the SAME game_id -- should be structurally impossible (a conference_game
+    row belongs to exactly one conference), but every neighbouring 'shouldn't happen' case in
+    this file logs rather than silently proceeding. Exercised directly against the function,
+    since the real pipeline cannot construct this input."""
+    champ_games_by_conf = {"ACC": 1, "SEC": 1}
+    rows = [dict(season=SEASON, game_id=1, team="Duke", status="win")]
+    with caplog.at_level("WARNING"):
+        champions = _resolve_conference_champions(champ_games_by_conf, rows, SEASON)
+    assert any("shared" in record.getMessage() for record in caplog.records), caplog.records
+    # Only one conference actually gets a champion out of this -- the drop itself is not fixed,
+    # only now logged, per the coordinator's explicit ask.
+    assert len(champions) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +372,50 @@ def test_champion_not_swapped_below_team_that_beat_it_head_to_head():
         "the group-of-two swap fired on their earlier meeting -- silently undoing the "
         "champion-first rule from the sort key above it."
     )
+
+
+# ---------------------------------------------------------------------------
+# Case 4b: _is_champion in the grouping key can split a three-way tie the pure-percentage
+# grouping would otherwise protect (fix-cycle-1: documented in _sort_conference_teams, pinned
+# here -- see the long comment there for the full mechanics).
+# ---------------------------------------------------------------------------
+def _three_way_tie_entries(champion_team=None):
+    """A, B, C all tied 1-1 in conference record -- a group of exactly THREE on conf_pct, which
+    _sort_conference_teams' grouping normally protects from the head-to-head swap (the swap only
+    fires on a group of exactly two). champion_team, if given, marks one of them _is_champion."""
+    return [
+        {"team": t, "record": {"wins": 1, "losses": 1}, "conf_record": {"wins": 1, "losses": 1},
+         "_is_champion": (t == champion_team)}
+        for t in ("A", "B", "C")
+    ]
+
+
+def _three_way_tie_rows():
+    # The only meeting _sort_conference_teams' head-to-head tiebreak can see: B beat A,
+    # head-to-head, in a regular-season conference game.
+    return _played(1, "B", "A", ACC)
+
+
+def test_three_way_tie_with_no_champion_sorts_by_name_not_head_to_head():
+    """Baseline: with no champion, all three group together (three-way, not two), so the
+    B-beat-A head-to-head result never gets a chance to fire -- falls back to name order."""
+    entries = _three_way_tie_entries()
+    rows = _three_way_tie_rows()
+    sorted_teams = [e["team"] for e in _sort_conference_teams(entries, rows, SEASON)]
+    assert sorted_teams == ["A", "B", "C"], sorted_teams
+
+
+def test_three_way_tie_with_a_champion_splits_the_group_and_exposes_head_to_head():
+    """C as champion sorts first, alone (a unique True never groups with a False). That leaves
+    A and B -- the two it excludes from its own group -- as a group of exactly two, which
+    re-enables THEIR head-to-head swap: B beat A, so B now sorts above A. Different final order
+    from the no-champion baseline above, from the SAME underlying record and head-to-head
+    result -- a direct, documented consequence of narrowing the grouping key (see the comment in
+    _sort_conference_teams), not a bug in the champion-first rule itself."""
+    entries = _three_way_tie_entries(champion_team="C")
+    rows = _three_way_tie_rows()
+    sorted_teams = [e["team"] for e in _sort_conference_teams(entries, rows, SEASON)]
+    assert sorted_teams == ["C", "B", "A"], sorted_teams
 
 
 # ---------------------------------------------------------------------------

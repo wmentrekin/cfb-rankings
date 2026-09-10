@@ -243,6 +243,24 @@ def _display_conference_name(raw_conference: Optional[str]) -> str:
 # rendering a real game in the wrong column beats asserting a matchup that was
 # never determined, which is the failure this rule exists to prevent.
 #
+# THE OTHER DIRECTION -- a real false positive, not just a misplaced column: a
+# make-up or postponed game that instead sits ALONE in a late bucket (no
+# scheduling collision with the real slate) satisfies this rule's shape
+# perfectly and gets identified as the conference's championship game, even
+# though it is not one. UPDATED CONSEQUENCE (season-grid-postseason-format):
+# this used to be cosmetic -- the game rendered in the Conference Championship
+# column instead of a week column, nothing else. It no longer is. The same
+# identification now also feeds _exclude_championship_games_from_conf_records
+# (subtracts this game from both participants' DISPLAYED conf_record) and
+# _resolve_conference_champions (crowns its winner, who then sorts first via
+# _is_champion) -- so a false positive here misstates a real, played
+# conference game's tally and promotes the wrong team to the top of its
+# conference. Still accepted, not mitigated further in this pass: the
+# structural signal (lone game, later than the regular slate) is the best
+# available without hand-curating a real championship-game schedule, and a
+# make-up game landing alone on/after what would be championship weekend is
+# an edge case, not the common path.
+#
 # VERIFIED against live 2024, 2025 and 2026 data (Supabase project
 # oyqgmbgwohlnrxodvilt): every real title game is still identified for both
 # completed seasons, 2024's two-team Pac-12 remnant correctly identifies nothing,
@@ -703,6 +721,10 @@ def _cell_from_row(row: Dict[str, Any], logos_by_team: Dict[str, Any]) -> Dict[s
         "opp_score": opp_score,
         # K5: non-null only for a real CFP-round game -- see _playoff_round_for_row.
         "playoff_round": _playoff_round_for_row(row),
+        # cfp_seed: null on every real-row cell -- this field exists only to carry a CFP bye
+        # team's seed (see _cfp_bye_cell); a real game's own seed is not surfaced here today
+        # (out of scope -- no acceptance criterion asks for it on a played/scheduled game).
+        "cfp_seed": None,
     }
 
 
@@ -721,6 +743,7 @@ def _placeholder_cell(logical_season_type: str, status: str, conditional_opponen
         "team_score": None,
         "opp_score": None,
         "playoff_round": None,
+        "cfp_seed": None,
     }
 
 
@@ -738,6 +761,7 @@ def _bye_cell(logical_season_type: str) -> Dict[str, Any]:
         "team_score": None,
         "opp_score": None,
         "playoff_round": None,
+        "cfp_seed": None,
     }
 
 
@@ -758,6 +782,7 @@ def _tbd_cell(logical_season_type: str) -> Dict[str, Any]:
         "team_score": None,
         "opp_score": None,
         "playoff_round": None,
+        "cfp_seed": None,
     }
 
 
@@ -791,26 +816,32 @@ def _cfp_bye_cell(logical_season_type: str, seed: Optional[int]) -> Dict[str, An
     bowl-eligibility placeholder (which reads as merely "Eligible", indistinguishable from a
     team that never made the playoff).
 
-    K8: the seed degrades the label, not the other way around -- when resolved, it becomes the
-    literal display text via game_name/game_name_short ("Bye (No. N)"), read directly by the
-    frontend exactly like a real game's bowl name; when absent, game_name stays null and the
-    frontend's STATUS_TEXT_BY_SLOT[CFP_BYE_STATUS] fallback ("CFP Bye") renders instead. A wrong
-    seed on a public page is worse than an absent one.
+    REVISED (fix-cycle-1 design correction): the seed is carried as its OWN nullable field,
+    cfp_seed -- an integer when resolved, null when not -- rather than pre-composed into
+    game_name as "Bye (No. N)" prose. Baking it into game_name conflicted with
+    _game_name_for_row's own contract (non-null only for a real, determined game; this is
+    neither) and inverted K5's whole argument: K5 exists precisely so the frontend does not have
+    to derive structured meaning (a badge) from a label's prose, and writing an integer into a
+    sentence two functions before the frontend reads it is that same coupling in the other
+    direction. game_name/game_name_short stay null here, exactly like _bye_cell -- the frontend
+    composes its own label from status == CFP_BYE_STATUS plus cfp_seed (present or absent), the
+    same K8 degrade (a resolved seed renders it, an absent one falls back to a plain "CFP Bye"
+    label) now expressed as a data question instead of a string-presence question.
     """
-    game_name = f"Bye (No. {seed})" if seed is not None else None
     return {
         "season_type": logical_season_type,
         "opponent": None,
         "opponent_logo_url": None,
         "conditional_opponent": None,
-        "game_name": game_name,
-        "game_name_short": game_name,  # already one line; no bowl-name sponsor text to strip
+        "game_name": None,
+        "game_name_short": None,
         "home_away": None,
         "neutral_site": False,
         "status": CFP_BYE_STATUS,
         "team_score": None,
         "opp_score": None,
         "playoff_round": None,
+        "cfp_seed": seed,
     }
 
 
@@ -950,6 +981,23 @@ def _sort_conference_teams(entries: List[Dict[str, Any]], rows: List[Dict[str, A
             # rule from the sort key above -- silently, since the swap has no notion of
             # championship status without this check. A unique champion (True) can therefore
             # never share a group with anyone else (all False), so the swap below never touches it.
+            #
+            # INTERACTION WITH THE THREE-WAY PROTECTION ABOVE (fix-cycle-1, documented rather
+            # than fixed -- the review judged the result arguably correct, just previously
+            # unstated and untested): the "group grows to three, swap disabled" protection
+            # described two paragraphs up is NOT unconditional once _is_champion is part of the
+            # grouping key. Three teams genuinely tied on conf_pct with one of them a champion do
+            # NOT form one group of three -- the champion (True) splits off into its own
+            # single-team group, leaving the other two (both False) as a group of exactly two,
+            # which re-enables their head-to-head swap. Concrete case (see
+            # tests/test_conference_championship_records.py's three-way-tie test): A, B, C all
+            # 1-1, B beat A head-to-head. With no champion, all three group together and the
+            # swap never fires -- name order, ['A', 'B', 'C']. With C the champion, C sorts alone
+            # ahead of {A, B}, and THAT pair's now-exposed head-to-head swap fires on its own
+            # meeting -- ['C', 'B', 'A']. This is consistent with the rule as specified (a
+            # champion's own group can never be swapped; nothing protects the teams IT excludes
+            # from the group it no longer joins), but is a real, non-obvious consequence of
+            # narrowing the grouping key, not a re-derivation of the three-way protection itself.
             while j + 1 < n and entries[j + 1]["_conf_pct"] is not None and entries[i]["_conf_pct"] is not None \
                     and abs(entries[j + 1]["_conf_pct"] - entries[i]["_conf_pct"]) < 1e-9 \
                     and entries[j + 1]["_conf_played"] == entries[i]["_conf_played"] \
@@ -1010,7 +1058,16 @@ def _exclude_championship_games_from_conf_records(
     was never counted in compute_team_records's tally to begin with (it only counts win/loss
     rows), so there is nothing to remove from the display for it either -- this is what keeps an
     identified-but-unplayed game from changing anything at all (see
-    tests/test_conference_championship_records.py's K1 regression test).
+    tests/test_conference_championship_records.py's K1 regression test, which pins conf_record
+    itself in the unplayed case, not just championship_status -- fix-cycle-1 review found the
+    status math had a passing test but the displayed record did not).
+
+    Fix-cycle-1 hardening: also requires conference_game=True on the row itself, duplicating the
+    invariant identify_conference_championship_games already enforces when it builds
+    champ_game_ids in the first place. Structurally redundant today -- every row sharing a
+    champ_game_ids game_id already IS a conference game -- but cheap insurance against exactly
+    the failure mode this function exists to prevent (a wrong subtraction from a displayed
+    record) if that upstream invariant is ever loosened without this function being revisited.
     """
     if not champ_game_ids:
         return
@@ -1018,6 +1075,8 @@ def _exclude_championship_games_from_conf_records(
         if row.get("season") != season:
             continue
         if row.get("game_id") not in champ_game_ids:
+            continue
+        if not row.get("conference_game"):
             continue
         status = row.get("status")
         if status not in ("win", "loss"):
@@ -1045,8 +1104,27 @@ def _resolve_conference_champions(
     clinched a spot in the title game is not a champion, so that conference's sort order stays
     untouched (see _sort_conference_teams's _is_champion default of False) until the game
     resolves.
+
+    The "both sides win" case -- two rows of the same game_id both reading status='win' -- is
+    unreachable: status is score-derived (schedule_grid's CASE expression), so at most one of a
+    game's two team-perspective rows can ever read 'win'. Never a source of ambiguity here.
     """
     game_id_to_conf = {game_id: conf for conf, game_id in champ_games_by_conf.items()}
+    if len(game_id_to_conf) != len(champ_games_by_conf):
+        # "Shouldn't happen" -- champ_games_by_conf is Dict[conference -> game_id], one entry
+        # per conference, but this inverts it to Dict[game_id -> conference], which is silently
+        # LOSSY if two different conferences were ever identified against the SAME game_id:
+        # whichever conference iterates last in champ_games_by_conf.items() wins the inversion,
+        # and the other is dropped from champion resolution entirely -- no exception, just a
+        # missing champion for that conference. Every neighbouring "shouldn't happen" case in
+        # this file logs rather than silently proceeding; matching that here.
+        collided = [conf for conf, gid in champ_games_by_conf.items() if game_id_to_conf.get(gid) != conf]
+        logger.warning(
+            "schedule.py: %d conference(s) were identified against a championship game_id shared "
+            "with another conference -- %s -- and were dropped from champion resolution by the "
+            "many-to-one game_id->conference inversion. Should be structurally impossible (a "
+            "conference_game row belongs to exactly one conference).", len(collided), collided,
+        )
     champions: Dict[str, str] = {}
     for row in rows:
         if row.get("season") != season:

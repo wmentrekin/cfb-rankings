@@ -26,6 +26,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import artifacts.bowl_names as bowl_names  # noqa: E402
 from artifacts.bowl_names import short_bowl_name  # noqa: E402
 from artifacts.schedule import (  # noqa: E402
     CFP_BYE_STATUS,
@@ -291,31 +292,48 @@ def test_bye_status_absent_for_an_ordinary_bowl_team():
     assert bowl_cell["game_name_short"] == "Gasparilla Bowl"
 
 
-def test_bye_seed_present_renders_a_seeded_label():
+def test_bye_seed_present_is_carried_as_its_own_field_not_baked_into_game_name():
+    """Fix-cycle-1 design correction: the seed is its own nullable cell field (cfp_seed), not
+    pre-composed prose in game_name -- baking an integer into a sentence two functions before
+    the frontend reads it conflicted with _game_name_for_row's own contract (non-null only for a
+    real, determined game) and inverted K5's whole argument against deriving structured meaning
+    from a label. game_name/game_name_short stay null here exactly like an ordinary bye cell;
+    the frontend composes its own label from status == CFP_BYE_STATUS plus cfp_seed."""
     team_slot_rows = _team_slot_rows_with_quarterfinal(home_away="home", team_seed=1)
     weeks = _build_team_weeks(CFP_SLOTS, team_slot_rows, None, None, "eligible", {})
     bye_cell = weeks[0]
     assert bye_cell["status"] == CFP_BYE_STATUS
-    assert bye_cell["game_name"] == "Bye (No. 1)"
-    assert bye_cell["game_name_short"] == "Bye (No. 1)"
+    assert bye_cell["cfp_seed"] == 1
+    assert bye_cell["game_name"] is None
+    assert bye_cell["game_name_short"] is None
 
 
-def test_bye_seed_derived_from_the_away_side_when_the_team_was_the_away_team():
-    team_slot_rows = _team_slot_rows_with_quarterfinal(home_away="away", team_seed=4)
-    weeks = _build_team_weeks(CFP_SLOTS, team_slot_rows, None, None, "eligible", {})
-    assert weeks[0]["game_name"] == "Bye (No. 4)"
-
-
-def test_bye_seed_absent_degrades_to_a_plain_bye_with_no_game_name():
-    """K8: an unpopulated seed field must cost a nicety, not break the feature -- game_name
-    stays null (rather than guessing) so the frontend's plain 'CFP Bye' STATUS_TEXT_BY_SLOT
-    fallback renders instead of a possibly-wrong seed number."""
+def test_bye_seed_absent_degrades_to_a_null_cfp_seed():
+    """K8: an unpopulated seed field must cost a nicety, not break the feature -- cfp_seed stays
+    null (rather than guessing) so the frontend's plain 'CFP Bye' STATUS_TEXT_BY_SLOT fallback
+    renders instead of a possibly-wrong seed number."""
     team_slot_rows = _team_slot_rows_with_quarterfinal(home_away="home")
     weeks = _build_team_weeks(CFP_SLOTS, team_slot_rows, None, None, "eligible", {})
     bye_cell = weeks[0]
     assert bye_cell["status"] == CFP_BYE_STATUS
+    assert bye_cell["cfp_seed"] is None
     assert bye_cell["game_name"] is None
     assert bye_cell["game_name_short"] is None
+
+
+def test_cfp_seed_is_null_on_every_non_bye_cell():
+    """cfp_seed exists only to carry a CFP bye team's seed -- null everywhere else, including a
+    real game's own cell (K5's playoff_round precedent: a nullable field added to every cell,
+    meaningfully populated in exactly one place)."""
+    real_row = _row(52, team="Georgia Tech", opponent="Vanderbilt", status="loss",
+                     notes="Union Home Mortgage Gasparilla Bowl")
+    real_row["home_away"] = "home"
+    team_slot_rows = {CFP_R1_BOWLS: real_row}
+    weeks = _build_team_weeks(CFP_SLOTS, team_slot_rows, None, None, "eligible", {})
+    for week in weeks:
+        if week["status"] == CFP_BYE_STATUS:
+            continue
+        assert week["cfp_seed"] is None, week
 
 
 # ===========================================================================
@@ -361,24 +379,55 @@ def test_short_bowl_name_for_2025s_real_ordinary_bowls(full, expected_short):
 
 
 @pytest.mark.parametrize("full,expected_short", [
-    ("College Football Playoff First Round Game", "CFP First Round"),
+    # Fix-cycle-1: real 2025 bowls whose ROOT is more than one token -- the exact cases a
+    # single-trailing-token rule got wrong (see artifacts/bowl_names.py's module docstring for
+    # the wrong output each of these used to produce).
+    ("TransPerfect Music City Bowl", "Music City Bowl"),
+    ("Isleta New Mexico Bowl", "New Mexico Bowl"),
+    ("Lockheed Martin Armed Forces Bowl", "Armed Forces Bowl"),
+    ("SERVPRO First Responder Bowl", "First Responder Bowl"),
+    ("SRS Distribution Las Vegas Bowl", "Las Vegas Bowl"),
+    ("R+L Carriers New Orleans Bowl", "New Orleans Bowl"),
+    ("RoofClaim.com Boca Raton Bowl", "Boca Raton Bowl"),
+    ("Duke's Mayo Bowl", "Duke's Mayo Bowl"),  # sponsor-eponymous rebrand, no separate root
+    ("Myrtle Beach Bowl", "Myrtle Beach Bowl"),  # no title sponsor at all
+], ids=["music-city", "new-mexico", "armed-forces", "first-responder", "las-vegas",
+        "new-orleans", "boca-raton", "dukes-mayo", "myrtle-beach"])
+def test_short_bowl_name_for_2025s_real_multi_token_root_bowls(full, expected_short):
+    assert short_bowl_name(full) == expected_short
+
+
+@pytest.mark.parametrize("full,expected_short", [
+    ("College Football Playoff First Round Game", "First Round"),
     ("Rose Bowl", "Rose Bowl"),
     ("Sugar Bowl", "Sugar Bowl"),
     ("Cotton Bowl", "Cotton Bowl"),
     ("Orange Bowl", "Orange Bowl"),
     ("Fiesta Bowl", "Fiesta Bowl"),
     ("Peach Bowl", "Peach Bowl"),
-    ("College Football Playoff National Championship Presented by AT&T", "CFP National Championship"),
+    ("College Football Playoff National Championship Presented by AT&T", "National Championship"),
 ], ids=["first-round", "rose", "sugar", "cotton", "orange", "fiesta", "peach", "championship"])
 def test_short_bowl_name_for_2025s_real_cfp_rounds(full, expected_short):
     assert short_bowl_name(full) == expected_short
 
 
-def test_short_bowl_name_shortens_a_future_unseen_sponsor_via_the_structural_rule():
-    """K6 durability check: a sponsor never enumerated anywhere in this module still shortens
-    correctly, because the rule strips by STRUCTURE (the word immediately before 'Bowl'), not by
-    a hardcoded list of known sponsor names -- the whole reason a pure map was rejected."""
-    assert short_bowl_name("Some Brand New 2027 Sponsor City Bowl") == "City Bowl"
+def test_short_bowl_name_passes_through_an_unrecognized_bowl_unchanged():
+    """Fix-cycle-1: replaces a prior test that asserted a structural rule would shorten this to
+    'City Bowl' -- that rule was the bug (it guessed a root from position, not identity, and was
+    wrong for every multi-token root; see the module docstring). The curated-list approach must
+    NEVER emit a name it hasn't actually recognised, so a bowl that ends in 'Bowl' but matches no
+    curated root -- including one that could be mistaken for a substring of a real root like
+    'Music City Bowl' -- passes through the FULL name unchanged rather than a truncated guess."""
+    assert short_bowl_name("Some Brand New 2027 Sponsor City Bowl") == "Some Brand New 2027 Sponsor City Bowl"
+
+
+def test_short_bowl_name_prefers_the_longest_matching_curated_root(monkeypatch):
+    """Direct test of the longest-suffix-wins tie-break, via a deliberately constructed
+    collision -- the REAL curated list has no pair where one root is a suffix of another today,
+    so this patches in an artificial one ('Beach Bowl' / 'Myrtle Beach Bowl') rather than
+    resting on a coincidence of the current data. The longer, more specific root must win."""
+    monkeypatch.setattr(bowl_names, "_ROOT_NAMES_BY_LENGTH_DESC", ["Myrtle Beach Bowl", "Beach Bowl"])
+    assert bowl_names.short_bowl_name("Some Sponsor Myrtle Beach Bowl") == "Myrtle Beach Bowl"
 
 
 def test_short_bowl_name_degrades_to_the_full_name_for_an_unmapped_non_bowl_shape():
@@ -387,6 +436,14 @@ def test_short_bowl_name_degrades_to_the_full_name_for_an_unmapped_non_bowl_shap
     a guess -- the personal-site CSS clamp, not this mapping, is what keeps AC6 true here."""
     unmapped = "College Football Playoff Quarterfinal Presented by SomeFutureSponsor"
     assert short_bowl_name(unmapped) == unmapped
+
+
+def test_short_bowl_name_requires_a_whitespace_boundary_before_the_root():
+    """A name that merely ends with a curated root's characters, with no space actually
+    separating it (e.g. a word that happens to end in "la"), must NOT match -- only a genuine,
+    word-boundary-separated root should shorten. Without this guard, "Gala Bowl" would
+    incorrectly shorten to "LA Bowl" (its raw last 7 characters happen to match)."""
+    assert short_bowl_name("Gala Bowl") == "Gala Bowl"
 
 
 def test_short_bowl_name_passes_through_none():

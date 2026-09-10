@@ -11,6 +11,41 @@ load_dotenv()
 API_KEY = os.getenv("API_KEY")
 BASE_URL = "https://api.collegefootballdata.com"
 
+
+def _extract_playoff_fields(game: dict) -> None:
+    """Defensive extraction of the nested `playoff` object CFBD's /games response carries
+    (present only on CFP-affiliated games -- most games, including all regular-season and
+    non-CFP postseason games, have no `playoff` object at all). Mutates `game` in place, adding
+    the camelCase keys the DataFrame column-selection step below expects. Never raises on a
+    missing object or a missing/renamed field within it -- default to None so the vast majority
+    of rows simply carry nulls here.
+
+    GamePlayoff has exactly eight fields (confirmed against the OpenAPI-generated CFBD client):
+    competition, format, round, round_name, bracket_slot, home_seed, away_seed, bowl_name.
+    round_order is NOT one of them -- it lives on PlayoffMatchup, which belongs to a different
+    endpoint (/playoffs/cfp), never called here. Reading playoff.get("round_order") was
+    therefore reading a key that cannot exist on this object, silently returning None every time
+    (why playoff_round_order has been NULL for every season, not just 2025 -- see migration
+    0005's header). `round` is the field that does exist and was presumably intended; the DB
+    column name is unchanged (playoff_round_order), only this extraction's source key changes.
+
+    Pulled out to a standalone function (rather than an inline loop in get_games_by_year_week)
+    specifically so it can be unit-tested against a synthetic games_data list, with no network or
+    DB call -- see tests/test_get_games_playoff_extraction.py. The `round_order` regression this
+    exists to guard against (a `.get()` on a key that cannot exist, silently returning None) went
+    unnoticed for a year precisely because nothing exercised this loop in isolation before.
+    """
+    playoff = game.get("playoff") or {}
+    if not isinstance(playoff, dict):
+        playoff = {}
+    game["playoffRoundName"] = playoff.get("round_name") or playoff.get("roundName")
+    game["playoffRoundOrder"] = playoff.get("round")
+    game["playoffBracketSlot"] = playoff.get("bracket_slot") or playoff.get("bracketSlot")
+    game["playoffBowlName"] = playoff.get("bowl_name") or playoff.get("bowlName")
+    game["playoffHomeSeed"] = playoff.get("home_seed") or playoff.get("homeSeed")
+    game["playoffAwaySeed"] = playoff.get("away_seed") or playoff.get("awaySeed")
+
+
 def get_games_by_year_week(year, week=None, season_type='regular'):
     """
     Fetches game data from the College Football Data API for a given year and optional week.
@@ -51,31 +86,8 @@ def get_games_by_year_week(year, week=None, season_type='regular'):
             "playoff_home_seed", "playoff_away_seed",
         ])
 
-    # Defensive extraction of the nested `playoff` object (present only on
-    # CFP-affiliated games -- most games, including all regular-season and
-    # non-CFP postseason games, have no `playoff` object at all). Never
-    # raise on a missing object or a missing/renamed field within it --
-    # default to None so the vast majority of rows simply carry nulls here.
-    #
-    # GamePlayoff has exactly eight fields (confirmed against the OpenAPI-generated CFBD
-    # client): competition, format, round, round_name, bracket_slot, home_seed, away_seed,
-    # bowl_name. round_order is NOT one of them -- it lives on PlayoffMatchup, which belongs to
-    # a different endpoint (/playoffs/cfp), never called here. Reading
-    # playoff.get("round_order") was therefore reading a key that cannot exist on this object,
-    # silently returning None every time (why playoff_round_order has been NULL for every
-    # season, not just 2025 -- see migration 0005's header). `round` is the field that does
-    # exist and was presumably intended; the DB column name is unchanged (playoff_round_order),
-    # only this extraction's source key changes.
     for game in games_data:
-        playoff = game.get("playoff") or {}
-        if not isinstance(playoff, dict):
-            playoff = {}
-        game["playoffRoundName"] = playoff.get("round_name") or playoff.get("roundName")
-        game["playoffRoundOrder"] = playoff.get("round")
-        game["playoffBracketSlot"] = playoff.get("bracket_slot") or playoff.get("bracketSlot")
-        game["playoffBowlName"] = playoff.get("bowl_name") or playoff.get("bowlName")
-        game["playoffHomeSeed"] = playoff.get("home_seed") or playoff.get("homeSeed")
-        game["playoffAwaySeed"] = playoff.get("away_seed") or playoff.get("awaySeed")
+        _extract_playoff_fields(game)
 
     games_df = pd.DataFrame(games_data)
     games_df = games_df[["id","season","week","seasonType", "startDate","homeTeam","homePoints","awayTeam","awayPoints","neutralSite","conferenceGame","venue","venueId","homeConference","awayConference","notes","playoffRoundName","playoffRoundOrder","playoffBracketSlot","playoffBowlName","playoffHomeSeed","playoffAwaySeed"]]
