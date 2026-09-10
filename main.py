@@ -3,6 +3,7 @@ from typing import Dict, Optional
 from model.model import get_ratings
 from database.model_to_db import ratings_to_df, insert_model_results_to_db
 from database.get_games import load_games_to_db
+from sqlalchemy.exc import CompileError, ProgrammingError  # type: ignore
 from database.get_teams import load_teams_to_db
 from database.get_non_fbs_teams import load_non_fbs_teams_to_db
 from database.game_overrides import apply_game_result_overrides
@@ -219,6 +220,32 @@ def resolve_target_week(year: int, today: date, season_start_override=None) -> i
         return candidate
 
 
+# A schema mismatch is not "they may already be loaded".
+#
+# load_games_to_db reflects the live `games` table and does insert(table).values(**row).
+# When get_games.py starts emitting a column the database does not have yet -- the exact
+# state between merging a migration and applying it -- SQLAlchemy raises CompileError
+# ("Unconsumed column names: ...") at compile time, before a single row is written. The
+# blocks below used to fold that in with every other exception and log "they may already be
+# loaded", so ingest died completely, the run carried on against stale games, rated them,
+# and published the result. Every subsequent run would fail identically and report success.
+#
+# So a schema-shaped failure is separated out: it stops the run rather than publishing
+# rankings derived from data that was never loaded, and it carries a marker the workflow
+# greps for, because main.py's own exit code is invisible behind `|| true`.
+INGEST_FAILURE_MARKER = "INGEST_FAILURE"
+_SCHEMA_ERRORS = (CompileError, ProgrammingError)
+
+
+def _log_ingest_schema_failure(logger, label, exc):
+    logger.error(
+        "%s: %s ingest could not run because the database schema does not match what the code "
+        "emits -- an unapplied migration is the usual cause. Refusing to continue, because the "
+        "alternative is rating and publishing stale games as if nothing were wrong. Exception: %s",
+        INGEST_FAILURE_MARKER, label, exc,
+    )
+
+
 def main():
     """
     Main function to run the model and handle data loading and saving.
@@ -324,6 +351,9 @@ def main():
     try:
         logger.info("Loading games into DB for year=%s week=%s", args.year, args.week)
         load_games_to_db(args.year, args.week)
+    except _SCHEMA_ERRORS as e:
+        _log_ingest_schema_failure(logger, "Regular-season", e)
+        return
     except Exception as e:
         logger.warning("Games loading raised an exception (they may already be loaded). Continuing. Exception: %s", e)
 
@@ -336,6 +366,9 @@ def main():
     try:
         logger.info("Loading postseason games into DB for year=%s", args.year)
         load_games_to_db(args.year, week=None, season_type='postseason')
+    except _SCHEMA_ERRORS as e:
+        _log_ingest_schema_failure(logger, "Postseason", e)
+        return
     except Exception as e:
         logger.warning("Postseason games loading raised an exception (they may already be loaded). Continuing. Exception: %s", e)
 
