@@ -772,7 +772,10 @@ def _build_team_weeks(
 # ---------------------------------------------------------------------------
 # Within-conference sort (approximation, documented limitation -- NOT real
 # tiebreaker bylaws, per plan.yaml key_decisions):
-#   conf win% desc -> head-to-head IF exactly two teams tied on conf win%
+#   conference-championship winner first (K3/K9 -- see _is_champion in
+#   build_schedule_payload) -> conf win% desc -> head-to-head IF exactly two
+#   teams tied on conf win% AND on champion status (K4 -- see the grouping
+#   loop below for why a champion must never be grouped with a non-champion)
 #   and played each other this season -> overall win% desc -> name asc.
 # Independents: overall win% desc -> name asc (no conference tiebreak
 # question for them).
@@ -827,20 +830,33 @@ def _sort_conference_teams(entries: List[Dict[str, Any]], rows: List[Dict[str, A
         # tied teams grows the group to three and silently disables their head-to-head swap,
         # displaying the loser of that game above the winner. Ordering among played teams is
         # unchanged, since _conf_played is True for all of them.
-        entries.sort(key=lambda e: (-(e["_conf_pct"] if e["_conf_pct"] is not None else -1.0),
+        # T2/K4: champion status (default False, so hand-built entries in existing tests that
+        # never set _is_champion keep sorting exactly as before) is the TOP sort tier -- a
+        # conference-championship-game winner sorts first regardless of its conf_pct.
+        entries.sort(key=lambda e: (-e.get("_is_champion", False),
+                                    -(e["_conf_pct"] if e["_conf_pct"] is not None else -1.0),
                                     -e["_conf_played"], -e["_overall_pct"], e["team"]))
         i, n = 0, len(entries)
         while i < n:
             j = i
-            # Group on percentage AND whether the team has played. Percentage alone is not
-            # enough: an unplayed record scores 0.5, which ties it with every 1-1, 2-2 and
-            # 3-3 team, so one 0-0 team joining two genuinely tied teams grows the group to
-            # three and silently cancels their head-to-head swap -- displaying the loser of
-            # that game above the winner. A team that has played nobody cannot be part of a
-            # head-to-head tie by definition, so it must never join the group.
+            # Group on percentage, whether the team has played, AND champion status (T2/K4).
+            # Percentage alone is not enough: an unplayed record scores 0.5, which ties it with
+            # every 1-1, 2-2 and 3-3 team, so one 0-0 team joining two genuinely tied teams grows
+            # the group to three and silently cancels their head-to-head swap -- displaying the
+            # loser of that game above the winner. A team that has played nobody cannot be part
+            # of a head-to-head tie by definition, so it must never join the group.
+            #
+            # The _is_champion term guards a DIFFERENT failure: a champion can easily tie a
+            # non-champion on conf_pct (the championship game itself isn't the only thing that
+            # separates them), and if that non-champion beat the champion earlier in the regular
+            # season, the swap below would fire on that meeting and undo the whole champion-first
+            # rule from the sort key above -- silently, since the swap has no notion of
+            # championship status without this check. A unique champion (True) can therefore
+            # never share a group with anyone else (all False), so the swap below never touches it.
             while j + 1 < n and entries[j + 1]["_conf_pct"] is not None and entries[i]["_conf_pct"] is not None \
                     and abs(entries[j + 1]["_conf_pct"] - entries[i]["_conf_pct"]) < 1e-9 \
-                    and entries[j + 1]["_conf_played"] == entries[i]["_conf_played"]:
+                    and entries[j + 1]["_conf_played"] == entries[i]["_conf_played"] \
+                    and entries[j + 1].get("_is_champion", False) == entries[i].get("_is_champion", False):
                 j += 1
             group = entries[i:j + 1]
             if len(group) == 2 and group[0]["_conf_pct"] is not None and group[0]["_conf_played"]:
@@ -856,7 +872,95 @@ def _sort_conference_teams(entries: List[Dict[str, Any]], rows: List[Dict[str, A
         del e["_overall_pct"]
         del e["_conf_pct"]
         del e["_conf_played"]
+        # K10: scratch state, stripped before these entries reach the published payload --
+        # pop (not del) because, unlike the three fields above, this function itself never sets
+        # _is_champion unconditionally, so hand-built entries in existing tests that never set
+        # it at all must not raise a KeyError here.
+        e.pop("_is_champion", None)
     return entries
+
+
+# ---------------------------------------------------------------------------
+# T1/K1 -- post-hoc conf_record exclusion (see the long comment inside the
+# function body for why this cannot live inside compute_team_records's tally)
+# ---------------------------------------------------------------------------
+def _exclude_championship_games_from_conf_records(
+    standings: Dict[str, Dict[str, Any]],
+    rows: List[Dict[str, Any]],
+    season: int,
+    champ_game_ids: set,
+) -> None:
+    """
+    Subtract the identified conference-championship game from each participant's DISPLAYED
+    conf_record, in place, on the `standings` dict compute_standings() already returned.
+
+    THIS CANNOT LIVE INSIDE compute_team_records'S TALLY INSTEAD -- the naive version (exclude
+    the championship game_ids from the conf_rows tally itself) looks obviously correct, but
+    compute_standings is the only caller of compute_team_records, and it feeds that SAME records
+    dict straight into compute_conference_championship_status, which reads conf_wins and
+    conf_games_remaining to decide clinched/eliminated/possible. identify_conference_championship_
+    games does not gate on the game's status -- it happily identifies a scheduled-but-unplayed
+    title game too. So stripping that row from the tally would also shrink conf_games_remaining
+    (R_T) for BOTH participants in the week before kickoff. Since eliminated = B_T <
+    nth_highest_other_W and B_T = W_T + R_T, a smaller R_T makes elimination MORE likely -- the two
+    teams about to play for the conference title would be marked "Eliminated" during championship
+    week, every season. compute_conference_championship_status's own docstring says it must never
+    assert "eliminated" incorrectly. So the status math (compute_standings, called by this
+    function's caller BEFORE this runs) always sees unmodified rows, and only the separate,
+    already-built conf_record dict that gets DISPLAYED is adjusted here, afterward.
+
+    Only rows with status in ('win', 'loss') are ever subtracted: an unplayed championship game
+    was never counted in compute_team_records's tally to begin with (it only counts win/loss
+    rows), so there is nothing to remove from the display for it either -- this is what keeps an
+    identified-but-unplayed game from changing anything at all (see
+    tests/test_conference_championship_records.py's K1 regression test).
+    """
+    if not champ_game_ids:
+        return
+    for row in rows:
+        if row.get("season") != season:
+            continue
+        if row.get("game_id") not in champ_game_ids:
+            continue
+        status = row.get("status")
+        if status not in ("win", "loss"):
+            continue
+        st = standings.get(row.get("team"))
+        if st is None or st.get("conf_record") is None:
+            continue
+        key = "wins" if status == "win" else "losses"
+        st["conf_record"][key] -= 1
+
+
+# ---------------------------------------------------------------------------
+# T2/K3 -- resolve each identified championship game to its ACTUAL winner
+# ---------------------------------------------------------------------------
+def _resolve_conference_champions(
+    champ_games_by_conf: Dict[str, int],
+    rows: List[Dict[str, Any]],
+    season: int,
+) -> Dict[str, str]:
+    """
+    Dict[raw conference -> winning team name], for conferences whose identified championship
+    game (identify_conference_championship_games) has actually been PLAYED.
+
+    K3: an identified-but-unplayed game contributes NO entry here -- a team that has merely
+    clinched a spot in the title game is not a champion, so that conference's sort order stays
+    untouched (see _sort_conference_teams's _is_champion default of False) until the game
+    resolves.
+    """
+    game_id_to_conf = {game_id: conf for conf, game_id in champ_games_by_conf.items()}
+    champions: Dict[str, str] = {}
+    for row in rows:
+        if row.get("season") != season:
+            continue
+        game_id = row.get("game_id")
+        if game_id not in game_id_to_conf:
+            continue
+        if row.get("status") != "win":
+            continue
+        champions[game_id_to_conf[game_id]] = row.get("team")
+    return champions
 
 
 # ---------------------------------------------------------------------------
@@ -908,10 +1012,24 @@ def build_schedule_payload(
     # Sun Belt today) get per-division championship statuses instead of a blank column; every
     # other conference's teams map to None and are computed exactly as before.
     divisions = {team: meta.get("division") for team, meta in teams_meta.items()}
-    standings = schedule_standings.compute_standings(rows, season, divisions=divisions)
-    fbs_team_names = set(teams_meta.keys())
 
-    champ_game_ids = set(identify_conference_championship_games(rows, season).values())
+    # T1/K2: identification must run BEFORE compute_standings, not after (it did, at the old
+    # :914 vs :911) -- so its result is available for the post-hoc conf_record exclusion right
+    # below. This reorder is inert on its own: the only statement previously between the two
+    # call sites was the unrelated fbs_team_names assignment, simply moved down with it.
+    champ_games_by_conf = identify_conference_championship_games(rows, season)
+    champ_game_ids = set(champ_games_by_conf.values())
+
+    standings = schedule_standings.compute_standings(rows, season, divisions=divisions)
+    # T1/K1: compute_standings above ran on UNMODIFIED rows, so championship_status is safe (see
+    # _exclude_championship_games_from_conf_records's docstring). Only the conf_record that gets
+    # DISPLAYED is adjusted, here, afterward.
+    _exclude_championship_games_from_conf_records(standings, rows, season, champ_game_ids)
+    # T2/K3: the identified game's actual winner (None for a conference with no identified game,
+    # or one that hasn't been played yet) -- see _resolve_conference_champions.
+    conference_champions = _resolve_conference_champions(champ_games_by_conf, rows, season)
+
+    fbs_team_names = set(teams_meta.keys())
     army_navy_game_id = identify_army_navy_game(rows, season)
     canonical_columns = build_canonical_columns(rows, season, champ_game_ids, army_navy_game_id)
     week_slot_ids_sorted = [slot_id for slot_id, _label in canonical_columns if slot_id.startswith("week-")]
@@ -988,6 +1106,9 @@ def build_schedule_payload(
                 "record": record,
                 "conf_record": conf_record,
                 "division": team_division(team),
+                # T2/K10: scratch state consumed by _sort_conference_teams and stripped there
+                # before these entries are returned -- never reaches the published payload.
+                "_is_champion": conference_champions.get(raw_conf) == team,
                 "weeks": weeks,
             })
 
