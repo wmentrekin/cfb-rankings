@@ -163,9 +163,13 @@ def test_playoff_bowl_name_is_preferred_over_notes():
 
 
 def test_notes_is_the_fallback_when_playoff_bowl_name_is_absent():
+    """Deliberately a sponsor-FREE notes value, unlike the EXACT STRINGS section below: this
+    pins the fallback MECHANISM (notes is read when playoff_bowl_name is absent), not any
+    particular sponsored bowl name -- phase 2's sponsor-stripping must not touch this test,
+    since there is no sponsor text here to strip."""
     row = _row(33, season_type="postseason", playoff_bowl_name=None,
-               notes="Union Home Mortgage Gasparilla Bowl")
-    assert _game_name_for_row(row) == "Union Home Mortgage Gasparilla Bowl"
+               notes="Postseason Exhibition Game")
+    assert _game_name_for_row(row) == "Postseason Exhibition Game"
 
 
 def test_game_name_is_null_when_neither_source_is_present():

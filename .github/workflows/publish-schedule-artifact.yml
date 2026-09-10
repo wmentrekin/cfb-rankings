@@ -7,6 +7,12 @@ name: Publish Season Schedule Artifact
 # nothing and overwrites nothing. No deploy-hook step here -- the site rebuild is
 # deliberately triggered later, by merging the personal-site guard-removal PR, and only
 # after the uploaded payload has been verified (plan.yaml K4).
+#
+# SAFETY POLARITY: the shell test below is `[ "$DRY_RUN" = "false" ]`, not
+# `[ "$DRY_RUN" = "true" ]`. That is deliberate, not a typo -- it makes the safe path (no
+# --publish) the one anything OTHER than the literal string "false" falls into, including a
+# malformed or unexpected dispatch input. The inverted form would fail OPEN: any input that
+# isn't exactly "true" would silently take the publish branch.
 
 on:
   workflow_dispatch:
@@ -18,6 +24,16 @@ on:
         description: 'Build and write the payload without uploading to R2'
         type: boolean
         default: true
+
+concurrency:
+  # Shares weekly-update.yml's own group name (not a new one) on purpose: both workflows call
+  # refresh_schedule_index() (a full re-list-and-rebuild of schedule/index.json from the
+  # bucket's actual contents), so a manual dispatch of this workflow and a concurrent weekly
+  # run must not race that rebuild against each other. cancel-in-progress is false -- an
+  # in-flight R2 write must run to completion, not be cancelled mid-upload by a newer queued
+  # run.
+  group: weekly-rankings
+  cancel-in-progress: false
 
 jobs:
   publish_schedule_artifact:
@@ -57,17 +73,43 @@ jobs:
           SEASON: ${{ github.event.inputs.season }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
+          # See the SAFETY POLARITY comment at the top of this file: this checks for the
+          # literal string "false", not "true" -- anything else (including "true" itself,
+          # or a malformed input) stays on the safe, no-publish default.
           EXTRA_ARGS=""
-          if [ "$DRY_RUN" = "true" ]; then
-            EXTRA_ARGS="--dry-run"
+          if [ "$DRY_RUN" = "false" ]; then
+            EXTRA_ARGS="--publish"
           fi
           echo "Running: publish_season_schedule_artifact.py --season $SEASON --out payload.json $EXTRA_ARGS"
           # Deliberately NOT wrapped in `|| true` -- unlike the weekly pipeline, a failure
-          # here must fail the job rather than go unnoticed.
+          # here must fail the job rather than go unnoticed. Output is still captured to
+          # output.log (the redirection is set up regardless of the command's own exit
+          # code) so the next step can independently confirm a real publish actually landed.
           uv run python scripts/publish_season_schedule_artifact.py \
             --season "$SEASON" \
             --out payload.json \
-            $EXTRA_ARGS
+            $EXTRA_ARGS > output.log 2>&1
+          tail -n 200 output.log
+
+      - name: Fail job unless the publish confirmed
+        # publish_schedule_artifact() logs-and-returns on every one of its six failure paths
+        # (see scripts/publish_season_schedule_artifact.py's module docstring) -- so the run
+        # step above exiting 0 does not by itself prove anything uploaded. This is the
+        # log-visible half of that check (the script's own _verify_published() round-trip is
+        # the structural half): only meaningful on a real publish, so it's skipped entirely
+        # on a dry run, where no such confirmation is ever expected to appear. Same marker
+        # idiom weekly-update.yml uses for OVERRIDE_FAILURE, inverted -- there, the job fails
+        # if a marker IS present; here, it fails if the marker is ABSENT.
+        if: github.event.inputs.dry_run == 'false'
+        env:
+          SEASON: ${{ github.event.inputs.season }}
+        run: |
+          MARKER="Published schedule artifact to R2 key schedule/${SEASON}/latest.json"
+          if ! grep -qF "$MARKER" output.log; then
+            echo "::error::No confirmation that season=$SEASON actually published -- '$MARKER' not found in output.log."
+            exit 1
+          fi
+          echo "Confirmed: $MARKER"
 
       - name: Upload payload artifact
         # Always runs, dry run or not -- this is the only way the built/published payload
@@ -77,3 +119,10 @@ jobs:
         with:
           name: schedule-payload-season-${{ github.event.inputs.season }}
           path: payload.json
+
+      - name: Upload run log artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schedule-publish-log-season-${{ github.event.inputs.season }}
+          path: output.log
