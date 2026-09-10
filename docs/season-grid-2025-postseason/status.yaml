@@ -1,0 +1,120 @@
+artifact: status
+feature: "season-grid-2025-postseason"
+mode: "large-initiative"
+stage: "discovery"
+owner_skill: work
+
+objective: >-
+  Publish a correct 2025 Season Grid artifact, establish why the 2025 records were wrong and fix
+  it, remove personal-site's hard-coded 2025 exclusion once verified, and use 2025's complete
+  postseason to refine how bowl games and playoff rounds render in the Season Grid.
+
+repository_sync:
+  completed_before_work: true
+  checked_at: "2026-09-10"
+  repositories:
+    - path: "/home/user/cfb-rankings"
+      remote: "https://github.com/wmentrekin/cfb-rankings"
+      relevant_branch: "main"
+      local_commit_before: "32016ae148c615382fa338a4d2c7c2da860b5370"
+      remote_commit_after_fetch: "87638faf2aa4c4541c970a5d8b06485d2aed7565"
+      local_commit_after: "87638faf2aa4c4541c970a5d8b06485d2aed7565"
+      result: "updated"
+      notes: >-
+        Was on work/manual-result-overrides (PR #13, merged; remote branch deleted). Tree clean and
+        the branch was fully contained in origin/main, so switching lost nothing.
+    - path: "/home/user/personal-site"
+      remote: "https://github.com/wmentrekin/personal-site"
+      relevant_branch: "main"
+      local_commit_before: "500ed52d12ee5700c1130e6e690804820f7870d7"
+      remote_commit_after_fetch: "500ed52d12ee5700c1130e6e690804820f7870d7"
+      local_commit_after: "500ed52d12ee5700c1130e6e690804820f7870d7"
+      result: "current"
+      notes: "Clean tree on main, already aligned."
+
+branching:
+  branch_name: "work/season-grid-2025-postseason"
+  note: "Same branch name in both repos; this initiative produces one PR per repo."
+
+summary:
+  current_focus: "Discovery: why 2025's records were wrong, how postseason cells are produced and rendered, and how to publish a past season's artifact."
+  last_completed: "Repository sync for both repos; feature branches created; first DB reconnaissance."
+  current_blocker: ""
+
+artifacts:
+  requirements: null
+  plan: null
+  implementation_report: null
+
+pr:
+  number: null
+  url: null
+  status: "not_opened"
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    task_profile: "orchestration"
+    requested_model_tier: "frontier"
+    requested_reasoning: "high"
+    requested_provider_model: "Claude Opus 5"
+    actual_model: "claude-opus-5"
+    actual_reasoning: "high"
+    routing_enforced: true
+    escalation_count: 0
+    status: "active"
+    stage: "discovery"
+    task: "Coordinate discovery across both repos and the live database."
+    last_update: "2026-09-10"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: pending
+  options: [proceed, revise_plan, narrow_scope, stop]
+
+blockers: []
+decisions: []
+
+early_findings:
+  - id: "F1"
+    finding: >-
+      Bowl names are in games.notes, not playoff_bowl_name. All 35 non-playoff 2025 bowls carry
+      their sponsor name there ("Union Home Mortgage Gasparilla Bowl", "Bucked Up LA Bowl").
+      playoff_bowl_name is populated only for the 11 CFP games, where its value is the far less
+      useful "College Football Playoff First Round Game".
+  - id: "F2"
+    finding: >-
+      playoff_round_order is NULL for all 11 of 2025's CFP games, though playoff_round_name and
+      playoff_bracket_slot are set. Migration 0002 added the column and
+      scripts/backfill_2025_postseason.py exists, so this needs checking before postseason column
+      ordering can rely on it.
+  - id: "F3"
+    finding: >-
+      2025 postseason is complete: 46 games, all 46 with a winner. 11 are CFP (4 first round,
+      4 quarterfinals, 2 semifinals, 1 final), 35 are ordinary bowls.
+  - id: "F4"
+    finding: >-
+      The `ratings` table has Georgia Tech at 9-3 after week 15, not the 10-3 personal-site's
+      exclusion comment cites. The Season Grid computes its own records from schedule_grid via
+      artifacts/schedule_standings.py, so the discrepancy is probably in that path, not in ratings.
+      Needs confirmation.
+
+model_routing:
+  provider: "Claude Code / Anthropic"
+  provider_map_verified_at: "2026-09-07"
+  substitutions: []
+  unresolved_limitations:
+    - "Subagents inherit the main conversation's extended-thinking setting; per-agent reasoning level is advisory."
+
+next_action: "Spawn repo-researchers for the artifact/standings path and the Season Grid rendering path; confirm the record discrepancy directly against the database."
+next_recommended_command: "$work"
+user_input_needed: false
