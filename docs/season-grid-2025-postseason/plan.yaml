@@ -23,8 +23,32 @@ approach:
         Both existing entry points run the full pipeline against a past season: a CFBD re-ingest,
         the rating model, and a ratings/rankings overwrite. main.py additionally resolves its week
         from today's date, which is meaningless for 2025. publish_schedule_artifact on its own
-        reads and uploads, nothing more -- that is the primitive this needs, and it is reusable
-        for any future backfill.
+        reads and uploads, nothing more. VERIFIED by review across the full call graph
+        (_fetch_schedule_grid_rows, _fetch_teams_meta, _fetch_non_fbs_logos, _fetch_team_ranks,
+        get_r2_client, upload_json, refresh_schedule_index, compute_rank_and_delta): every
+        database call is a pandas read_sql_query SELECT, there is no INSERT/UPDATE anywhere in the
+        path, and the only writes are PUT schedule/{year}/latest.json and PUT schedule/index.json.
+        _fetch_teams_meta filters WHERE season = N, so a 2025 payload cannot pick up 2026
+        conference affiliations -- a correctness risk I had not considered and which turns out
+        already to be handled.
+    - id: "K6"
+      decision: "No seam in artifacts/schedule.py. The script composes existing functions."
+      rationale: >-
+        Settled by review so the implementer does not have to weigh it: build_schedule_payload is
+        already public and already separate from publish_schedule_artifact, so the dry-run path
+        composes the four _fetch_* helpers plus build_schedule_payload, and the real path calls
+        publish_schedule_artifact unmodified. The only friction is importing four underscore
+        prefixed helpers, which earns a comment in the new script, not a refactor.
+    - id: "K7"
+      decision: >-
+        2025's ranks in the payload will be week-15, pre-bowl ranks. Expected, documented, not a
+        bug to be re-litigated later.
+      rationale: >-
+        _fetch_team_ranks reads MAX(week) from ratings for the season, and 2025 ratings stop at
+        week 15 because the model only reads rankings_games (regular season). So every 2025 team's
+        rank is frozen before all 46 postseason games, while its record and cell statuses reflect
+        them. Every season behaves this way. Flagged here because a screenshot-driven phase-2 pass
+        is exactly where someone would notice and mistake it for a defect.
     - id: "K2"
       decision: "The workflow uploads the generated payload as a build artifact, and supports a dry run."
       rationale: >-
@@ -33,17 +57,34 @@ approach:
         every-team verification possible, and the dry run means the first look at 2025 costs
         nothing and overwrites nothing.
     - id: "K3"
-      decision: "Verify every team's record, not Georgia Tech's."
+      decision: >-
+        Verify every team's record against SQL, AND spot-verify a fixed set of real postseason
+        cells by opponent, status and column.
       rationale: >-
-        The guard's comment names one team because that is the one someone noticed. Nothing
-        establishes it was the only wrong row, and the whole point of removing the guard is that
-        the season has actually been checked.
+        The guard's comment names one team because that is the one someone noticed; nothing
+        establishes it was the only wrong row. But review showed an aggregate record match is not
+        by itself sufficient: two compensating errors net a correct record, and it says nothing
+        about which game produced a win, conference or division assignment, bowl-name sourcing,
+        CFP column bucketing, or opponent-logo resolution. A payload could pass an every-team
+        record check while showing Georgia Tech's bowl loss against the wrong opponent in the
+        wrong column. So the cell-level check is part of the definition of verified.
     - id: "K4"
       decision: "Two PRs, and the personal-site one merges second."
       rationale: >-
-        Removing the guard while R2 still holds the stale object would ship Georgia Tech 10-3 to
-        the live site. The ordering is the safety property, so it is stated here rather than left
-        to sequencing luck.
+        The precise mechanism, confirmed by review: the guard hides 2025 from the season selector
+        but does NOT gate the data fetch -- personal-site's prebuild pulls
+        schedule/2025/latest.json from R2 on every build regardless. And merging the guard-removal
+        PR is itself what triggers the Cloudflare Pages rebuild. So merging it first would bake in
+        whatever R2 holds at that moment, which is the stale 10-3 object. Nothing technical
+        enforces the order across two independent repos, so it is written down as a property to
+        respect rather than an arbitrary rule.
+    - id: "K8"
+      decision: "Overwrite the stale R2 object in place; never delete-then-write."
+      rationale: >-
+        upload_json is a plain put_object, and an overwrite is atomic per object on R2. Deleting
+        first would open a window where the key 404s for any concurrent reader -- including a
+        personal-site build fetching mid-flight. Recorded so a future reader does not "fix" this
+        into a delete.
     - id: "K5"
       decision: "No formatting changes in this pass."
       rationale: >-
@@ -92,7 +133,9 @@ execution_batches:
         owned_scope:
           - "scripts/publish_season_schedule_artifact.py (new)"
           - ".github/workflows/publish-schedule-artifact.yml (new)"
-          - "artifacts/schedule.py ONLY if a payload cannot be obtained without a small, additive seam"
+          # artifacts/schedule.py is deliberately NOT in scope -- review established no seam is
+          # needed (K6). Leaving it as a conditional invited scope creep into the very file
+          # forbidden_scope is protecting.
         forbidden_scope:
           - "Any change to postseason bucketing, game_name derivation, standings, or column labels. That is phase 2."
           - "main.py, database/, model/"
@@ -202,7 +245,15 @@ ordering_notes:
 risks:
   - id: "R1"
     risk: "Regenerating does not fix the record, meaning a live standings bug rather than a stale object."
-    mitigation: "The dry run finds this before anything is published or un-gated. If so, phase 1 becomes a bug hunt and the user gets told before the guard moves."
+    mitigation: >-
+      REWORDED after review. The earlier draft claimed the stale object predated a specific
+      standings fix. Review could not find a commit supporting that: schedule_grid's status
+      derivation has never been modified since creation, and compute_team_records' win/loss tally
+      is unchanged since its first commit -- later schedule_standings.py commits touch only
+      conference-record ranking and division-aware championship status. So the root cause is
+      UNCONFIRMED; it may be data timing rather than a code fix. That changes nothing about what
+      to do, because T3's dry-run-then-verify is root-cause-agnostic and catches either case --
+      but the causal story must not be repeated as fact in the PR description.
   - id: "R2"
     risk: "Publishing 2025 overwrites something else, or the index loses 2026."
     mitigation: "publish_schedule_artifact writes exactly one season key; build_schedule_index re-lists the bucket, so 2026 survives. Verify the index after."

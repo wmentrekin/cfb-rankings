@@ -38,6 +38,11 @@ non_goals:
 constraints:
   technical:
     - >-
+      2025's ranks in the payload will be week-15, pre-bowl ranks: _fetch_team_ranks reads
+      MAX(week) from ratings, and 2025 ratings stop at week 15 because the model only reads
+      rankings_games. Records and cell statuses reflect the postseason; ranks do not. Every season
+      behaves this way. Expected, not a defect.
+    - >-
       publish_schedule_artifact(season) reads schedule_grid/teams/ratings/non_fbs_teams and writes
       R2 only -- no ingest, no model (artifacts/schedule.py:1181-1249). It is the correct narrow
       primitive; main.py --year 2025 is not, because it re-ingests from CFBD, runs the model, and
@@ -66,10 +71,14 @@ assumptions:
   - id: "A1"
     assumption: >-
       Regenerating 2025 from current code yields correct records. Evidence: the same 13 distinct
-      games produce 9-4 in schedule_grid today, and the stale artifact says 10-3 over the same 13
-      games -- one game's status differs, not a duplicate. To be proven by diffing the regenerated
-      payload, not assumed.
-    confidence: "high, verification required"
+      games produce 9-4 in schedule_grid today, while the stale artifact says 10-3 over the same
+      13 games -- one game's status differs, not a duplicate row.
+    confidence: >-
+      Outcome likely; ROOT CAUSE UNCONFIRMED. An earlier draft asserted the artifact predated a
+      standings fix. Review found no commit supporting that: schedule_grid's status derivation has
+      never been modified since creation, and compute_team_records' win/loss tally is unchanged
+      since its first commit. The cause may be data timing instead. This does not change the plan,
+      because verification is root-cause-agnostic -- but the story must not be told as fact.
   - id: "A2"
     assumption: >-
       Georgia Tech is representative. The guard's comment names only one team, so the verification
@@ -85,6 +94,16 @@ acceptance_criteria:
     criterion: >-
       Every team's record in the regenerated 2025 payload matches an independent SQL tally from
       schedule_grid. Not a spot check of Georgia Tech.
+  - id: "AC3b"
+    criterion: >-
+      A fixed set of postseason cells matches the database on opponent, status and column:
+      Georgia Tech's bowl loss, Miami's four-round CFP run across all four postseason columns, and
+      Indiana's championship win. An aggregate record match alone cannot catch two compensating
+      errors, a wrong opponent, or a cell bucketed into the wrong CFP column.
+  - id: "AC3c"
+    criterion: >-
+      The payload actually published matches the payload that was verified -- the real run's
+      output diffed against the dry run's, ignoring generated_at_utc.
   - id: "AC4"
     criterion: "Georgia Tech specifically reads 9-4, and the 10-3 is gone."
   - id: "AC5"
