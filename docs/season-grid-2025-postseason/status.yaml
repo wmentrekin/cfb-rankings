@@ -1,7 +1,7 @@
 artifact: status
 feature: "season-grid-2025-postseason"
 mode: "large-initiative"
-stage: "discovery"
+stage: "planning"
 owner_skill: work
 
 objective: >-
@@ -37,13 +37,13 @@ branching:
   note: "Same branch name in both repos; this initiative produces one PR per repo."
 
 summary:
-  current_focus: "Discovery: why 2025's records were wrong, how postseason cells are produced and rendered, and how to publish a past season's artifact."
-  last_completed: "Repository sync for both repos; feature branches created; first DB reconnaissance."
+  current_focus: "Planning: phase 1 is correctness and visibility only; formatting is deferred to phase 2 by the user's sequencing decision."
+  last_completed: "Discovery across both repos; requirements and plan drafted."
   current_blocker: ""
 
 artifacts:
-  requirements: null
-  plan: null
+  requirements: "docs/season-grid-2025-postseason/requirements.yaml"
+  plan: "docs/season-grid-2025-postseason/plan.yaml"
   implementation_report: null
 
 pr:
@@ -63,7 +63,7 @@ agents:
     routing_enforced: true
     escalation_count: 0
     status: "active"
-    stage: "discovery"
+    stage: "planning"
     task: "Coordinate discovery across both repos and the live database."
     last_update: "2026-09-10"
     blocker: ""
@@ -82,21 +82,55 @@ checkpoint:
   options: [proceed, revise_plan, narrow_scope, stop]
 
 blockers: []
-decisions: []
+decisions:
+  - id: "D1"
+    decision: "User: get 2025 visible first, then design the formatting against real screenshots rather than blind."
+  - id: "D2"
+    decision: "User: keep CFP first round merged with the bowls column, distinguish it visually instead of adding a column. Phase 2."
+  - id: "D3"
+    decision: "User: strip sponsor prefixes from bowl names to their canonical short form. Phase 2."
+  - id: "D4"
+    decision: >-
+      The personal-site un-gate PR must merge only after the regenerated artifact is verified,
+      otherwise removing the guard ships Georgia Tech 10-3 to the live site.
 
 early_findings:
   - id: "F1"
     finding: >-
-      Bowl names are in games.notes, not playoff_bowl_name. All 35 non-playoff 2025 bowls carry
-      their sponsor name there ("Union Home Mortgage Gasparilla Bowl", "Bucked Up LA Bowl").
-      playoff_bowl_name is populated only for the 11 CFP games, where its value is the far less
-      useful "College Football Playoff First Round Game".
+      CORRECTED. The first version of this finding was wrong: it was written from a partial query
+      that surfaced only First Round rows, and the error propagated into a research handoff.
+      Across all 11 CFP games, playoff_bowl_name is: "College Football Playoff First Round Game"
+      for the 4 first-round games, the REAL bowl for the quarterfinals (Rose, Sugar, Cotton,
+      Orange) and semifinals (Fiesta, Peach), and the full sponsored title for the championship.
+      The 35 ordinary bowls have playoff_bowl_name NULL and their sponsor name in notes.
+      _game_name_for_row is `playoff_bowl_name or notes`, so naming is largely correct today --
+      only the four first-round labels and the very long championship label are awkward.
   - id: "F2"
     finding: >-
-      playoff_round_order is NULL for all 11 of 2025's CFP games, though playoff_round_name and
-      playoff_bracket_slot are set. Migration 0002 added the column and
-      scripts/backfill_2025_postseason.py exists, so this needs checking before postseason column
-      ordering can rely on it.
+      RESOLVED as a non-issue. playoff_round_order is NULL for all 11 CFP games, but nothing reads
+      it. _bucket_cfp_slot matches substrings of playoff_round_name against four hardcoded slots,
+      and 2025's names (First Round / Quarterfinal / Semifinal / National Championship) all bucket
+      correctly. No backfill needed.
+  - id: "F5"
+    finding: >-
+      There is NO postseason-specific CSS anywhere in personal-site -- not one selector targets a
+      bowl, playoff or championship cell. Every postseason column is a plain 6rem week column with
+      class sg-th. The four CFP first-round games also share the "cfp-r1-bowls" column with all 35
+      ordinary bowls, so a playoff game currently renders identically to any minor bowl.
+  - id: "F6"
+    finding: >-
+      playoff_bracket_slot (FR1-FR4, QF1-QF4, SF1-SF2, CH) is fully populated for 2025 and
+      entirely unused by any code. It is the natural key for bracket ordering.
+  - id: "F7"
+    finding: >-
+      _bucket_cfp_slot and _game_name_for_row have no test coverage at all, and no test asserts
+      compute_team_records counts postseason games toward a record.
+  - id: "F8"
+    finding: >-
+      The stale artifact is confirmed: personal-site's on-disk schedule/2025/latest.json was
+      generated 2026-09-06 -- before PRs #11 and #12 -- and does say Georgia Tech 10-3. The live
+      schedule_grid gives 9-4 over the same 13 distinct game ids, so one game's status differs
+      rather than a row being double counted.
   - id: "F3"
     finding: >-
       2025 postseason is complete: 46 games, all 46 with a winner. 11 are CFP (4 first round,
@@ -115,6 +149,6 @@ model_routing:
   unresolved_limitations:
     - "Subagents inherit the main conversation's extended-thinking setting; per-agent reasoning level is advisory."
 
-next_action: "Spawn repo-researchers for the artifact/standings path and the Season Grid rendering path; confirm the record discrepancy directly against the database."
+next_action: "Reviewer critique of the plan, then the pre-execution checkpoint."
 next_recommended_command: "$work"
 user_input_needed: false

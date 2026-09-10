@@ -1,0 +1,225 @@
+artifact: plan
+feature: "season-grid-2025-postseason"
+mode: "large-initiative"
+status: draft
+owner_skill: work
+based_on: "docs/season-grid-2025-postseason/requirements.yaml"
+
+objective: >-
+  Phase 1: publish a verified 2025 Season Grid artifact through a narrow, reusable path, un-gate
+  the season on the site, and capture screenshots of today's postseason rendering to drive the
+  phase-2 formatting pass.
+
+approach:
+  summary: >-
+    Add a season-scoped publish script wrapping publish_schedule_artifact, plus a dispatchable
+    workflow that runs it and uploads the payload it produced. Dry-run first, verify every team's
+    record against SQL, then publish for real, then remove the site guard in a second PR that
+    merges only after the artifact is proven.
+  key_decisions:
+    - id: "K1"
+      decision: "A new narrow script and workflow rather than reusing main.py or test-week-run.yml."
+      rationale: >-
+        Both existing entry points run the full pipeline against a past season: a CFBD re-ingest,
+        the rating model, and a ratings/rankings overwrite. main.py additionally resolves its week
+        from today's date, which is meaningless for 2025. publish_schedule_artifact on its own
+        reads and uploads, nothing more -- that is the primitive this needs, and it is reusable
+        for any future backfill.
+    - id: "K2"
+      decision: "The workflow uploads the generated payload as a build artifact, and supports a dry run."
+      rationale: >-
+        This session has no R2 read access, so without this the only way to check what was
+        published would be to trust the publisher. Uploading the payload makes AC3's
+        every-team verification possible, and the dry run means the first look at 2025 costs
+        nothing and overwrites nothing.
+    - id: "K3"
+      decision: "Verify every team's record, not Georgia Tech's."
+      rationale: >-
+        The guard's comment names one team because that is the one someone noticed. Nothing
+        establishes it was the only wrong row, and the whole point of removing the guard is that
+        the season has actually been checked.
+    - id: "K4"
+      decision: "Two PRs, and the personal-site one merges second."
+      rationale: >-
+        Removing the guard while R2 still holds the stale object would ship Georgia Tech 10-3 to
+        the live site. The ordering is the safety property, so it is stated here rather than left
+        to sequencing luck.
+    - id: "K5"
+      decision: "No formatting changes in this pass."
+      rationale: >-
+        The user's explicit sequencing decision: see 2025 rendered first, then design against it.
+        Their two banked decisions (keep CFP round 1 merged but visually distinct; strip sponsors
+        from bowl names) carry into phase 2 rather than being implemented blind here.
+
+contracts:
+  interfaces:
+    - "scripts/publish_season_schedule_artifact.py: --season N [--dry-run] [--out PATH]"
+  config_changes:
+    - ".github/workflows/publish-schedule-artifact.yml: workflow_dispatch inputs `season` (required) and `dry_run` (boolean)."
+
+branching:
+  strategy: "one branch per repo, same name"
+  branch_name: "work/season-grid-2025-postseason"
+  worktrees: []
+
+execution_batches:
+  - id: "B1"
+    goal: "The narrow publish path, in cfb-rankings."
+    tasks:
+      - id: "T1"
+        title: "Season-scoped schedule publish script and workflow"
+        objective: >-
+          Add scripts/publish_season_schedule_artifact.py following the repo's established
+          one-off script pattern (module docstring stating background and blast radius, sys.path
+          bootstrap, explicit statement of required credentials). It calls
+          artifacts.schedule.build_schedule_payload/publish_schedule_artifact for one season;
+          --dry-run builds and writes the payload without uploading; --out writes the payload to
+          a path either way. Add .github/workflows/publish-schedule-artifact.yml with season and
+          dry_run inputs that runs it and uploads the payload with actions/upload-artifact.
+        assigned_domain: "data-engineer"
+        model_routing:
+          task_profile: "implementation"
+          uncertainty: "medium"
+          consequence: "high"
+          scope_size: "bounded"
+          determinism: "interpretive"
+          requested_tier: "balanced"
+          requested_reasoning: "medium"
+          provider_model: "Claude Sonnet 5"
+          routing_enforced: true
+          escalation_tier: "frontier"
+          escalation_condition: "publish_schedule_artifact cannot be driven for one season without refactoring it."
+        owned_scope:
+          - "scripts/publish_season_schedule_artifact.py (new)"
+          - ".github/workflows/publish-schedule-artifact.yml (new)"
+          - "artifacts/schedule.py ONLY if a payload cannot be obtained without a small, additive seam"
+        forbidden_scope:
+          - "Any change to postseason bucketing, game_name derivation, standings, or column labels. That is phase 2."
+          - "main.py, database/, model/"
+        dependencies: []
+        parallelizable: false
+        expected_validation:
+          - "Dry run produces a payload file; the script never writes to R2 when --dry-run is set."
+          - "Workflow YAML parses; the season input reaches the script."
+      - id: "T2"
+        title: "Tests for the publish path and the untested postseason primitives"
+        objective: >-
+          Test the script's argument handling and the dry-run contract (no upload). Additionally
+          add the missing coverage discovery found: _bucket_cfp_slot and _game_name_for_row have
+          NO tests at all, and compute_team_records has no test asserting postseason games count
+          toward a record. Use 2025's real values as fixtures -- round names First Round /
+          Quarterfinal / Semifinal / National Championship, and the real bowl-name shapes. These
+          are characterization tests of current behavior, pinning it before phase 2 changes it.
+        assigned_domain: "data-engineer"
+        model_routing:
+          task_profile: "test_design"
+          uncertainty: "medium"
+          consequence: "medium"
+          scope_size: "bounded"
+          determinism: "interpretive"
+          requested_tier: "balanced"
+          requested_reasoning: "medium"
+          provider_model: "Claude Sonnet 5"
+          routing_enforced: true
+          escalation_tier: "frontier"
+          escalation_condition: "n/a"
+        owned_scope:
+          - "tests/test_season_schedule_publish.py (new)"
+          - "tests/test_postseason_slots.py (new)"
+        dependencies: ["T1"]
+        parallelizable: false
+        expected_validation:
+          - "python -m pytest tests/ -q green; new tests mutation-checked."
+
+  - id: "B2"
+    goal: "Publish and verify 2025. Orchestrator-run, not delegated."
+    tasks:
+      - id: "T3"
+        title: "Dry run, verify every record, then publish"
+        objective: >-
+          After the cfb-rankings PR merges: dispatch the workflow with season=2025 dry_run=true,
+          download the payload artifact, and compare EVERY team's record against an independent
+          SQL tally from schedule_grid. Only if they all match, dispatch again with dry_run=false.
+          Then confirm the index still lists 2025.
+        assigned_domain: "platform-engineer"
+        model_routing:
+          task_profile: "orchestration"
+          uncertainty: "medium"
+          consequence: "high"
+          scope_size: "bounded"
+          determinism: "interpretive"
+          requested_tier: "frontier"
+          requested_reasoning: "high"
+          provider_model: "Claude Opus 5"
+          routing_enforced: true
+          escalation_tier: "frontier"
+          escalation_condition: "n/a"
+        owned_scope: ["Workflow dispatch; read-only SQL verification."]
+        forbidden_scope: ["Any direct write to R2 or the database."]
+        dependencies: ["T2", "user merge of the cfb-rankings PR"]
+        parallelizable: false
+        expected_validation: ["AC3, AC4, AC5."]
+
+  - id: "B3"
+    goal: "Un-gate the season and capture the phase-2 evidence, in personal-site."
+    tasks:
+      - id: "T4"
+        title: "Remove UNVERIFIED_SCHEDULE_SEASONS and screenshot the postseason columns"
+        objective: >-
+          Delete the 2025 guard and its now-obsolete comment block from
+          src/pages/projects/cfb-rankings/index.astro. Run the site locally against the
+          regenerated 2025 data and capture screenshots of each postseason column -- Bowls (with
+          both a CFP first-round cell and an ordinary bowl cell visible), CFP Quarterfinals,
+          CFP Semifinals, CFP National Championship -- plus a full-grid view. These screenshots
+          are the deliverable that drives phase 2.
+        assigned_domain: "frontend-engineer"
+        model_routing:
+          task_profile: "implementation"
+          uncertainty: "low"
+          consequence: "medium"
+          scope_size: "narrow"
+          determinism: "deterministic"
+          requested_tier: "balanced"
+          requested_reasoning: "medium"
+          provider_model: "Claude Sonnet 5"
+          routing_enforced: true
+          escalation_tier: "frontier"
+          escalation_condition: "The grid renders 2025 incorrectly in a way that is not a data problem."
+        owned_scope:
+          - "src/pages/projects/cfb-rankings/index.astro (the guard and its comment only)"
+        forbidden_scope:
+          - "Any styling or rendering change. Phase 2 owns all of it."
+          - "src/components/ScheduleGrid.astro"
+        dependencies: ["T3"]
+        parallelizable: false
+        expected_validation:
+          - "astro check clean; 2025 selectable; Georgia Tech reads 9-4 in the rendered grid."
+
+ordering_notes:
+  - "B1 -> user merge -> B2 -> B3. The personal-site PR must not merge before B2 proves the artifact."
+  - "T4 needs the regenerated data on disk; without R2 credentials locally, refresh public/data/cfb from the workflow's uploaded payload rather than prebuild."
+
+risks:
+  - id: "R1"
+    risk: "Regenerating does not fix the record, meaning a live standings bug rather than a stale object."
+    mitigation: "The dry run finds this before anything is published or un-gated. If so, phase 1 becomes a bug hunt and the user gets told before the guard moves."
+  - id: "R2"
+    risk: "Publishing 2025 overwrites something else, or the index loses 2026."
+    mitigation: "publish_schedule_artifact writes exactly one season key; build_schedule_index re-lists the bucket, so 2026 survives. Verify the index after."
+  - id: "R3"
+    risk: "Phase-2 characterization tests written in T2 pin behavior that phase 2 then intentionally changes."
+    mitigation: "That is the point -- they make the phase-2 diff legible. Name them as characterization tests so nobody mistakes them for specifications."
+
+open_questions:
+  - id: "Q1"
+    question: "Phase 2: strength of the playoff-vs-bowl visual distinction inside the shared column."
+    blocking: false
+
+review:
+  status: draft
+  loop_count: 0
+  notes: []
+
+checkpoint:
+  required_before_execution: true
+  status: pending
