@@ -34,6 +34,7 @@ from dotenv import load_dotenv  # type: ignore
 from sqlalchemy import create_engine  # type: ignore
 
 from artifacts import schedule_standings
+from artifacts.bowl_names import short_bowl_name
 from artifacts.r2 import get_r2_client, upload_json
 from artifacts.rankings import CONFERENCE_DISPLAY_NAMES, _resolve_logo, compute_rank_and_delta
 from utils import football_day, get_cfb_week
@@ -139,6 +140,13 @@ CFP_SLOTS: List[Tuple[str, str]] = [
     ("cfp-national-championship", "CFP National Championship"),
 ]
 _CFP_SLOT_IDS = {slot_id for slot_id, _ in CFP_SLOTS}
+
+# T4/AC5: distinct status for a team that earned a first-round CFP bye -- see _cfp_bye_cell and
+# the cfp-r1-bowls branch of _build_team_weeks. Previously this slot NEVER fell through to a bye
+# at all (it unconditionally emitted the bowl-eligibility placeholder, reading as merely
+# "Eligible" -- indistinguishable from, and arguably worse than, a team that missed the playoff
+# entirely). See docs/schedule-grid/implementation-report.yaml:119 for where this was deferred.
+CFP_BYE_STATUS = "cfp_bye"
 
 
 # ---------------------------------------------------------------------------
@@ -433,6 +441,17 @@ def _game_name_for_row(row: Dict[str, Any]) -> Optional[str]:
     return row.get("playoff_bowl_name") or row.get("notes") or None
 
 
+def _playoff_round_for_row(row: Dict[str, Any]) -> Optional[str]:
+    """K5: playoff_round is non-null ONLY for a real CFP-round postseason game -- same
+    season_type gate as _game_name_for_row, plus playoff_round_name itself, which CFBD already
+    leaves null for ordinary (non-CFP) bowls and every non-postseason row. Exists so the
+    frontend can badge a CFP game without string-matching "College Football Playoff" inside
+    game_name -- a label this same pass is shortening (K6)."""
+    if row.get("season_type") != "postseason":
+        return None
+    return row.get("playoff_round_name")
+
+
 # ---------------------------------------------------------------------------
 # Per-row slot classification + per-team slot-row index
 # ---------------------------------------------------------------------------
@@ -665,17 +684,25 @@ def _cell_from_row(row: Dict[str, Any], logos_by_team: Dict[str, Any]) -> Dict[s
     else:
         team_score = int(team_score) if team_score is not None else None
         opp_score = int(opp_score) if opp_score is not None else None
+    game_name = _game_name_for_row(row)
     return {
         "season_type": row.get("season_type"),
         "opponent": opponent,
         "opponent_logo_url": opponent_logo,
         "conditional_opponent": None,  # only ever set on a computed 'possible' placeholder cell
-        "game_name": _game_name_for_row(row),
+        "game_name": game_name,
+        # K6: one-line form of game_name via artifacts/bowl_names.py -- null wherever game_name
+        # is null (guarded here rather than inside short_bowl_name, which treats a null input as
+        # a pass-through the same way, but this keeps the None-ness decision co-located with
+        # every other field on this cell).
+        "game_name_short": short_bowl_name(game_name) if game_name is not None else None,
         "home_away": row.get("home_away"),
         "neutral_site": bool(row.get("neutral_site")) if row.get("neutral_site") is not None else False,
         "status": status,
         "team_score": team_score,
         "opp_score": opp_score,
+        # K5: non-null only for a real CFP-round game -- see _playoff_round_for_row.
+        "playoff_round": _playoff_round_for_row(row),
     }
 
 
@@ -687,11 +714,13 @@ def _placeholder_cell(logical_season_type: str, status: str, conditional_opponen
         "opponent_logo_url": None,
         "conditional_opponent": conditional_opponent,
         "game_name": None,
+        "game_name_short": None,
         "home_away": None,
         "neutral_site": False,
         "status": status,
         "team_score": None,
         "opp_score": None,
+        "playoff_round": None,
     }
 
 
@@ -702,11 +731,13 @@ def _bye_cell(logical_season_type: str) -> Dict[str, Any]:
         "opponent_logo_url": None,
         "conditional_opponent": None,
         "game_name": None,
+        "game_name_short": None,
         "home_away": None,
         "neutral_site": False,
         "status": "bye",
         "team_score": None,
         "opp_score": None,
+        "playoff_round": None,
     }
 
 
@@ -720,11 +751,66 @@ def _tbd_cell(logical_season_type: str) -> Dict[str, Any]:
         "opponent_logo_url": None,
         "conditional_opponent": None,
         "game_name": None,
+        "game_name_short": None,
         "home_away": None,
         "neutral_site": False,
         "status": "tbd",
         "team_score": None,
         "opp_score": None,
+        "playoff_round": None,
+    }
+
+
+def _team_seed_from_row(row: Dict[str, Any]) -> Optional[int]:
+    """This team's CFP seed, from a schedule_grid row it appears in (its cfp-quarterfinals row,
+    for the bye case).
+
+    Reads schedule_grid's team_seed directly rather than picking between
+    playoff_home_seed/playoff_away_seed on home_away. Migration 0006 flips the seed in the view,
+    the same way it already flips team_score/opp_score and conference -- re-deriving "which side
+    am I?" here would duplicate, in Python, the one thing that view exists to do once.
+
+    K8: home_seed/away_seed's existence on CFBD's GamePlayoff is confirmed only at the schema
+    level (read from the OpenAPI-generated client) -- nobody has confirmed they're actually
+    POPULATED for real games, and this environment cannot call CFBD to check. So an absent or
+    non-numeric value degrades to None here rather than guessing -- the caller (_cfp_bye_cell)
+    turns that into a plain label instead of a wrong seed number.
+    """
+    seed = row.get("team_seed")
+    if seed is None:
+        return None
+    try:
+        return int(seed)
+    except (TypeError, ValueError):
+        return None
+
+
+def _cfp_bye_cell(logical_season_type: str, seed: Optional[int]) -> Dict[str, Any]:
+    """T4/AC5: a team with a real cfp-quarterfinals row but no real cfp-r1-bowls row earned a
+    first-round CFP bye. Distinct from BOTH _bye_cell (no game exists at all that slot) and the
+    bowl-eligibility placeholder (which reads as merely "Eligible", indistinguishable from a
+    team that never made the playoff).
+
+    K8: the seed degrades the label, not the other way around -- when resolved, it becomes the
+    literal display text via game_name/game_name_short ("Bye (No. N)"), read directly by the
+    frontend exactly like a real game's bowl name; when absent, game_name stays null and the
+    frontend's STATUS_TEXT_BY_SLOT[CFP_BYE_STATUS] fallback ("CFP Bye") renders instead. A wrong
+    seed on a public page is worse than an absent one.
+    """
+    game_name = f"Bye (No. {seed})" if seed is not None else None
+    return {
+        "season_type": logical_season_type,
+        "opponent": None,
+        "opponent_logo_url": None,
+        "conditional_opponent": None,
+        "game_name": game_name,
+        "game_name_short": game_name,  # already one line; no bowl-name sponsor text to strip
+        "home_away": None,
+        "neutral_site": False,
+        "status": CFP_BYE_STATUS,
+        "team_score": None,
+        "opp_score": None,
+        "playoff_round": None,
     }
 
 
@@ -752,9 +838,20 @@ def _build_team_weeks(
             weeks.append({"slot_id": slot_id, "label": label, **_placeholder_cell(logical_type, championship_status, conditional_opponent)})
             continue
         if slot_id == CFP_SLOTS[0][0]:
+            # T4/AC5: the only available bye signal is structural -- a real row in
+            # cfp-quarterfinals (checked here) with no real row in cfp-r1-bowls (already true,
+            # or this branch would never have been reached: the `real_row is not None` check
+            # above always wins once a real cfp-r1-bowls row exists) means this team earned a
+            # first-round bye, not that it merely "made a bowl."
+            quarterfinal_row = team_slot_rows.get(CFP_SLOTS[1][0])
+            if quarterfinal_row is not None:
+                seed = _team_seed_from_row(quarterfinal_row)
+                weeks.append({"slot_id": slot_id, "label": label, **_cfp_bye_cell(logical_type, seed)})
+                continue
             # Bowl eligibility (possible/eligible/ineligible) is computed unconditionally for
-            # every team, so this slot NEVER falls through to plain 'bye' -- unlike Conference
-            # Championship/Army-Navy/the other 3 CFP slots, which do.
+            # every team, so absent a detected bye above, this slot NEVER falls through to a
+            # plain 'bye' -- unlike Conference Championship/Army-Navy/the other 3 CFP slots,
+            # which do.
             weeks.append({"slot_id": slot_id, "label": label, **_placeholder_cell(logical_type, bowl_status, None)})
             continue
         if slot_id in flex_tbd_slot_ids:

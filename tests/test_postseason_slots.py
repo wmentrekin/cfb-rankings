@@ -26,7 +26,15 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from artifacts.schedule import CFP_SLOTS, _bucket_cfp_slot, _game_name_for_row  # noqa: E402
+from artifacts.bowl_names import short_bowl_name  # noqa: E402
+from artifacts.schedule import (  # noqa: E402
+    CFP_BYE_STATUS,
+    CFP_SLOTS,
+    _build_team_weeks,
+    _bucket_cfp_slot,
+    _game_name_for_row,
+    _playoff_round_for_row,
+)
 from artifacts.schedule_standings import compute_team_records  # noqa: E402
 
 SEASON = 2025
@@ -227,6 +235,162 @@ def test_postseason_games_count_toward_the_record():
     records = compute_team_records(rows, SEASON)
     assert records["Georgia Tech"]["wins"] == 2
     assert records["Georgia Tech"]["losses"] == 1
+
+
+# ===========================================================================
+# T4/AC5 -- first-round CFP bye state (_build_team_weeks' cfp-r1-bowls branch)
+# ===========================================================================
+def _team_slot_rows_with_quarterfinal(home_away="home", team_seed=None):
+    """A team_slot_rows dict shaped like Indiana's real 2025 case: a real row in
+    cfp-quarterfinals, no entry at all for cfp-r1-bowls (no real row there).
+
+    team_seed is already team-relative, because schedule_grid flips the seed per perspective
+    (migration 0006), exactly as it flips team_score/opp_score. home_away is still set so these
+    fixtures stay row-shaped, but nothing reads it to resolve the seed any more."""
+    row = _row(50, team="Indiana", opponent="Notre Dame", status="win",
+               playoff_round_name="Quarterfinal", playoff_bowl_name="Sugar Bowl",
+               playoff_bracket_slot="QF1")
+    row["home_away"] = home_away
+    row["team_seed"] = team_seed
+    return {CFP_QUARTERFINALS: row}
+
+
+def test_bye_status_present_for_a_team_with_a_quarterfinal_row_but_no_r1_bowls_row():
+    """AC5: Indiana's real 2025 shape -- present."""
+    team_slot_rows = _team_slot_rows_with_quarterfinal(home_away="home", team_seed=1)
+    weeks = _build_team_weeks(CFP_SLOTS, team_slot_rows, None, None, "eligible", {})
+    bye_cell = weeks[0]
+    assert bye_cell["slot_id"] == CFP_R1_BOWLS
+    assert bye_cell["status"] == CFP_BYE_STATUS
+
+
+def test_bye_status_absent_for_a_team_that_missed_the_playoff():
+    """A team with NEITHER a real cfp-quarterfinals row NOR a real cfp-r1-bowls row must keep
+    rendering exactly as it does today: the bowl-eligibility placeholder, never the new bye
+    status."""
+    weeks = _build_team_weeks(CFP_SLOTS, {}, None, None, "eligible", {})
+    bowl_cell = weeks[0]
+    assert bowl_cell["slot_id"] == CFP_R1_BOWLS
+    assert bowl_cell["status"] == "eligible"
+    assert bowl_cell["status"] != CFP_BYE_STATUS
+
+
+def test_bye_status_absent_for_an_ordinary_bowl_team():
+    """A team with a REAL cfp-r1-bowls row (an ordinary bowl, or a CFP first-round game) takes
+    the real-row path and must never be reclassified as a bye, whatever else that team's
+    team_slot_rows dict happens to contain."""
+    real_row = _row(51, team="Georgia Tech", opponent="Vanderbilt", status="loss",
+                     notes="Union Home Mortgage Gasparilla Bowl")
+    real_row["home_away"] = "home"
+    team_slot_rows = {CFP_R1_BOWLS: real_row}
+    weeks = _build_team_weeks(CFP_SLOTS, team_slot_rows, None, None, "eligible", {})
+    bowl_cell = weeks[0]
+    assert bowl_cell["slot_id"] == CFP_R1_BOWLS
+    assert bowl_cell["status"] != CFP_BYE_STATUS
+    assert bowl_cell["game_name"] == "Union Home Mortgage Gasparilla Bowl"
+    assert bowl_cell["game_name_short"] == "Gasparilla Bowl"
+
+
+def test_bye_seed_present_renders_a_seeded_label():
+    team_slot_rows = _team_slot_rows_with_quarterfinal(home_away="home", team_seed=1)
+    weeks = _build_team_weeks(CFP_SLOTS, team_slot_rows, None, None, "eligible", {})
+    bye_cell = weeks[0]
+    assert bye_cell["status"] == CFP_BYE_STATUS
+    assert bye_cell["game_name"] == "Bye (No. 1)"
+    assert bye_cell["game_name_short"] == "Bye (No. 1)"
+
+
+def test_bye_seed_derived_from_the_away_side_when_the_team_was_the_away_team():
+    team_slot_rows = _team_slot_rows_with_quarterfinal(home_away="away", team_seed=4)
+    weeks = _build_team_weeks(CFP_SLOTS, team_slot_rows, None, None, "eligible", {})
+    assert weeks[0]["game_name"] == "Bye (No. 4)"
+
+
+def test_bye_seed_absent_degrades_to_a_plain_bye_with_no_game_name():
+    """K8: an unpopulated seed field must cost a nicety, not break the feature -- game_name
+    stays null (rather than guessing) so the frontend's plain 'CFP Bye' STATUS_TEXT_BY_SLOT
+    fallback renders instead of a possibly-wrong seed number."""
+    team_slot_rows = _team_slot_rows_with_quarterfinal(home_away="home")
+    weeks = _build_team_weeks(CFP_SLOTS, team_slot_rows, None, None, "eligible", {})
+    bye_cell = weeks[0]
+    assert bye_cell["status"] == CFP_BYE_STATUS
+    assert bye_cell["game_name"] is None
+    assert bye_cell["game_name_short"] is None
+
+
+# ===========================================================================
+# K5 -- playoff_round on the cell
+# ===========================================================================
+def test_playoff_round_populated_for_a_cfp_round_game():
+    row = _row(60, season_type="postseason", playoff_round_name="Quarterfinal", playoff_bowl_name="Rose Bowl")
+    assert _playoff_round_for_row(row) == "Quarterfinal"
+
+
+def test_playoff_round_null_for_an_ordinary_bowl():
+    row = _row(61, season_type="postseason", playoff_round_name=None, notes="Bucked Up LA Bowl")
+    assert _playoff_round_for_row(row) is None
+
+
+def test_playoff_round_null_for_a_non_postseason_row_even_with_a_round_name_present():
+    """Mirrors test_game_name_is_null_for_a_non_postseason_row_even_with_a_bowl_name_present --
+    same season_type gate, same reason: a stray value on a regular-season row must not leak."""
+    row = _row(62, season_type="regular", playoff_round_name="Quarterfinal")
+    assert _playoff_round_for_row(row) is None
+
+
+def test_playoff_round_is_null_on_every_placeholder_and_bye_cell():
+    weeks = _build_team_weeks(CFP_SLOTS, {}, None, None, "eligible", {})
+    for week in weeks:
+        assert week["playoff_round"] is None
+
+
+# ===========================================================================
+# K6 -- short bowl/CFP-round display names (artifacts/bowl_names.py)
+# ===========================================================================
+@pytest.mark.parametrize("full,expected_short", [
+    ("Union Home Mortgage Gasparilla Bowl", "Gasparilla Bowl"),
+    ("Bucked Up LA Bowl", "LA Bowl"),
+    ("Scooter's Coffee Frisco Bowl", "Frisco Bowl"),
+    ("Radiance Technologies Independence Bowl", "Independence Bowl"),
+    ("Pop-Tarts Bowl", "Pop-Tarts Bowl"),
+    ("Xbox Bowl", "Xbox Bowl"),
+    ("Rate Bowl", "Rate Bowl"),
+], ids=["gasparilla", "la-bowl", "frisco", "independence", "pop-tarts", "xbox", "rate"])
+def test_short_bowl_name_for_2025s_real_ordinary_bowls(full, expected_short):
+    assert short_bowl_name(full) == expected_short
+
+
+@pytest.mark.parametrize("full,expected_short", [
+    ("College Football Playoff First Round Game", "CFP First Round"),
+    ("Rose Bowl", "Rose Bowl"),
+    ("Sugar Bowl", "Sugar Bowl"),
+    ("Cotton Bowl", "Cotton Bowl"),
+    ("Orange Bowl", "Orange Bowl"),
+    ("Fiesta Bowl", "Fiesta Bowl"),
+    ("Peach Bowl", "Peach Bowl"),
+    ("College Football Playoff National Championship Presented by AT&T", "CFP National Championship"),
+], ids=["first-round", "rose", "sugar", "cotton", "orange", "fiesta", "peach", "championship"])
+def test_short_bowl_name_for_2025s_real_cfp_rounds(full, expected_short):
+    assert short_bowl_name(full) == expected_short
+
+
+def test_short_bowl_name_shortens_a_future_unseen_sponsor_via_the_structural_rule():
+    """K6 durability check: a sponsor never enumerated anywhere in this module still shortens
+    correctly, because the rule strips by STRUCTURE (the word immediately before 'Bowl'), not by
+    a hardcoded list of known sponsor names -- the whole reason a pure map was rejected."""
+    assert short_bowl_name("Some Brand New 2027 Sponsor City Bowl") == "City Bowl"
+
+
+def test_short_bowl_name_degrades_to_the_full_name_for_an_unmapped_non_bowl_shape():
+    """K6: a name that doesn't end in 'Bowl' and isn't in the small override map (e.g. a future
+    presenting-sponsor change to a CFP round name) degrades to the FULL name unchanged, never to
+    a guess -- the personal-site CSS clamp, not this mapping, is what keeps AC6 true here."""
+    unmapped = "College Football Playoff Quarterfinal Presented by SomeFutureSponsor"
+    assert short_bowl_name(unmapped) == unmapped
+
+
+def test_short_bowl_name_passes_through_none():
+    assert short_bowl_name(None) is None
 
 
 if __name__ == "__main__":
