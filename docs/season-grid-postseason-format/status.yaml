@@ -1,7 +1,7 @@
 artifact: status
 feature: "season-grid-postseason-format"
 mode: "large-initiative"
-stage: "discovery"
+stage: "execution"
 owner_skill: work
 
 objective: >-
@@ -42,8 +42,8 @@ branching:
   note: "Same name in both repos; one PR per repo. The personal-site PR is stacked on PR #23."
 
 summary:
-  current_focus: "Discovery: how championship games are identified, how conference records and the within-conference sort are computed, and how a first-round bye is derivable."
-  last_completed: "Repo sync for both repos; branches created; confirmed the ACC title-game arithmetic the owner cited."
+  current_focus: "Execution batch B1: conference records excluding the title game, and the champion-first sort."
+  last_completed: "Discovery, platform research on CFP seeds, plan review cycle 1 (two correctness bugs found and closed), owner approved at the checkpoint."
   current_blocker: ""
 
 artifacts:
@@ -67,18 +67,18 @@ agents:
     routing_enforced: "model only; reasoning inherited from the main conversation"
     escalation_count: 0
     status: "active"
-    stage: "discovery"
-    task: "Coordinate discovery across both repos."
+    stage: "execution"
+    task: "Coordinate B1-B3, then the republish."
     last_update: "2026-09-10"
     blocker: ""
 
 loops:
-  planning_review: {count: 0, max: 2}
+  planning_review: {count: 1, max: 2}
   execution_verification: {count: 0, max: 2}
 
 checkpoint:
   pre_execution_required: true
-  pre_execution_status: pending
+  pre_execution_status: "proceed (user-confirmed)"
   options: [proceed, revise_plan, narrow_scope, stop]
 
 blockers: []
@@ -135,6 +135,22 @@ early_findings:
       Three of the owner's four items are cfb-rankings standings/artifact changes, not styling.
       Only the hover treatment lives in personal-site.
 
+resolved_questions:
+  - id: "Q1/Q2/Q3"
+    resolved: >-
+      Owner chose a short in-cell label with the full name on hover and focus, a text CFP badge,
+      and seed-aware bye text. Sponsor-stripping therefore stays necessary -- it is what produces
+      the short label.
+  - id: "Q4"
+    resolved: >-
+      Seeds ARE available: GamePlayoff on /games carries home_seed and away_seed next to the four
+      keys already read. Schema-level confidence only, so the label degrades to a plain CFP Bye
+      when a seed is absent. The same research found playoff_round_order can never populate from
+      that endpoint -- no such field exists on GamePlayoff -- which explains why it is NULL for
+      every season.
+  - id: "Q5"
+    resolved: "Owner chose division-local champion ordering; a divisional champion leads its own division only."
+
 open_questions:
   - id: "Q4"
     question: >-
@@ -149,6 +165,6 @@ model_routing:
   unresolved_limitations:
     - "Model selection per subagent is enforced; reasoning level is inherited from the main conversation and is advisory."
 
-next_action: "Spawn repo-researcher for the championship-identification, standings and bye-derivation paths in cfb-rankings."
+next_action: "Spawn data-engineer for B1 (T1-T3) on work/season-grid-postseason-format."
 next_recommended_command: "$work"
 user_input_needed: false

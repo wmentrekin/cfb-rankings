@@ -58,16 +58,17 @@ approach:
         cases: a unique True never groups with a False, so the swap never fires on the champion.
     - id: "K9"
       decision: >-
-        ADDED after review. Within a divisional conference, order the DIVISION BLOCKS so the
-        champion's division comes first, rather than hoisting the champion out of its division.
+        OWNER DECISION: in a divisional conference the champion sorts first WITHIN ITS OWN
+        DIVISION only. Division blocks keep their existing alphabetical order.
       rationale: >-
-        The sort runs once per division and the blocks are then concatenated alphabetically, so
-        fixing only _sort_conference_teams would put a West champion first within West while West
-        still renders after East -- failing AC2 for the Sun Belt, the one divisional conference.
-        Hoisting the champion to the top of the conference instead would break
-        ScheduleGrid.astro's divisionHeaderIndexes(), which assumes a division's members are
-        contiguous. Reordering the blocks satisfies AC2, keeps every division contiguous, and
-        needs no frontend change at all.
+        Review surfaced that the sort runs once per division and the blocks are concatenated
+        afterwards, so touching only _sort_conference_teams leaves a West champion below every East
+        team. Three options were put to the owner -- reorder the blocks, hoist the champion above
+        the division headers, or accept division-local ordering -- and the owner chose the last.
+        Accepted consequence, stated rather than discovered later: a Sun Belt West champion appears
+        below the entire East division. In exchange, _sort_conference_teams remains the only thing
+        that changes, divisions stay contiguous, and the frontend is untouched. AC2 is worded to
+        match this rather than left implying conference-wide primacy.
     - id: "K10"
       decision: >-
         ADDED after review. The champion flag is internal scratch state named _is_champion and is
@@ -165,19 +166,20 @@ execution_batches:
           conference sorts exactly as it does today. Inject it as _is_champion, read it with a
           default so hand-built entries in existing tests keep working, make it the top sort tier
           and include it in the head-to-head grouping key (K4), and delete it before the entries
-          are returned (K10). Also order division blocks so the champion's division renders first
-          (K9) -- this is outside _sort_conference_teams and is what actually makes AC2 true for a
-          divisional conference.
+          are returned (K10). Per K9 the division enumeration and concatenation are NOT touched --
+          a divisional champion leads its own division only.
         assigned_domain: "data-engineer"
         model_routing: {task_profile: implementation, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", escalation_tier: frontier}
         owned_scope:
-          - "artifacts/schedule.py: _sort_conference_teams, the entry construction, AND the division enumeration/concatenation loop"
+          - "artifacts/schedule.py: _sort_conference_teams and the entry construction"
+        forbidden_scope:
+          - "The division enumeration/concatenation loop -- K9 keeps division block order as it is."
         dependencies: ["T1"]
         expected_validation:
           - "Duke above Virginia despite the worse conference record."
           - "Independents and championship-less conferences order exactly as before."
           - "A champion is not swapped below a team that beat it in the regular season."
-          - "In a divisional conference, the champion is first in the WHOLE conference, and every division stays contiguous."
+          - "In a divisional conference, the champion is first within its OWN division (K9), and division block order is unchanged."
           - "_is_champion does not appear anywhere in the published JSON."
       - id: "T3"
         title: "Tests for both, including the behaviour that had none"
@@ -189,7 +191,8 @@ execution_batches:
           conferences, in-progress seasons and Independents. Three fixtures review specifically
           called out as missing: an identified-but-UNPLAYED championship game (guards the K1
           elimination bug and the no-champion-yet sort), a DIVISIONAL conference whose champion is
-          in the alphabetically-later division (guards K9), and an assertion that _is_champion is
+          in the alphabetically-later division, asserting it leads its own division and that block
+          order did not change (guards K9), and an assertion that _is_champion is
           absent from the published payload (guards K10). Mutation-check each.
         assigned_domain: "data-engineer"
         model_routing: {task_profile: test_design, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5"}

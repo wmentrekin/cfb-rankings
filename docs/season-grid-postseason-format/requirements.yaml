@@ -87,7 +87,13 @@ acceptance_criteria:
   - id: "AC1"
     criterion: "Duke reads 6-2 in conference and Virginia 7-1 for 2025, and Duke sorts above Virginia in the ACC."
   - id: "AC2"
-    criterion: "Every conference with an identified championship game has its champion first in that conference's group."
+    criterion: >-
+      Every conference with an identified championship game has its champion sorted first among the
+      teams it is grouped with. For a flat conference that is the whole conference. For a
+      divisional conference it is that team's own division -- the owner chose division-local
+      ordering over reordering or hoisting, so a Sun Belt West champion still renders below the
+      East block. Worded this way deliberately, so the criterion is checkable rather than
+      aspirational.
   - id: "AC3"
     criterion: "A conference with no identified championship game, and an in-progress season, both sort exactly as they do today."
   - id: "AC4"
