@@ -19,13 +19,21 @@ approach:
   key_decisions:
     - id: "K1"
       decision: >-
-        Thread the championship game ids down through compute_standings into compute_team_records
-        as a new optional parameter, rather than adjusting conf_wins/conf_losses in schedule.py
-        after the fact.
+        REVISED after review. The exclusion applies ONLY to the conf_record that gets displayed.
+        The records dict handed to compute_conference_championship_status must stay unmodified.
       rationale: >-
-        The alternative duplicates "is this row the identified championship game" outside the
-        module that owns the tally, leaving two places that must agree forever. Optional with a
-        None default means every existing caller and test keeps working unchanged.
+        The first draft said "exclude those game_ids from the conf_rows tally", which would have
+        introduced a recurring, every-season correctness bug. compute_standings is the only caller
+        of compute_team_records and feeds the SAME records dict straight into
+        compute_conference_championship_status, which reads conf_wins and conf_games_remaining to
+        decide clinched/eliminated/possible. identify_conference_championship_games does not gate
+        on status -- it identifies a scheduled-but-unplayed title game too. So excluding that row
+        would drop one upcoming conference game from both participants' conf_games_remaining in
+        the week before kickoff. Since eliminated is B_T < nth_highest_other_W and B_T = W_T + R_T,
+        a smaller R_T makes elimination MORE likely: the two teams about to play for the title
+        could be marked "Eliminated" during championship week. That function's own docstring says
+        it must never assert eliminated incorrectly. Exclude post-hoc, after the status math has
+        run on unmodified records.
     - id: "K2"
       decision: "Reorder build_schedule_payload so identification happens before compute_standings."
       rationale: >-
@@ -41,31 +49,73 @@ approach:
         and a played result are structurally different signals, and promoting a projection would
         reorder a conference on the strength of a prediction.
     - id: "K4"
-      decision: "is_champion becomes the top sort tier AND joins the head-to-head grouping key."
+      decision: "_is_champion becomes the top sort tier AND joins the head-to-head grouping key."
       rationale: >-
         The head-to-head pass swaps adjacent pairs tied on (conf_pct, conf_played). Without
         including champion status in that grouping, a champion could be swapped back below a team
-        that beat it earlier in the season -- silently undoing the rule. Not a live case for the
-        2025 ACC, where the records differ after exclusion, but a latent one.
+        that beat it earlier in the season -- silently undoing the rule. Review traced this and
+        confirmed the grouping-key fix is sufficient for two-way, three-way and two-team-conference
+        cases: a unique True never groups with a False, so the swap never fires on the champion.
+    - id: "K9"
+      decision: >-
+        ADDED after review. Within a divisional conference, order the DIVISION BLOCKS so the
+        champion's division comes first, rather than hoisting the champion out of its division.
+      rationale: >-
+        The sort runs once per division and the blocks are then concatenated alphabetically, so
+        fixing only _sort_conference_teams would put a West champion first within West while West
+        still renders after East -- failing AC2 for the Sun Belt, the one divisional conference.
+        Hoisting the champion to the top of the conference instead would break
+        ScheduleGrid.astro's divisionHeaderIndexes(), which assumes a division's members are
+        contiguous. Reordering the blocks satisfies AC2, keeps every division contiguous, and
+        needs no frontend change at all.
+    - id: "K10"
+      decision: >-
+        ADDED after review. The champion flag is internal scratch state named _is_champion and is
+        deleted before the entries are returned, exactly like _conf_pct, _conf_played and
+        _overall_pct already are.
+      rationale: >-
+        Those same dicts become the published JSON. An un-prefixed, un-stripped is_champion would
+        silently become a new field in the artifact contract -- the precise drift class the
+        requirements warn about, self-inflicted. No acceptance criterion asks for a visible
+        champion marker, so internal-and-stripped is the intent.
     - id: "K5"
       decision: "Add a nullable `playoff_round` field to the cell, carrying playoff_round_name."
       rationale: >-
         The frontend needs to know a cell is a playoff game to badge it. The alternative is
         string-matching "College Football Playoff" in game_name, which couples presentation to a
         label we intend to shorten in the very same pass. A round name is data; deriving it in the
-        frontend from prose is not.
+        frontend from prose is not. REVISED after review: the TypeScript field must be declared
+        OPTIONAL as well as nullable (playoff_round?: string | null), mirroring rank and division,
+        which carry a comment explaining exactly this -- payloads published before the field
+        existed are a live, reachable case, and only 2025 and 2026 get republished.
     - id: "K6"
-      decision: "Bowl-name shortening lives in personal-site, not cfb-rankings."
+      decision: >-
+        REVERSED after review. Bowl-name shortening lives in cfb-rankings, and personal-site
+        additionally enforces a hard single-line CSS clamp so an unmapped name can never wrap.
       rationale: >-
-        Consistent with the precedent already set by src/lib/conferences.ts, which maps artifact
-        tokens to display names on the site side. The artifact keeps the full official name; the
-        site decides how to abbreviate it. That also keeps the artifact contract stable.
+        My precedent was backwards. conferences.ts does the OPPOSITE transformation: the artifact
+        already ships a short curated token and the site expands it. The real analog is
+        CONFERENCE_DISPLAY_NAMES, which lives in artifacts/rankings.py -- in the data layer. And
+        bowls are a far worse fit for a static site-side map than eleven stable conference tokens:
+        roughly forty names whose sponsors change most offseasons. conferences.ts's
+        pass-the-token-through-unchanged fallback is right for a rare miss on a short label, but
+        applied to bowls it means every newly-sponsored bowl renders its full long name again,
+        silently reintroducing the row-height bug this whole pass exists to fix, with no warning
+        and no test. So: map in the data layer, and make the CSS clamp -- not the mapping -- the
+        actual guarantee behind AC6.
     - id: "K7"
-      decision: "The short label is rendered with the full name in both `title` and an aria-label, on a focusable element."
+      decision: >-
+        REVISED after review. Screen readers get the full name via the file's existing
+        role="img" + aria-label pattern, with NO added focusability. Sighted keyboard users get a
+        CSS tooltip shown on :hover AND :focus-visible.
       rationale: >-
-        AC7. A title attribute alone is mouse-only. Making the cell's label focusable and
-        labelled means keyboard and screen-reader users reach the full name too. Touch users get
-        it on tap via the same focus path.
+        The first draft was wrong on the mechanics: a native title attribute does not open on
+        keyboard focus in any evergreen browser, so making the element focusable would not have
+        satisfied AC7 for sighted keyboard users -- the very group AC7 names. It would also have
+        added a tab stop to potentially every postseason cell in a table that is already dense,
+        which is a real keyboard-navigation regression. The neutral-site "vs*" marker in this same
+        file already solves the screen-reader half correctly with role="img" and aria-label on a
+        plain span, reachable by a virtual cursor and by explore-by-touch without any tab stop.
     - id: "K8"
       decision: "Seed-aware bye text is conditional on B0 and falls back to a plain CFP Bye."
       rationale: >-
@@ -92,9 +142,10 @@ execution_batches:
         title: "Exclude the championship game from conference records"
         objective: >-
           Move the identify_conference_championship_games call above compute_standings in
-          build_schedule_payload. Add an optional champ_game_ids parameter to compute_standings
-          and compute_team_records, defaulting to None so no existing caller changes. Exclude
-          those game_ids from the conf_rows tally only -- overall records must be untouched.
+          build_schedule_payload (review confirmed the reorder is inert -- nothing between the two
+          call sites relates to either). Then exclude the identified game from the DISPLAYED
+          conf_record only, leaving the records dict that compute_conference_championship_status
+          consumes untouched -- see K1. Overall win/loss records must not change either.
         assigned_domain: "data-engineer"
         model_routing: {task_profile: implementation, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", escalation_tier: frontier}
         owned_scope: ["artifacts/schedule_standings.py", "artifacts/schedule.py (the reorder and the pass-through only)"]
@@ -103,21 +154,31 @@ execution_batches:
         expected_validation:
           - "Duke 6-2 and Virginia 7-1 on a 2025-shaped fixture."
           - "A conference with no identified championship game is unchanged."
+          - >-
+            An IDENTIFIED-BUT-UNPLAYED championship game does not change any team's
+            championship_status. This is the K1 bug; prove it cannot recur.
       - id: "T2"
         title: "Sort conference champions first"
         objective: >-
           Derive the champion per conference in build_schedule_payload from the identified game's
-          winning row, inject it into the entries, and make it the top sort tier in
-          _sort_conference_teams -- reading it with a default so hand-built entries in existing
-          tests keep working. Include it in the head-to-head grouping key per K4.
+          RESOLVED winning row -- an unplayed identified game yields no champion, and that
+          conference sorts exactly as it does today. Inject it as _is_champion, read it with a
+          default so hand-built entries in existing tests keep working, make it the top sort tier
+          and include it in the head-to-head grouping key (K4), and delete it before the entries
+          are returned (K10). Also order division blocks so the champion's division renders first
+          (K9) -- this is outside _sort_conference_teams and is what actually makes AC2 true for a
+          divisional conference.
         assigned_domain: "data-engineer"
         model_routing: {task_profile: implementation, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", escalation_tier: frontier}
-        owned_scope: ["artifacts/schedule.py (_sort_conference_teams and the entry construction)"]
+        owned_scope:
+          - "artifacts/schedule.py: _sort_conference_teams, the entry construction, AND the division enumeration/concatenation loop"
         dependencies: ["T1"]
         expected_validation:
           - "Duke above Virginia despite the worse conference record."
           - "Independents and championship-less conferences order exactly as before."
           - "A champion is not swapped below a team that beat it in the regular season."
+          - "In a divisional conference, the champion is first in the WHOLE conference, and every division stays contiguous."
+          - "_is_champion does not appear anywhere in the published JSON."
       - id: "T3"
         title: "Tests for both, including the behaviour that had none"
         objective: >-
@@ -125,7 +186,11 @@ execution_batches:
           Add fixtures with a genuinely identified championship game -- note the existing
           division fixture was deliberately built to AVOID identifying one, so a new fixture is
           required. Cover the champion sort, the head-to-head interaction, championship-less
-          conferences, in-progress seasons and Independents. Mutation-check each.
+          conferences, in-progress seasons and Independents. Three fixtures review specifically
+          called out as missing: an identified-but-UNPLAYED championship game (guards the K1
+          elimination bug and the no-champion-yet sort), a DIVISIONAL conference whose champion is
+          in the alphabetically-later division (guards K9), and an assertion that _is_champion is
+          absent from the published payload (guards K10). Mutation-check each.
         assigned_domain: "data-engineer"
         model_routing: {task_profile: test_design, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5"}
         owned_scope: ["tests/test_conference_championship_records.py (new)"]
@@ -141,11 +206,24 @@ execution_batches:
           In _build_team_weeks, when the cfp-r1-bowls slot has no real row for a team but
           cfp-quarterfinals does, emit a bye cell with a new distinct status instead of the bowl
           eligibility placeholder. Add a nullable playoff_round to every cell, carrying
-          playoff_round_name for real postseason games and null elsewhere. Seed text per K8 and
-          B0's outcome.
+          playoff_round_name for real postseason games and null elsewhere.
+          B0 RESOLVED the seed question: GamePlayoff on /games carries home_seed and away_seed
+          alongside the four keys get_games.py already reads, so ingest those two and derive a bye
+          team's seed from its quarterfinal row. Confidence is schema-level, not payload-level --
+          the sandbox cannot call CFBD -- so the label must degrade: "Bye (No. 1)" when a seed is
+          present, plain "CFP Bye" when it is not. That way an unpopulated field costs a nicety
+          rather than shipping a wrong number.
+          B0 also found a real bug to fix while here: GamePlayoff has no round_order field at all
+          -- it lives on PlayoffMatchup, a different endpoint -- so get_games.py has been reading a
+          key that cannot exist, which is why playoff_round_order is NULL for every season. The
+          field that does exist and was presumably intended is `round`.
         assigned_domain: "data-engineer"
         model_routing: {task_profile: implementation, uncertainty: medium, consequence: medium, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5"}
-        owned_scope: ["artifacts/schedule.py (cell constructors and _build_team_weeks)", "tests/test_postseason_slots.py"]
+        owned_scope:
+          - "artifacts/schedule.py (cell constructors and _build_team_weeks)"
+          - "database/get_games.py (extract home_seed/away_seed; source round_order from `round`)"
+          - "database/migrations/0005_playoff_seeds.sql (new)"
+          - "tests/test_postseason_slots.py"
         dependencies: ["T3"]
         expected_validation:
           - "Indiana 2025 yields the bye status; a non-playoff team still yields its eligibility placeholder."
@@ -157,11 +235,18 @@ execution_batches:
       - id: "T5"
         title: "Short labels, reachable full names, CFP badge, bye state"
         objective: >-
-          Add src/lib/bowls.ts mapping full names to short display names, mirroring
-          conferences.ts. Render one line in the cell with the full name reachable per K7. Badge
-          cells whose playoff_round is non-null. Add the new bye status to STATUS_TEXT_BY_SLOT.
-          Every one of these changes must be made in BOTH ScheduleGrid.astro and the hand-mirrored
-          client script in index.astro -- nothing enforces they agree.
+          Render the short label the artifact now supplies (K6 moved the mapping into
+          cfb-rankings), clamped to a single line by CSS so an unmapped or newly-sponsored name can
+          never wrap -- the clamp, not the mapping, is what guarantees AC6. Full name reachable per
+          K7: role="img" + aria-label for screen readers, and a CSS tooltip on :hover and
+          :focus-visible for sighted keyboard users. No new tab stops. Badge cells whose
+          playoff_round is non-null; declare it optional AND nullable per K5. Add the new bye
+          status to STATUS_TEXT_BY_SLOT. Every one of these must be made in BOTH
+          ScheduleGrid.astro and the hand-mirrored client script in index.astro -- nothing enforces
+          they agree, and drift here is this repo's most repeated defect.
+          Build a local fixture payload first, since B4 has not run yet: hand-edit a copy of the
+          2025 payload to carry a bye cell, a playoff_round-badged cell, and a deliberately
+          unmapped long bowl name. Without it, AC6 through AC9 cannot be checked until B4.
         assigned_domain: "frontend-engineer"
         model_routing: {task_profile: implementation, uncertainty: medium, consequence: medium, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5"}
         owned_scope: ["src/lib/bowls.ts (new)", "src/components/ScheduleGrid.astro", "src/pages/projects/cfb-rankings/index.astro (client mirror only)"]
@@ -178,8 +263,10 @@ execution_batches:
         title: "Republish 2025 and verify end to end"
         objective: >-
           After the cfb-rankings PR merges, dispatch publish-schedule-artifact.yml for 2025 (dry
-          run, verify, then publish), then rebuild the site branch and confirm every acceptance
-          criterion against the real preview.
+          run, verify, then publish). 2026 needs NO manual dispatch -- the weekly cron republishes
+          the current season itself. Re-ingest 2025 postseason first so the new seed columns are
+          populated, otherwise every bye falls back to the plain label. Then rebuild the site
+          branch and confirm every acceptance criterion against the real preview.
         assigned_domain: "platform-engineer"
         model_routing: {task_profile: orchestration, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: frontier, requested_reasoning: high, provider_model: "Claude Opus 5"}
         dependencies: ["T5", "user merge"]
@@ -203,9 +290,22 @@ risks:
   - id: "R4"
     risk: "Excluding the championship game changes conference records for every season, not just 2025."
     mitigation: >-
-      Intended -- it is a correctness fix, not a 2025 patch. But it means every published season's
-      artifact is now stale in this respect, and only 2025 and 2026 are republished. Worth stating
-      to the owner rather than discovering later.
+      CORRECTED after review -- my first draft overstated this. schedule/index.json currently lists
+      exactly two seasons, 2026 and 2025; there is no historical backfill to go stale. 2025 is
+      republished explicitly in B4, and 2026 self-heals on the next weekly cron, because main.py
+      calls publish_schedule_artifact for the current season on every run. So no inconsistency
+      across the season selector materialises today. The exposure returns the moment a historical
+      backfill is added, which is worth remembering then rather than alarming about now.
 
-review: {status: draft, loop_count: 0, notes: []}
+review:
+  status: "revised after cycle 1"
+  loop_count: 1
+  notes:
+    - "Reviewer decision: revise. The three mechanics I asked it to stress-test all held; the damage was in two bugs it found unprompted."
+    - "K1 reversed: threading the exclusion into compute_team_records would have marked championship-game participants Eliminated during championship week, every season."
+    - "K9 added: the champion sort as scoped could not satisfy AC2 for a divisional conference, because division blocks concatenate outside _sort_conference_teams."
+    - "K10 added: is_champion would have leaked into the published JSON; the neighbouring scratch fields are all underscore-prefixed and deleted."
+    - "K6 reversed: my precedent pointed the wrong way, and a silent pass-through on an unmapped bowl would reintroduce the row-height bug every offseason."
+    - "K7 corrected: a title attribute does not fire on keyboard focus, so the first draft failed the very criterion it cited."
+    - "R4 corrected downward: only two seasons exist, and 2026 self-heals via cron."
 checkpoint: {required_before_execution: true, status: pending}
