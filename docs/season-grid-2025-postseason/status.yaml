@@ -37,9 +37,17 @@ branching:
   note: "Same branch name in both repos; this initiative produces one PR per repo."
 
 summary:
-  current_focus: "Closing code review cycle 1 on PR #14. The blocker: nothing in the publish path can tell a successful publish from a skipped one."
-  last_completed: "B1 implemented (suite 81 -> 118) and PR #14 opened; frontier-tier code review returned five blockers."
-  current_blocker: ""
+  current_focus: >-
+    B2 verification. The 2025 dry run passed every check available offline; the independent SQL
+    tally across all 136 teams is blocked on the Supabase connector reauthorising.
+  last_completed: >-
+    PR #14 merged and dispatched dry_run=true for 2025. Payload verified offline: 0 record/cell
+    mismatches across 136 teams, Georgia Tech now 9-4 (was 10-3), Miami's four-round CFP run and
+    Indiana's 16-0 title exact, postseason columns reconcile to 46 games.
+  current_blocker: >-
+    Supabase connector disconnected mid-session. AC3's independent SQL tally cannot run until the
+    user reauthorises it via claude.ai connector settings; this session cannot run the OAuth flow.
+    The user chose to complete the tally before publishing rather than proceed on current evidence.
 
 artifacts:
   requirements: "docs/season-grid-2025-postseason/requirements.yaml"
@@ -49,7 +57,7 @@ artifacts:
 pr:
   number: 14
   url: "https://github.com/wmentrekin/cfb-rankings/pull/14"
-  status: "open; code review cycle 1 fixes in progress"
+  status: "merged"
 
 agents:
   - id: "orchestrator"
@@ -97,6 +105,25 @@ decisions:
     decision: >-
       The personal-site un-gate PR must merge only after the regenerated artifact is verified,
       otherwise removing the guard ships Georgia Tech 10-3 to the live site.
+
+verification_b2:
+  dry_run_at: "2026-09-10T19:30:58Z"
+  payload: "136 teams, 11 conferences, 21 columns identical across every team"
+  ac3_offline: "0 mismatches between each team's stated record and its own cells, across all 136 teams"
+  ac3_sql: "BLOCKED -- Supabase connector disconnected"
+  ac4: "Georgia Tech 9-4, Pop-Tarts Bowl loss to BYU 21-25. The 10-3 is gone."
+  ac3b: >-
+    Miami's CFP run exact (Texas A&M 10-3, Cotton 24-14, Fiesta 31-27, title 21-27);
+    Indiana 16-0 with the title win 27-21. Both match the rows read from the database earlier.
+  reconciliation: "39 + 4 + 2 + 1 = 46 postseason games, matching the database count exactly"
+  phase_2_evidence:
+    - >-
+      The Bowls column carries 36 distinct game names, 9 to 41 characters, in a 6rem column --
+      Xbox Bowl and Rate Bowl at 9, Radiance Technologies Independence Bowl at 39, College
+      Football Playoff First Round Game at 41.
+    - >-
+      The pre-bowl rank effect is stronger than expected in the abstract: Miami played in the
+      national championship game and carries rank 17. Indiana 1, Ole Miss 6, Georgia Tech 37.
 
 early_findings:
   - id: "F1"
@@ -158,8 +185,10 @@ model_routing:
       enforcement claim.
 
 next_action: >-
-  Land review cycle 1 fixes, hand PR #14 to the user, then on merge run the dry run, the
-  every-team record check, the fixed postseason cell checks, the real publish and the R2 read-back
-  before opening the personal-site un-gate PR.
+  Wait for the Supabase connector. Then run docs-staged records.sql, feed the rows to
+  scratchpad/verify_records.py against the dry-run payload, and if AC3 passes dispatch
+  publish-schedule-artifact.yml with season=2025 dry_run=false. The script's R2 read-back and the
+  workflow's confirmation-marker step prove the publish landed. Only then open the personal-site
+  un-gate PR.
 next_recommended_command: "$work"
 user_input_needed: false
