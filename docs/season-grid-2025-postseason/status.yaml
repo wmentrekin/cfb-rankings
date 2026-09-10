@@ -1,7 +1,7 @@
 artifact: status
 feature: "season-grid-2025-postseason"
 mode: "large-initiative"
-stage: "planning"
+stage: "execution"
 owner_skill: work
 
 objective: >-
@@ -37,8 +37,8 @@ branching:
   note: "Same branch name in both repos; this initiative produces one PR per repo."
 
 summary:
-  current_focus: "Planning: phase 1 is correctness and visibility only; formatting is deferred to phase 2 by the user's sequencing decision."
-  last_completed: "Discovery across both repos; requirements and plan drafted."
+  current_focus: "Execution batch B1: the season-scoped publish script, its workflow, and the characterization tests."
+  last_completed: "Plan review cycle 1 closed; user approved at the pre-execution checkpoint."
   current_blocker: ""
 
 artifacts:
@@ -63,14 +63,14 @@ agents:
     routing_enforced: true
     escalation_count: 0
     status: "active"
-    stage: "planning"
+    stage: "execution"
     task: "Coordinate discovery across both repos and the live database."
     last_update: "2026-09-10"
     blocker: ""
 
 loops:
   planning_review:
-    count: 0
+    count: 1
     max: 2
   execution_verification:
     count: 0
@@ -78,7 +78,7 @@ loops:
 
 checkpoint:
   pre_execution_required: true
-  pre_execution_status: pending
+  pre_execution_status: "proceed (user-confirmed)"
   options: [proceed, revise_plan, narrow_scope, stop]
 
 blockers: []
@@ -89,6 +89,10 @@ decisions:
     decision: "User: keep CFP first round merged with the bowls column, distinguish it visually instead of adding a column. Phase 2."
   - id: "D3"
     decision: "User: strip sponsor prefixes from bowl names to their canonical short form. Phase 2."
+  - id: "D5"
+    decision: >-
+      User: leave the week-15 pre-bowl rank behaviour alone for now and judge it from the phase-2
+      screenshots rather than changing the pipeline or labelling it pre-emptively.
   - id: "D4"
     decision: >-
       The personal-site un-gate PR must merge only after the regenerated artifact is verified,
@@ -149,6 +153,6 @@ model_routing:
   unresolved_limitations:
     - "Subagents inherit the main conversation's extended-thinking setting; per-agent reasoning level is advisory."
 
-next_action: "Reviewer critique of the plan, then the pre-execution checkpoint."
+next_action: "Spawn data-engineer for B1 (T1-T2) on work/season-grid-2025-postseason."
 next_recommended_command: "$work"
 user_input_needed: false
