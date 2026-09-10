@@ -1,7 +1,7 @@
 artifact: status
 feature: "season-grid-postseason-format"
 mode: "large-initiative"
-stage: "execution"
+stage: "verification"
 owner_skill: work
 
 objective: >-
@@ -42,19 +42,28 @@ branching:
   note: "Same name in both repos; one PR per repo. The personal-site PR is stacked on PR #23."
 
 summary:
-  current_focus: "Execution batch B1: conference records excluding the title game, and the champion-first sort."
-  last_completed: "Discovery, platform research on CFP seeds, plan review cycle 1 (two correctness bugs found and closed), owner approved at the checkpoint."
+  current_focus: >-
+    Both PRs open and reviewed. B4 -- re-ingest, republish, verify -- is blocked on the owner
+    applying two migrations and merging.
+  last_completed: >-
+    B1, B2 and B3 implemented; code review cycle 1 closed (two blockers, three coverage gaps).
+    cfb-rankings suite 128 -> 184; Season Grid row-height spread 47.30px -> 3.30px.
   current_blocker: ""
 
 artifacts:
   requirements: null
   plan: null
-  implementation_report: null
+  implementation_report: "docs/season-grid-postseason-format/implementation-report.yaml"
 
 pr:
-  number: null
-  url: null
-  status: "not_opened"
+  - repo: "cfb-rankings"
+    number: 15
+    url: "https://github.com/wmentrekin/cfb-rankings/pull/15"
+    status: "open, reviewed, fix cycle 1 closed"
+  - repo: "personal-site"
+    number: 24
+    url: "https://github.com/wmentrekin/personal-site/pull/24"
+    status: "open, stacked on PR #23"
 
 agents:
   - id: "orchestrator"
@@ -67,14 +76,14 @@ agents:
     routing_enforced: "model only; reasoning inherited from the main conversation"
     escalation_count: 0
     status: "active"
-    stage: "execution"
+    stage: "verification"
     task: "Coordinate B1-B3, then the republish."
     last_update: "2026-09-10"
     blocker: ""
 
 loops:
   planning_review: {count: 1, max: 2}
-  execution_verification: {count: 0, max: 2}
+  execution_verification: {count: 1, max: 2}
 
 checkpoint:
   pre_execution_required: true
@@ -165,6 +174,9 @@ model_routing:
   unresolved_limitations:
     - "Model selection per subagent is enforced; reasoning level is inherited from the main conversation and is advisory."
 
-next_action: "Spawn data-engineer for B1 (T1-T3) on work/season-grid-postseason-format."
+next_action: >-
+  Owner applies migrations 0005 then 0006 and merges cfb-rankings#15 -- that order is not
+  optional, since emitting the seed columns against a database lacking them stops ingest dead.
+  Then re-ingest 2025 postseason, republish the artifact, merge personal-site#23 and #24, verify.
 next_recommended_command: "$work"
-user_input_needed: false
+user_input_needed: true
