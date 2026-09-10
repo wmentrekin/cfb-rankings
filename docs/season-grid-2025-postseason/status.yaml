@@ -1,0 +1,165 @@
+artifact: status
+feature: "season-grid-2025-postseason"
+mode: "large-initiative"
+stage: "verification"
+owner_skill: work
+
+objective: >-
+  Publish a correct 2025 Season Grid artifact, establish why the 2025 records were wrong and fix
+  it, remove personal-site's hard-coded 2025 exclusion once verified, and use 2025's complete
+  postseason to refine how bowl games and playoff rounds render in the Season Grid.
+
+repository_sync:
+  completed_before_work: true
+  checked_at: "2026-09-10"
+  repositories:
+    - path: "/home/user/cfb-rankings"
+      remote: "https://github.com/wmentrekin/cfb-rankings"
+      relevant_branch: "main"
+      local_commit_before: "32016ae148c615382fa338a4d2c7c2da860b5370"
+      remote_commit_after_fetch: "87638faf2aa4c4541c970a5d8b06485d2aed7565"
+      local_commit_after: "87638faf2aa4c4541c970a5d8b06485d2aed7565"
+      result: "updated"
+      notes: >-
+        Was on work/manual-result-overrides (PR #13, merged; remote branch deleted). Tree clean and
+        the branch was fully contained in origin/main, so switching lost nothing.
+    - path: "/home/user/personal-site"
+      remote: "https://github.com/wmentrekin/personal-site"
+      relevant_branch: "main"
+      local_commit_before: "500ed52d12ee5700c1130e6e690804820f7870d7"
+      remote_commit_after_fetch: "500ed52d12ee5700c1130e6e690804820f7870d7"
+      local_commit_after: "500ed52d12ee5700c1130e6e690804820f7870d7"
+      result: "current"
+      notes: "Clean tree on main, already aligned."
+
+branching:
+  branch_name: "work/season-grid-2025-postseason"
+  note: "Same branch name in both repos; this initiative produces one PR per repo."
+
+summary:
+  current_focus: "Closing code review cycle 1 on PR #14. The blocker: nothing in the publish path can tell a successful publish from a skipped one."
+  last_completed: "B1 implemented (suite 81 -> 118) and PR #14 opened; frontier-tier code review returned five blockers."
+  current_blocker: ""
+
+artifacts:
+  requirements: "docs/season-grid-2025-postseason/requirements.yaml"
+  plan: "docs/season-grid-2025-postseason/plan.yaml"
+  implementation_report: "docs/season-grid-2025-postseason/implementation-report.yaml"
+
+pr:
+  number: 14
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/14"
+  status: "open; code review cycle 1 fixes in progress"
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    task_profile: "orchestration"
+    requested_model_tier: "frontier"
+    requested_reasoning: "high"
+    requested_provider_model: "Claude Opus 5"
+    actual_model: "claude-opus-5"
+    actual_reasoning: "high"
+    routing_enforced: true
+    escalation_count: 0
+    status: "active"
+    stage: "verification"
+    task: "Coordinate discovery across both repos and the live database."
+    last_update: "2026-09-10"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 1
+    max: 2
+  execution_verification:
+    count: 1
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: "proceed (user-confirmed)"
+  options: [proceed, revise_plan, narrow_scope, stop]
+
+blockers: []
+decisions:
+  - id: "D1"
+    decision: "User: get 2025 visible first, then design the formatting against real screenshots rather than blind."
+  - id: "D2"
+    decision: "User: keep CFP first round merged with the bowls column, distinguish it visually instead of adding a column. Phase 2."
+  - id: "D3"
+    decision: "User: strip sponsor prefixes from bowl names to their canonical short form. Phase 2."
+  - id: "D5"
+    decision: >-
+      User: leave the week-15 pre-bowl rank behaviour alone for now and judge it from the phase-2
+      screenshots rather than changing the pipeline or labelling it pre-emptively.
+  - id: "D4"
+    decision: >-
+      The personal-site un-gate PR must merge only after the regenerated artifact is verified,
+      otherwise removing the guard ships Georgia Tech 10-3 to the live site.
+
+early_findings:
+  - id: "F1"
+    finding: >-
+      CORRECTED. The first version of this finding was wrong: it was written from a partial query
+      that surfaced only First Round rows, and the error propagated into a research handoff.
+      Across all 11 CFP games, playoff_bowl_name is: "College Football Playoff First Round Game"
+      for the 4 first-round games, the REAL bowl for the quarterfinals (Rose, Sugar, Cotton,
+      Orange) and semifinals (Fiesta, Peach), and the full sponsored title for the championship.
+      The 35 ordinary bowls have playoff_bowl_name NULL and their sponsor name in notes.
+      _game_name_for_row is `playoff_bowl_name or notes`, so naming is largely correct today --
+      only the four first-round labels and the very long championship label are awkward.
+  - id: "F2"
+    finding: >-
+      RESOLVED as a non-issue. playoff_round_order is NULL for all 11 CFP games, but nothing reads
+      it. _bucket_cfp_slot matches substrings of playoff_round_name against four hardcoded slots,
+      and 2025's names (First Round / Quarterfinal / Semifinal / National Championship) all bucket
+      correctly. No backfill needed.
+  - id: "F5"
+    finding: >-
+      There is NO postseason-specific CSS anywhere in personal-site -- not one selector targets a
+      bowl, playoff or championship cell. Every postseason column is a plain 6rem week column with
+      class sg-th. The four CFP first-round games also share the "cfp-r1-bowls" column with all 35
+      ordinary bowls, so a playoff game currently renders identically to any minor bowl.
+  - id: "F6"
+    finding: >-
+      playoff_bracket_slot (FR1-FR4, QF1-QF4, SF1-SF2, CH) is fully populated for 2025 and
+      entirely unused by any code. It is the natural key for bracket ordering.
+  - id: "F7"
+    finding: >-
+      _bucket_cfp_slot and _game_name_for_row have no test coverage at all, and no test asserts
+      compute_team_records counts postseason games toward a record.
+  - id: "F8"
+    finding: >-
+      The stale artifact is confirmed: personal-site's on-disk schedule/2025/latest.json was
+      generated 2026-09-06 -- before PRs #11 and #12 -- and does say Georgia Tech 10-3. The live
+      schedule_grid gives 9-4 over the same 13 distinct game ids, so one game's status differs
+      rather than a row being double counted.
+  - id: "F3"
+    finding: >-
+      2025 postseason is complete: 46 games, all 46 with a winner. 11 are CFP (4 first round,
+      4 quarterfinals, 2 semifinals, 1 final), 35 are ordinary bowls.
+  - id: "F4"
+    finding: >-
+      The `ratings` table has Georgia Tech at 9-3 after week 15, not the 10-3 personal-site's
+      exclusion comment cites. The Season Grid computes its own records from schedule_grid via
+      artifacts/schedule_standings.py, so the discrepancy is probably in that path, not in ratings.
+      Needs confirmation.
+
+model_routing:
+  provider: "Claude Code / Anthropic"
+  provider_map_verified_at: "2026-09-07"
+  substitutions: []
+  unresolved_limitations:
+    - >-
+      Subagents inherit the main conversation's extended-thinking setting, so per-agent reasoning
+      level is advisory even though model selection is enforced. plan.yaml's routing_enforced:true
+      overstates this; corrected in implementation-report.yaml rather than left as an unsupported
+      enforcement claim.
+
+next_action: >-
+  Land review cycle 1 fixes, hand PR #14 to the user, then on merge run the dry run, the
+  every-team record check, the fixed postseason cell checks, the real publish and the R2 read-back
+  before opening the personal-site un-gate PR.
+next_recommended_command: "$work"
+user_input_needed: false

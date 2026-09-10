@@ -1,0 +1,124 @@
+artifact: requirements
+feature: "season-grid-2025-postseason"
+mode: "large-initiative"
+status: draft
+owner_skill: work
+
+summary:
+  problem: >-
+    The 2025 Season Grid is hidden from the site. schedule/2025/latest.json exists in R2 but was
+    generated 2026-09-06, before the standings and postseason work in PRs #11 and #12 landed, and
+    it reports Georgia Tech 10-3. personal-site therefore hard-codes 2025 out of the season
+    selector (UNVERIFIED_SCHEDULE_SEASONS). There is no narrow way to republish a past season's
+    schedule artifact: the only entry points run the whole pipeline, including a CFBD re-ingest,
+    the rating model, and a ratings/rankings write.
+  motivation: >-
+    2025 is the only complete season with a full postseason -- 46 games, 4 CFP first round,
+    4 quarterfinals, 2 semifinals, a final, and 35 ordinary bowls. It is the test case for
+    refining how bowls and playoff rounds render, which cannot be judged against 2026's empty
+    postseason.
+  requested_outcome: >-
+    Phase 1 (this pass): a correct, verified 2025 artifact published, the season un-gated, and
+    screenshots of the postseason columns as they render today. Phase 2 (next pass): the
+    formatting refinements those screenshots inform.
+
+goals:
+  - "A narrow, reusable way to publish one season's schedule artifact without ingest, model, or ratings writes."
+  - "Verify the regenerated 2025 payload before it is trusted -- specifically that records match the database."
+  - "Publish it, then remove personal-site's 2025 exclusion."
+  - "Capture screenshots of the 2025 postseason columns to drive the phase-2 formatting pass."
+
+non_goals:
+  - "Any postseason formatting change. Deferred to phase 2 by the user's explicit sequencing decision."
+  - "Splitting CFP first round into its own column -- the user chose to keep it merged and distinguish it visually instead (phase 2)."
+  - "Sponsor-stripping bowl names -- decided (strip), but implemented in phase 2."
+  - "Re-running the 2025 rating model or touching the 2025 ratings/rankings artifacts."
+  - "Backfilling playoff_round_order. Nothing reads it; _bucket_cfp_slot matches playoff_round_name substrings."
+
+constraints:
+  technical:
+    - >-
+      2025's ranks in the payload will be week-15, pre-bowl ranks: _fetch_team_ranks reads
+      MAX(week) from ratings, and 2025 ratings stop at week 15 because the model only reads
+      rankings_games. Records and cell statuses reflect the postseason; ranks do not. Every season
+      behaves this way. Expected, not a defect.
+    - >-
+      publish_schedule_artifact(season) reads schedule_grid/teams/ratings/non_fbs_teams and writes
+      R2 only -- no ingest, no model (artifacts/schedule.py:1181-1249). It is the correct narrow
+      primitive; main.py --year 2025 is not, because it re-ingests from CFBD, runs the model, and
+      rewrites ratings.
+    - >-
+      main.py's resolve_week_from_starts derives the week from TODAY's date, so running it for a
+      past season would resolve a nonsensical week. Another reason to avoid that path.
+    - >-
+      R2 credentials exist only as GitHub secrets, so publishing must happen from a workflow;
+      this session cannot write to R2 or read it back directly.
+    - >-
+      build_schedule_index rebuilds schedule/index.json by listing the bucket, so publishing 2025
+      re-lists it automatically -- and equally, a bad object stays listed until deleted. This is
+      exactly why the site-side guard exists.
+    - >-
+      compute_team_records counts every schedule_grid row with status win/loss and applies NO
+      season_type filter, so postseason counts toward the record by design. Georgia Tech is
+      therefore 9-4 (9-3 regular + a bowl loss), not the 9-3 that `ratings` shows.
+    - "npm run dev does not invoke prebuild, so the grid can be driven locally against on-disk 2025 data with no R2 credentials."
+  process:
+    - "No direct commits to main in either repo; a feature branch and PR per repo."
+    - "Independent review before handoff. The orchestrator does not merge."
+    - "Commits authored as wmentrekin <wmentrekin@gmail.com>, retaining the Co-Authored-By trailer."
+
+assumptions:
+  - id: "A1"
+    assumption: >-
+      Regenerating 2025 from current code yields correct records. Evidence: the same 13 distinct
+      games produce 9-4 in schedule_grid today, while the stale artifact says 10-3 over the same
+      13 games -- one game's status differs, not a duplicate row.
+    confidence: >-
+      Outcome likely; ROOT CAUSE UNCONFIRMED. An earlier draft asserted the artifact predated a
+      standings fix. Review found no commit supporting that: schedule_grid's status derivation has
+      never been modified since creation, and compute_team_records' win/loss tally is unchanged
+      since its first commit. The cause may be data timing instead. This does not change the plan,
+      because verification is root-cause-agnostic -- but the story must not be told as fact.
+  - id: "A2"
+    assumption: >-
+      Georgia Tech is representative. The guard's comment names only one team, so the verification
+      must compare EVERY team's record against the database, not just that one.
+    confidence: "explicitly not assumed -- drives AC3"
+
+acceptance_criteria:
+  - id: "AC1"
+    criterion: "A script publishes one named season's schedule artifact, and does nothing else. It supports a dry run that builds and writes the payload without uploading."
+  - id: "AC2"
+    criterion: "A workflow_dispatch workflow runs it for a given season and uploads the generated payload as a build artifact so it can be inspected without R2 read access."
+  - id: "AC3"
+    criterion: >-
+      Every team's record in the regenerated 2025 payload matches an independent SQL tally from
+      schedule_grid. Not a spot check of Georgia Tech.
+  - id: "AC3b"
+    criterion: >-
+      A fixed set of postseason cells matches the database on opponent, status and column:
+      Georgia Tech's bowl loss, Miami's four-round CFP run across all four postseason columns, and
+      Indiana's championship win. An aggregate record match alone cannot catch two compensating
+      errors, a wrong opponent, or a cell bucketed into the wrong CFP column.
+  - id: "AC3c"
+    criterion: >-
+      The payload actually published matches the payload that was verified -- the real run's
+      output diffed against the dry run's, ignoring generated_at_utc.
+  - id: "AC4"
+    criterion: "Georgia Tech specifically reads 9-4, and the 10-3 is gone."
+  - id: "AC5"
+    criterion: "schedule/2025/latest.json in R2 is the regenerated payload, and schedule/index.json still lists 2025."
+  - id: "AC6"
+    criterion: "UNVERIFIED_SCHEDULE_SEASONS is removed from personal-site and 2025 is selectable in the Season Grid."
+  - id: "AC7"
+    criterion: "The existing cfb-rankings suite stays green, and the new publish path has tests."
+  - id: "AC8"
+    criterion: "Screenshots of the 2025 postseason columns (Bowls, CFP Quarterfinals, CFP Semifinals, CFP National Championship) captured for the phase-2 pass."
+
+open_questions:
+  - id: "Q1"
+    question: "Phase 2 only: how strongly should a playoff cell differ from a bowl cell in the shared column?"
+    blocking: false
+
+ready_for_planning: true
+planning_blockers: []
