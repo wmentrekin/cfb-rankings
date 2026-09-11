@@ -12,12 +12,14 @@ The Pac-12 addition verifies that:
 
 Run: python -m pytest tests/ -q   (or: python tests/test_conference_sort_and_pac12.py)
 """
+import itertools
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from artifacts.schedule import _sort_conference_teams  # noqa: E402
+from artifacts.schedule import _sort_conference_teams, build_schedule_payload  # noqa: E402
 from artifacts.schedule_standings import (  # noqa: E402
     QUALIFYING_CHAMPIONSHIP_CONFERENCES,
     MIN_QUALIFYING_MEMBERS,
@@ -140,6 +142,119 @@ def test_pac12_qualifies_dynamically():
     # we just verify the dict entry exists and MIN_QUALIFYING_MEMBERS is reasonable
     assert "Pac-12" in QUALIFYING_CHAMPIONSHIP_CONFERENCES
     assert MIN_QUALIFYING_MEMBERS == 4, f"MIN_QUALIFYING_MEMBERS should be 4, got {MIN_QUALIFYING_MEMBERS}"
+
+
+# ---------------------------------------------------------------------------
+# T2/K7: a null rank sorts LAST, not first, among otherwise fully-tied teams.
+# ---------------------------------------------------------------------------
+def test_none_rank_sorts_last_among_tied_teams():
+    """Python can't compare None to an int at all -- the large sentinel in _sort_conference_teams
+    is what makes this deterministic. All three entries below tie on conf_pct (1-1), _conf_played
+    (True) and placement pct (also 1-1, rows=[] so nothing is subtracted from it), so rank is the
+    only thing left to decide the order."""
+    entries = [
+        _entry("Team-NoRank", 1, 1, 1, 1),
+        _entry("Team-Rank5", 1, 1, 1, 1),
+        _entry("Team-Rank10", 1, 1, 1, 1),
+    ]
+    entries[0]["rank"] = None
+    entries[1]["rank"] = 5
+    entries[2]["rank"] = 10
+    rows = []
+    sorted_entries = _sort_conference_teams(entries, rows, 2026)
+    sorted_teams = [e["team"] for e in sorted_entries]
+    assert sorted_teams == ["Team-Rank5", "Team-Rank10", "Team-NoRank"], sorted_teams
+
+
+# ---------------------------------------------------------------------------
+# T2/K8 + K4-K7: the 2025 Pac-12 two-team remnant from the task brief. Washington State and
+# Oregon State play ONLY each other (a real two-team conference, per identify_conference_
+# championship_games' MIN_QUALIFYING_MEMBERS gate -- no championship game is ever identified for
+# it), split 1-1 -- issue 7's exact defect (a split decided by row-iteration order) would have
+# put whichever team's row happened to be scanned first ahead of the other. With the fix, the
+# split is a wash (K8) and Washington State's better overall record decides it instead.
+# ---------------------------------------------------------------------------
+_SEASON = 2025
+_PAC12 = "Pac-12"
+_PAC12_SEASON_START = date(2025, 8, 23)
+
+
+def _pac12_row(game_id, team, opponent, status, conference_game, season_type, week_offset):
+    return dict(
+        game_id=game_id,
+        season=_SEASON,
+        season_type=season_type,
+        team=team,
+        opponent=opponent,
+        conference=_PAC12,
+        conference_game=conference_game,
+        status=status,
+        start_date=(_PAC12_SEASON_START + timedelta(days=7 * week_offset)).isoformat() + " 19:00:00",
+        home_away="home",
+        neutral_site=False,
+    )
+
+
+def _pac12_two_team_rows():
+    game_id_iter = itertools.count(1)
+    rows = []
+
+    # The two meetings: Washington State wins the first (Nov 1 live), Oregon State wins the
+    # rematch (Nov 29 live) -- a clean 1-1 split, both conference_game=True.
+    wsu_win_id = next(game_id_iter)
+    rows.append(_pac12_row(wsu_win_id, "Washington State", "Oregon State", "win", True, "regular", 0))
+    rows.append(_pac12_row(wsu_win_id, "Oregon State", "Washington State", "loss", True, "regular", 0))
+    osu_win_id = next(game_id_iter)
+    rows.append(_pac12_row(osu_win_id, "Oregon State", "Washington State", "win", True, "regular", 1))
+    rows.append(_pac12_row(osu_win_id, "Washington State", "Oregon State", "loss", True, "regular", 1))
+
+    # Washington State: 5-5 non-conference regular season + 1-0 postseason -> 6-6 regular,
+    # 7-6 overall (matches the task brief exactly).
+    for w in range(5):
+        rows.append(_pac12_row(next(game_id_iter), "Washington State", f"WSU NonConf W{w}", "win", False, "regular", 2 + w))
+    for l in range(5):
+        rows.append(_pac12_row(next(game_id_iter), "Washington State", f"WSU NonConf L{l}", "loss", False, "regular", 7 + l))
+    rows.append(_pac12_row(next(game_id_iter), "Washington State", "WSU Bowl W", "win", False, "postseason", 16))
+
+    # Oregon State: 1-9 non-conference regular season, no postseason -> 2-10 overall (matches
+    # the task brief exactly).
+    rows.append(_pac12_row(next(game_id_iter), "Oregon State", "OSU NonConf W", "win", False, "regular", 2))
+    for l in range(9):
+        rows.append(_pac12_row(next(game_id_iter), "Oregon State", f"OSU NonConf L{l}", "loss", False, "regular", 3 + l))
+
+    return rows
+
+
+def _pac12_teams_meta():
+    return {
+        "Washington State": {"conference": _PAC12, "division": None, "logos": None},
+        "Oregon State": {"conference": _PAC12, "division": None, "logos": None},
+    }
+
+
+def test_pac12_two_team_split_head_to_head_produces_washington_state_first():
+    rows = _pac12_two_team_rows()
+    team_ranks = {"Washington State": 57, "Oregon State": 109}
+    payload = build_schedule_payload(rows, _pac12_teams_meta(), _SEASON, team_ranks=team_ranks)
+
+    # artifacts.rankings.CONFERENCE_DISPLAY_NAMES maps the raw "Pac-12" conference value to the
+    # display string "PAC 12" -- the Season Grid payload's conferences[].name uses that display
+    # string, not the raw value used on schedule_grid rows / teams_meta.
+    conf = next(c for c in payload["conferences"] if c["name"] == "PAC 12")
+    entries = {e["team"]: e for e in conf["teams"]}
+
+    assert entries["Washington State"]["record"] == {"wins": 7, "losses": 6}, entries["Washington State"]["record"]
+    assert entries["Washington State"]["conf_record"] == {"wins": 1, "losses": 1}, entries["Washington State"]["conf_record"]
+    assert entries["Oregon State"]["record"] == {"wins": 2, "losses": 10}, entries["Oregon State"]["record"]
+    assert entries["Oregon State"]["conf_record"] == {"wins": 1, "losses": 1}, entries["Oregon State"]["conf_record"]
+
+    names = [e["team"] for e in conf["teams"]]
+    assert names == ["Washington State", "Oregon State"], (
+        f"got {names}. The 1-1 split must be a wash (K8), leaving Washington State's better "
+        "record (and better model rank) to decide it -- if this reads ['Oregon State', "
+        "'Washington State'] instead, the split is being decided by which row the (unfixed) "
+        "head-to-head tally happened to scan first, exactly issue 7's defect."
+    )
 
 
 if __name__ == "__main__":
