@@ -35,7 +35,7 @@ branching:
     first and rebasing this branch, rather than stacking -- see decisions D4.
 
 summary:
-  current_focus: "Planning. Blocked on a product decision and on primary-source rule text."
+  current_focus: "HELD at the user's direction. Execution does not begin until primary rule text arrives."
   last_completed: >
     Discovery complete: ten per-conference research reports, one prior-art report, four real
     2025 ties recomputed from live data, and the egress constraint characterised.
@@ -56,8 +56,11 @@ pr:
     - repo: "wmentrekin/cfb-rankings"
       number: 18
       url: "https://github.com/wmentrekin/cfb-rankings/pull/18"
-      status: "open"
-      note: "Record-magnitude interim fix. Its _conf_net is superseded by this feature."
+      status: "closed"
+      note: >
+        CLOSED at the user's direction, folded into this feature. Branch preserved at b2a3ada;
+        _placement_net and its seven tests are to be lifted, _conf_net dropped. Consequence
+        accepted: the USC 2-0-below-1-0 defect stays live on the 2026 grid until this ships.
 
 agents:
   - id: "orchestrator"
@@ -111,7 +114,7 @@ loops:
 
 checkpoint:
   pre_execution_required: true
-  pre_execution_status: pending
+  pre_execution_status: answered_hold
   options:
     - proceed
     - revise_plan
@@ -164,6 +167,8 @@ model_routing:
     - "Subagent reasoning level is inherited from the main conversation; model selection is enforced."
     - "No subagent can reach conference websites; every research handoff must carry its facts inline."
 
-next_action: "Pre-execution checkpoint: the user chooses scope and supplies primary rule text."
+next_action: >
+  Wait for the user to supply primary-source tiebreaker text per conference. Nothing is built
+  until then -- the user chose "wait for the rules first" over building the engine in parallel.
 next_recommended_command: "$work"
 user_input_needed: true
