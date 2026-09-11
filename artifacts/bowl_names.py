@@ -28,12 +28,23 @@ durability concern that motivated (but did not justify) the rejected structural 
 buys back is correctness for multi-token roots, which no prefix-stripping rule can distinguish from
 a single-token root without already knowing where the root starts.
 
-_ROOT_NAMES is NOT claimed exhaustive -- CFBD's real slate is roughly 35 bowls a season, and only
-the ones verified against real 2025 names (either in the original task fixtures or surfaced by
-review) are curated here. A bowl not in this list -- whether genuinely new or simply not yet added
--- passes through WHOLE, never guessed at by truncation. That is the safe direction: the
-personal-site CSS clamp (K6) is what actually guarantees a single line for that case, not this
-module. Extending coverage later means adding a verified root name, never inventing one.
+_ROOT_NAMES is NOT claimed exhaustive beyond the verified 2025 slate -- CFBD's real slate is
+roughly 35 bowls a season, and as of this pass all 35 ordinary 2025 bowls plus the 6 CFP-hosted
+New Year's Six/quarterfinal/semifinal roots are curated (see tests/test_postseason_slots.py's
+complete 43-name pinned table). A bowl not in this list -- whether genuinely new next season or
+simply not yet added -- passes through WHOLE, never guessed at by truncation. That is the safe
+direction: the personal-site CSS clamp is what actually guarantees a single line for that case,
+not this module. Extending coverage later means adding a verified root name, never inventing one.
+
+K9 (docs/season-grid-standings-fixes/plan.yaml): the user wants the displayed short name to carry
+neither the sponsor NOR the word "Bowl" itself -- "Gasparilla", "Music City", "Sugar", not
+"Gasparilla Bowl". So once a curated root is resolved (never for an unmatched pass-through, and
+never for an _OVERRIDES result -- those are already exactly the short form the user wants, e.g.
+"First Round"), _strip_trailing_bowl removes a trailing " Bowl Classic" (checked first, since it
+also, trivially, ends in the word "Bowl" but the whole "Classic" qualifier must leave with it) or
+otherwise a trailing " Bowl", refusing any strip that would leave an empty or whitespace-only
+result -- an empty short name must never happen, so a hypothetically degenerate root falls back to
+its unstripped form rather than vanish.
 """
 from typing import Optional
 
@@ -41,6 +52,8 @@ from typing import Optional
 # "Bowl" at all, so no suffix match against _ROOT_NAMES below could ever reach them. Kept
 # separate from _ROOT_NAMES (which is itself suffix-matched) because these are matched by exact
 # full-string equality, not suffix -- there is no sponsor-prefixed variant of a CFP round name.
+# Never passed through _strip_trailing_bowl: these values are already exactly the short form the
+# user wants ("First Round", not "First Round Game"; "National Championship", not "National").
 #
 # NO "CFP" PREFIX (fix-cycle-1, round 2): the frontend badges a CFP cell separately, driven by
 # playoff_round being non-null (K5) -- a quarterfinal's short label is already just "Rose Bowl",
@@ -55,12 +68,14 @@ _OVERRIDES = {
 }
 
 # Canonical bowl root names -- the part of a bowl's official name that survives a title-sponsor
-# change, in the CASING each bowl actually uses. Verified against real names only (see module
-# docstring); NOT an attempt to enumerate CFBD's full ~35-bowl slate. Matched against the full
-# name by longest case-insensitive suffix on a whitespace boundary (see short_bowl_name), so a
-# root that is itself the WHOLE name (no separate sponsor at all, e.g. "Myrtle Beach Bowl", or a
+# change, in the CASING each bowl actually uses. Matched against the full name by longest
+# case-insensitive suffix on a whitespace boundary (see short_bowl_name), so a root that is
+# itself the WHOLE name (no separate sponsor at all, e.g. "Myrtle Beach Bowl", or a
 # sponsor-eponymous rebrand with no separate root, e.g. "Pop-Tarts Bowl") matches too -- there is
-# nothing in front of it to strip.
+# nothing in front of it to strip. The trailing "Bowl" on every entry below is stripped by
+# short_bowl_name AFTER the match (K9) -- it stays part of the curated string here because
+# matching still operates against the bowl's real official name, only the *displayed* result is
+# shortened further.
 _ROOT_NAMES = [
     # Single-token roots (original 2025 fixture set).
     "Gasparilla Bowl",
@@ -91,11 +106,83 @@ _ROOT_NAMES = [
     "Orange Bowl",
     "Fiesta Bowl",
     "Peach Bowl",
+    # K9: the 19 ordinary 2025 bowls that were verified against the live DB but not yet curated
+    # -- see docs/season-grid-standings-fixes/plan.yaml K9. Each right-hand root below is the
+    # canonical part of the CFBD `notes` string on the left (kept here only as a comment, never
+    # matched against):
+    #   68 Ventures Bowl                  -> 68 Ventures Bowl   (sponsor IS the name)
+    #   AutoZone Liberty Bowl             -> Liberty Bowl
+    #   Bad Boy Mowers Pinstripe Bowl     -> Pinstripe Bowl
+    #   Cheez-It Citrus Bowl              -> Citrus Bowl
+    #   Famous Idaho Potato Bowl          -> Idaho Potato Bowl
+    #   GameAbove Sports Bowl             -> GameAbove Sports Bowl (sponsor IS the name)
+    #   Go Bowling Military Bowl          -> Military Bowl        (sponsor "Go Bowling" contains
+    #                                                               "Bowl" but is never inspected --
+    #                                                               only the curated root is matched)
+    #   IS4S Salute to Veterans Bowl      -> Salute to Veterans Bowl
+    #   JLab Birmingham Bowl              -> Birmingham Bowl
+    #   Kinder's Texas Bowl               -> Texas Bowl
+    #   ReliaQuest Bowl                   -> ReliaQuest Bowl      (sponsor IS the name)
+    #   Sheraton Hawaiʻi Bowl             -> Hawaiʻi Bowl         (U+02BB ʻOKINA, not an apostrophe)
+    #   Snoop Dogg Arizona Bowl           -> Arizona Bowl
+    #   StaffDNA Cure Bowl                -> Cure Bowl
+    #   TaxSlayer Gator Bowl              -> Gator Bowl
+    #   Tony the Tiger Sun Bowl           -> Sun Bowl
+    #   Trust & Will Holiday Bowl         -> Holiday Bowl
+    #   Valero Alamo Bowl                 -> Alamo Bowl
+    #   Wasabi Fenway Bowl                -> Fenway Bowl
+    "68 Ventures Bowl",
+    "Liberty Bowl",
+    "Pinstripe Bowl",
+    "Citrus Bowl",
+    "Idaho Potato Bowl",
+    "GameAbove Sports Bowl",
+    "Military Bowl",
+    "Salute to Veterans Bowl",
+    "Birmingham Bowl",
+    "Texas Bowl",
+    "ReliaQuest Bowl",
+    "Hawaiʻi Bowl",
+    "Arizona Bowl",
+    "Cure Bowl",
+    "Gator Bowl",
+    "Sun Bowl",
+    "Holiday Bowl",
+    "Alamo Bowl",
+    "Fenway Bowl",
 ]
 # Longest-first so a suffix match against a shorter root can never shadow a longer, more specific
-# one that also matches (no case in the current list actually collides, but the ordering makes
-# that guarantee structural rather than incidental).
+# one that also matches. Verified (K9): none of the 19 newly-added roots is a whitespace-boundary
+# suffix of, or has as a whitespace-boundary suffix, any other entry in this list -- each ends in
+# a distinct token immediately before "Bowl" ("Ventures", "Liberty", "Pinstripe", "Citrus",
+# "Potato", "Sports", "Military", "Veterans", "Birmingham", "Texas", "ReliaQuest", "Hawaiʻi",
+# "Arizona", "Cure", "Gator", "Sun", "Holiday", "Alamo", "Fenway"), so the longest-first ordering
+# remains a structural guarantee, not an incidental one, even with the expanded list.
 _ROOT_NAMES_BY_LENGTH_DESC = sorted(_ROOT_NAMES, key=len, reverse=True)
+
+
+def _strip_trailing_bowl(root: str) -> str:
+    """K9: strip a resolved curated root's trailing sponsor-inert suffix so the displayed short
+    name carries neither the sponsor nor the word "Bowl" ("Gasparilla", not "Gasparilla Bowl").
+
+    Only ever called on a root that has ALREADY been resolved by exact or suffix match against
+    _ROOT_NAMES -- never on a raw, unmatched input name and never on an _OVERRIDES result, both of
+    which are returned as-is by short_bowl_name before this function is reached.
+
+    " Bowl Classic" is checked before " Bowl" -- a root ending in the former also, trivially, ends
+    in the word "Bowl", but the whole "Classic" qualifier must be removed with it rather than
+    surviving as an orphaned trailing word.
+
+    Refuses any strip that would leave an empty or whitespace-only result, falling back to the
+    unstripped root instead -- no input may ever produce an empty short name.
+    """
+    for suffix in (" Bowl Classic", " Bowl"):
+        if root.endswith(suffix):
+            candidate = root[: -len(suffix)]
+            if candidate.strip():
+                return candidate
+            return root
+    return root
 
 
 def short_bowl_name(name: Optional[str]) -> Optional[str]:
@@ -105,7 +192,10 @@ def short_bowl_name(name: Optional[str]) -> Optional[str]:
     -- this function is never the reason a null becomes a string or vice versa). A name that
     doesn't match _OVERRIDES and doesn't end (on a whitespace boundary) with any curated entry in
     _ROOT_NAMES degrades to the FULL name, not a guess -- see the module docstring for why that's
-    the only safe direction for an unrecognized name.
+    the only safe direction for an unrecognized name. A name that DOES resolve to a curated root
+    has its trailing "Bowl"/"Bowl Classic" stripped (K9, _strip_trailing_bowl) -- an _OVERRIDES
+    result and an unmatched pass-through are both returned before that stripping is ever reached,
+    so neither is ever altered by it.
     """
     if not name:
         return name
@@ -116,5 +206,5 @@ def short_bowl_name(name: Optional[str]) -> Optional[str]:
     for root in _ROOT_NAMES_BY_LENGTH_DESC:
         root_lower = root.lower()
         if lowered == root_lower or lowered.endswith(" " + root_lower):
-            return root
+            return _strip_trailing_bowl(root)
     return name
