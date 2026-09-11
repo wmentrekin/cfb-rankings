@@ -1,0 +1,500 @@
+{
+  "schema_version": 1,
+  "conferences": {
+    "SEC": [
+      {
+        "season_min": 2024,
+        "season_max": null,
+        "provenance": "primary_source",
+        "source_file": "docs/conference-tiebreakers/source-rules/sec.txt",
+        "notes": "Transcribed verbatim from sec.txt, the 2024-onward divisionless SEC policy. Step E ('capped relative total scoring margin') substitutes for nothing -- despite the 'per SportSource Analytics' label, Appendix A publishes the full formula and every input is already in our data (README finding: 'per SportSource Analytics does not always mean unobtainable'). Step's external_ranking usage (none in this conference's chain -- the SEC has no external-ranking step at all) is N/A. min_sample=2 on common_opponents_record matches K5. Appendix B (~25 conference-authored worked examples for two-team, three-team-for-first and three-team-for-second ties) is REFERENCED by sec.txt but not included in it -- flagged as a gap for the repo owner to supply; those would be ready-made T6 fixtures once obtained.",
+        "tie_definition": "win_pct",
+        "two_team": [
+          {
+            "step": "head_to_head",
+            "params": {},
+            "cites": "A. Head-to-head competition among the tied teams"
+          },
+          {
+            "step": "common_opponents_record",
+            "params": {
+              "min_sample": 2
+            },
+            "cites": "B. Record versus all common Conference opponents among the tied teams"
+          },
+          {
+            "step": "vs_placed_opponents",
+            "params": {
+              "direction": "descending",
+              "tied_opponent_handling": "head_to_head_then_combine",
+              "exhaust_all_opponents": true
+            },
+            "cites": "C. Record against highest (best) placed common Conference opponent ... proceeding through the Conference standings; sub-rule: combine records if head-to-head fails to break a tie among the common opponents (lines 26-36)"
+          },
+          {
+            "step": "opponents_cumulative_conf_pct",
+            "params": {
+              "ignore_opponent_count_mismatch": false
+            },
+            "cites": "D. Cumulative Conference winning percentage of all Conference opponents"
+          },
+          {
+            "step": "capped_relative_scoring_margin",
+            "params": {
+              "offense_cap": 200,
+              "defense_floor": 0
+            },
+            "cites": "E. Capped relative total scoring margin (see Appendix A) per SportSource Analytics -- Appendix A (lines 99-123) publishes the full formula, so it is computable from our own scores, unlike the ACC's opaque Team Success Ranking"
+          },
+          {
+            "step": "random_draw",
+            "params": {},
+            "cites": "F. Random draw of the tied teams"
+          }
+        ],
+        "multi_team": {
+          "restart_at": "size_appropriate_restart",
+          "eliminated_teams_locked": true,
+          "steps": [
+            {
+              "step": "sub_group_record",
+              "params": {},
+              "cites": "A.1: 'If there IS a complete round robin among the tied teams' -- ranked by intra-group record (lines 56-61)",
+              "when": "round_robin_among_tied"
+            },
+            {
+              "step": "sweep_in_out",
+              "params": {},
+              "cites": "A.2: 'If there is NOT a complete round robin among the tied teams' -- one team beat/lost to all others (lines 62-67)",
+              "when": "not_round_robin_among_tied"
+            },
+            {
+              "step": "common_opponents_record",
+              "params": {
+                "min_sample": 2
+              },
+              "cites": "B. Record versus all common Conference opponents among the tied teams (lines 69-74)"
+            },
+            {
+              "step": "vs_placed_opponents",
+              "params": {
+                "direction": "descending",
+                "tied_opponent_handling": "head_to_head_then_combine",
+                "exhaust_all_opponents": true
+              },
+              "cites": "C. Record against highest (best) placed common Conference opponent, proceeding through the standings; continue to the next common opponent by order of finish until all are exhausted (lines 76-80)"
+            },
+            {
+              "step": "opponents_cumulative_conf_pct",
+              "params": {
+                "ignore_opponent_count_mismatch": false
+              },
+              "cites": "D. Cumulative Conference winning percentage of all Conference opponents among the tied teams (lines 82-87)"
+            },
+            {
+              "step": "capped_relative_scoring_margin",
+              "params": {
+                "offense_cap": 200,
+                "defense_floor": 0
+              },
+              "cites": "E. Capped relative total scoring margin per SportSource Analytics (Appendix A, lines 89-91)"
+            },
+            {
+              "step": "random_draw",
+              "params": {},
+              "cites": "F. Random draw of the tied teams (Athletics Directors videoconference, lines 93-94)"
+            }
+          ]
+        }
+      }
+    ],
+    "Big 12": [
+      {
+        "season_min": 2024,
+        "season_max": null,
+        "provenance": "primary_source",
+        "source_file": "docs/conference-tiebreakers/source-rules/big12.txt",
+        "notes": "Transcribed verbatim from big12.txt, the 2024-onward 16-team policy (no round-robin schedule). 'Coin toss' (g) maps to random_draw -- same terminal, never-fires-in-practice step as every other conference's draw (K6/README: this project's rating never ties). tied_opponent_handling='combine' for step c because the text has no head-to-head sub-rule at all, unlike the SEC.",
+        "tie_definition": "win_pct",
+        "two_team": [
+          {
+            "step": "head_to_head",
+            "params": {},
+            "cites": "a. Head-to-head competition among the two tied teams"
+          },
+          {
+            "step": "common_opponents_record",
+            "params": {
+              "min_sample": 2
+            },
+            "cites": "b. Win percentage against all common conference opponents among the tied teams"
+          },
+          {
+            "step": "vs_placed_opponents",
+            "params": {
+              "direction": "descending",
+              "tied_opponent_handling": "combine",
+              "exhaust_all_opponents": true
+            },
+            "cites": "c. Win percentage against the next highest placed common opponent ... proceeding through the standings. 'When arriving at another group of tied teams ... use each team's win percentage against the collective tied teams AS A GROUP' -- no head-to-head sub-step described, unlike the SEC"
+          },
+          {
+            "step": "opponents_cumulative_conf_pct",
+            "params": {
+              "ignore_opponent_count_mismatch": false
+            },
+            "cites": "d. Combined win percentage in conference games of conference opponents (strength of conference schedule)"
+          },
+          {
+            "step": "total_wins_capped",
+            "params": {
+              "max_games": 12,
+              "cap_fcs_wins": true
+            },
+            "cites": "e. Total number of wins in a 12-game season, one FCS-or-lower win counted annually; games exempted under NCAA Bylaw 17.10.5.2.1 (the multi-team-exemption/Hawaii-style rule) are excluded from the count -- no schema param carries this NCAA-bylaw detail, recorded here for the T2 implementer"
+          },
+          {
+            "step": "external_ranking",
+            "params": {
+              "min_conference_games": 4
+            },
+            "cites": "f. Highest ranking by SportSource Analytics (team Rating Score metric)"
+          },
+          {
+            "step": "random_draw",
+            "params": {},
+            "cites": "g. Coin toss"
+          }
+        ],
+        "multi_team": {
+          "restart_at": "size_appropriate_restart",
+          "eliminated_teams_locked": true,
+          "steps": [
+            {
+              "step": "sub_group_record",
+              "params": {},
+              "when": "round_robin_among_tied",
+              "cites": "Multi-team step a headline: 'Winning percentage in games among the tied teams'. Sub-clauses a.1 and a.2 are BOTH conditioned on 'If all teams involved in the tie did not play each other', so the headline governs the complete-round-robin case (big12.txt:38)."
+            },
+            {
+              "step": "sweep_in_out",
+              "params": {},
+              "when": "not_round_robin_among_tied",
+              "cites": "Multi-team a.1/a.2: 'one team defeated all other teams involved in the tie, that team is removed...' / '...no team defeated all other teams..., move to the next step'. NOTE: unlike the SEC and Big Ten, big12.txt states only the 'defeated all' (swept in) half and no 'lost to all' elimination clause; the shared primitive covers both, and the Big 12's silence on the swept-out half is recorded here rather than encoded as a narrower step (big12.txt:39-43)."
+            },
+            {
+              "step": "common_opponents_record",
+              "params": {
+                "min_sample": 2
+              },
+              "cites": "b. Winning percentage against all common conference opponents played by all other teams involved in the tie"
+            },
+            {
+              "step": "vs_placed_opponents",
+              "params": {
+                "direction": "descending",
+                "tied_opponent_handling": "combine",
+                "exhaust_all_opponents": true
+              },
+              "cites": "c. Record against the next highest placed common opponent ... 'Same collective tied teams as a group rule as two-team step c'"
+            },
+            {
+              "step": "opponents_cumulative_conf_pct",
+              "params": {
+                "ignore_opponent_count_mismatch": false
+              },
+              "cites": "d. Combined win percentage in conference games of conference opponents"
+            },
+            {
+              "step": "total_wins_capped",
+              "params": {
+                "max_games": 12,
+                "cap_fcs_wins": true
+              },
+              "cites": "e. Total number of wins in a 12-game season (same FCS cap and exemptions as above)"
+            },
+            {
+              "step": "external_ranking",
+              "params": {
+                "min_conference_games": 4
+              },
+              "cites": "f. Highest ranking by SportSource Analytics (team Rating Score metric)"
+            },
+            {
+              "step": "random_draw",
+              "params": {},
+              "cites": "g. Coin toss"
+            }
+          ]
+        }
+      }
+    ],
+    "Big Ten": [
+      {
+        "season_min": 2024,
+        "season_max": null,
+        "provenance": "primary_source",
+        "source_file": "docs/conference-tiebreakers/source-rules/bigten.txt",
+        "notes": "Transcribed verbatim from bigten.txt, the 2024-onward 18-team divisionless policy. Section A's numbered step 2 (the No. 2-position two-team tie) is NOT a separate primitive from step 1 -- both are head_to_head, applied to different restart positions (#1 vs #2), which is why the two_team list here has 6 entries, not 7: head_to_head, common_opponents_record, vs_placed_opponents, opponents_cumulative_conf_pct, external_ranking, random_draw. Section B explicitly states an eliminated team 'SHALL NOT be pulled back into the tiebreaker for any future step' -- the strongest, most explicit statement of the no-re-entry invariant among all four sources -- reflected in eliminated_teams_locked=true. This config omits the postseason-ineligibility and 'championship game cannot be played' sections (bigten.txt lines 58-75): those are selection-of-participants rules, not standings-order tiebreaker steps, and are outside this task's scope.",
+        "tie_definition": "win_pct",
+        "two_team": [
+          {
+            "step": "head_to_head",
+            "params": {},
+            "cites": "Section A.1/A.2: both the No. 1-position tie (A.1: winner of their meeting is first place) and the No. 2-position tie (A.2: winner of their meeting is the representative) reduce to the same head-to-head comparison -- not a distinct measure (see notes)"
+          },
+          {
+            "step": "common_opponents_record",
+            "params": {
+              "min_sample": 2
+            },
+            "cites": "A.3: Record against all common conference opponents"
+          },
+          {
+            "step": "vs_placed_opponents",
+            "params": {
+              "direction": "descending",
+              "tied_opponent_handling": "combine",
+              "exhaust_all_opponents": true
+            },
+            "cites": "A.4: Record against common opponents with the best conference record, proceeding through the common conference opponents based on their order of finish"
+          },
+          {
+            "step": "opponents_cumulative_conf_pct",
+            "params": {
+              "ignore_opponent_count_mismatch": true
+            },
+            "cites": "A.5/A.5(a): Best cumulative conference winning percentage of all conference opponents; unbalanced-schedule override -- 'compare on the best cumulative conference winning percentage of all conference opponents REGARDLESS of how many conference opponents each team played' when fewer than nine conference games were played"
+          },
+          {
+            "step": "external_ranking",
+            "params": {
+              "min_conference_games": 4
+            },
+            "cites": "A.6: Highest ranking by SportSource Analytics (team Rating Score metric)"
+          },
+          {
+            "step": "random_draw",
+            "params": {},
+            "cites": "A.7: Random draw among the tied teams conducted by the Commissioner or designee"
+          }
+        ],
+        "multi_team": {
+          "restart_at": "size_appropriate_restart",
+          "eliminated_teams_locked": true,
+          "steps": [
+            {
+              "step": "sub_group_record",
+              "params": {},
+              "when": "round_robin_among_tied",
+              "cites": "B.1 headline: 'Winning percentage in games among the tied teams'. Sub-clauses (a) and (b) are BOTH explicitly conditioned on 'If all teams involved did not play each other', so the headline rule governs the complete-round-robin case and is a distinct step from the sweep test below it (bigten.txt:43)."
+            },
+            {
+              "step": "sweep_in_out",
+              "params": {},
+              "when": "not_round_robin_among_tied",
+              "cites": "B.1(a)/(b): 'If all teams involved did not play each other, but one team defeated all other teams in the tie, that team is removed...' / '...and no team defeated all others, move to the next step' (bigten.txt:44-48)."
+            },
+            {
+              "step": "common_opponents_record",
+              "params": {
+                "min_sample": 2
+              },
+              "cites": "B.2: Winning percentage against all common conference opponents played by all other teams involved in the tie"
+            },
+            {
+              "step": "vs_placed_opponents",
+              "params": {
+                "direction": "descending",
+                "tied_opponent_handling": "combine",
+                "exhaust_all_opponents": true
+              },
+              "cites": "B.3: Winning percentage against the next highest placed common opponent in the standings in order of finish -- text specifies neither head-to-head-first nor combine explicitly; defaulted to 'combine' to match the Big 12 rather than inventing an unstated head-to-head detour (see module docstring)"
+            },
+            {
+              "step": "opponents_cumulative_conf_pct",
+              "params": {
+                "ignore_opponent_count_mismatch": true
+              },
+              "cites": "B.4/B.4(a): Best cumulative conference winning percentage of all conference opponents; same unbalanced-schedule override as A.5(a)"
+            },
+            {
+              "step": "external_ranking",
+              "params": {
+                "min_conference_games": 4
+              },
+              "cites": "B.5: Highest ranking by SportSource Analytics (team Rating Score metric)"
+            },
+            {
+              "step": "random_draw",
+              "params": {},
+              "cites": "B.6: Random draw among the tied teams conducted by the Commissioner or designee"
+            }
+          ]
+        }
+      }
+    ],
+    "ACC": [
+      {
+        "season_min": 2023,
+        "season_max": 2025,
+        "provenance": "search_derived",
+        "source_file": "docs/conference-tiebreakers/source-rules/acc.txt",
+        "notes": "PRE-amendment ACC procedure (through 2025), transcribed from acc.txt's secondary summary paragraph (lines 58-69), NOT the amended primary text above it in the same file -- see provenance rationale in this entry's docstring comment / T1 report. This is the era of the real 2025 five-way 6-2 tie (Duke, Georgia Tech, Miami, Pittsburgh, SMU) decided by combined opponent conference win percentage (Duke 32-32, .500). No distinct two-team chain was supplied for this era -- acc.txt's secondary summary describes one undifferentiated chain, which the amended text's structure suggests was really the multi-team chain (it is what resolved the real 5-way tie). Absent a stated two-team-specific chain, this entry uses the SAME step list for both two_team and multi_team, flagged here as an assumption, not a transcription. multi_team.restart_at is similarly assumed ('size_appropriate_restart', matching the SEC/Big 12/Big Ten pattern) because the secondary summary states no restart semantics at all -- the amended text's explicit 'redefine_tied_teams' restart language is NOT known to predate the amendment. tie_definition is left at the default 'win_pct' rather than assumed to carry the amended text's alternate-games clause backward, for the same reason: the secondary summary does not state a tie definition, and the real 2025 5-way tie was among teams literally equal at 6-2, so it provides no positive evidence either way. SEASON FLOOR: season_min is 2023, the ACC's first divisionless season, NOT open-ended. The 2014-2022 ACC had Atlantic/Coastal divisions and a correspondingly different procedure for which no source has been supplied; those seasons deliberately resolve to no config and fall back to the pre-engine ordering, which is honest about what we do not know rather than asserting a divisionless chain over a divisional era. MULTI-TEAM STEP 1: the secondary summary says only 'head-to-head', which is unambiguous for a two-team tie but not for a group. Encoded as the same round-robin / not-round-robin pair the other three conferences state explicitly, because that shape is what reproduces the real 2025 five-way outcome: Duke was LAST on head-to-head within the group (0-1) yet advanced, so this step must return no opinion on a non-round-robin group rather than rank by intra-group record. A bare head_to_head here would have eliminated Duke at step 1.",
+        "tie_definition": "win_pct",
+        "two_team": [
+          {
+            "step": "head_to_head",
+            "params": {},
+            "cites": "Secondary summary (acc.txt lines 60-62): 'head-to-head'"
+          },
+          {
+            "step": "common_opponents_record",
+            "params": {
+              "min_sample": 2
+            },
+            "cites": "Secondary summary: 'winning percentage vs common opponents'"
+          },
+          {
+            "step": "vs_placed_opponents",
+            "params": {
+              "direction": "descending",
+              "tied_opponent_handling": "combine",
+              "exhaust_all_opponents": true
+            },
+            "cites": "Secondary summary: 'order of finish' -- no sub-rule detail given for how a tie among placed opponents is resolved; tied_opponent_handling defaulted to 'combine' as the more conservative reading (no head-to-head detour is stated)"
+          },
+          {
+            "step": "opponents_cumulative_conf_pct",
+            "params": {
+              "ignore_opponent_count_mismatch": false
+            },
+            "cites": "Secondary summary: 'combined win-percentage of conference opponents' -- CONFIRMED by the real 2025 outcome: Duke's eight ACC opponents went 32-32 (.500), the best of the five 6-2 teams (acc.txt lines 66-69)"
+          },
+          {
+            "step": "external_ranking",
+            "params": {
+              "min_conference_games": 4
+            },
+            "cites": "Secondary summary: 'Team Rating Score / Success Ranking'"
+          },
+          {
+            "step": "random_draw",
+            "params": {},
+            "cites": "Secondary summary: 'Commissioner's draw'"
+          }
+        ],
+        "multi_team": {
+          "restart_at": "size_appropriate_restart",
+          "eliminated_teams_locked": true,
+          "steps": [
+            {
+              "step": "sub_group_record",
+              "params": {},
+              "when": "round_robin_among_tied",
+              "cites": "Secondary summary (acc.txt:60-62): 'head-to-head'. Round-robin reading -- see this rule set's notes for why the group case is encoded as a pair rather than a bare head_to_head."
+            },
+            {
+              "step": "sweep_in_out",
+              "params": {},
+              "when": "not_round_robin_among_tied",
+              "cites": "Secondary summary (acc.txt:60-62): 'head-to-head'. Non-round-robin reading; returns no opinion on the 2025 five-way, which is what lets the chain reach the strength-of-schedule step that actually decided it."
+            },
+            {
+              "step": "common_opponents_record",
+              "params": {
+                "min_sample": 2
+              },
+              "cites": "Secondary summary: 'winning percentage vs common opponents'"
+            },
+            {
+              "step": "vs_placed_opponents",
+              "params": {
+                "direction": "descending",
+                "tied_opponent_handling": "combine",
+                "exhaust_all_opponents": true
+              },
+              "cites": "Secondary summary: 'order of finish' -- no sub-rule detail given for how a tie among placed opponents is resolved; tied_opponent_handling defaulted to 'combine' as the more conservative reading (no head-to-head detour is stated)"
+            },
+            {
+              "step": "opponents_cumulative_conf_pct",
+              "params": {
+                "ignore_opponent_count_mismatch": false
+              },
+              "cites": "Secondary summary: 'combined win-percentage of conference opponents' -- CONFIRMED by the real 2025 outcome: Duke's eight ACC opponents went 32-32 (.500), the best of the five 6-2 teams (acc.txt lines 66-69)"
+            },
+            {
+              "step": "external_ranking",
+              "params": {
+                "min_conference_games": 4
+              },
+              "cites": "Secondary summary: 'Team Rating Score / Success Ranking'"
+            },
+            {
+              "step": "random_draw",
+              "params": {},
+              "cites": "Secondary summary: 'Commissioner's draw'"
+            }
+          ]
+        }
+      },
+      {
+        "season_min": 2026,
+        "season_max": null,
+        "provenance": "primary_source",
+        "source_file": "docs/conference-tiebreakers/source-rules/acc.txt",
+        "notes": "Amended ACC policy, effective 2026-07-01 (acc.txt lines 1-56), transcribed verbatim. DELETED the common-opponent and strength-of-schedule steps present pre-amendment -- from 2026 onward, an ACC multi-team tie unresolved by the round-robin/sweep step is NOT computable by any record-based measure; it falls to external_ranking (this project's rating) and then a draw. The multi-team procedure genuinely BRANCHES on whether the tied group is a complete round robin among itself (Step 2.b(3+).i) or not (Step 2.b(3+).ii) -- a flat steps[] list cannot express a branch, hence the `when` predicate on sub_group_record/sweep_in_out (see module docstring). restart_at is 'redefine_tied_teams' because the text explicitly restarts 'including the definition of tied teams', not just the step position -- a distinct policy from the SEC/Big 12/Big Ten's group-size-based restart. eliminated_teams_locked is set FALSE here, unlike every other entry in this config: because the ACC's restart re-derives the tied-teams group from scratch each time (Section 1), a team excluded from one iteration is not obviously barred from qualifying again under a fresh Section-1 definition, and the text does not state a lock the way the Big Ten's 'SHALL NOT be pulled back' does. Flagged for T3/T4 review rather than assumed. tie_definition is 'acc_alternate_games' (Section 1: Tied Teams include not just the best conference-win-percentage team(s) but any team with an alternate number of conference games and the same wins OR the same losses as them) -- this CONTRADICTS plan K9's assumption that the engine is only ever invoked on teams already equal on conference win percentage; flagged as a K9 correction in the T1 report for T4 to carry forward. Building the wider tied-group membership itself is out of scope for this module (T4's job, not T1's).",
+        "tie_definition": "acc_alternate_games",
+        "two_team": [
+          {
+            "step": "head_to_head",
+            "params": {},
+            "cites": "Section 2.b.i: 'The tied team which defeated the other tied team in head-to-head Conference competition.'"
+          },
+          {
+            "step": "external_ranking",
+            "params": {
+              "min_conference_games": 4
+            },
+            "cites": "Section 2.b.ii: 'The tied team with the better ranking in the Team Success Ranking provided by SportSource Analytics following the conclusion of all regular-season games.' -- this ranking is genuinely opaque (README: 'the ACC's Team Success Ranking publishes nothing'), so external_ranking substitutes this project's own rating, per K6"
+          },
+          {
+            "step": "random_draw",
+            "params": {},
+            "cites": "Section 2.b.iii: 'The participant shall be chosen by a draw as administered by the Commissioner or Commissioner's designee.'"
+          }
+        ],
+        "multi_team": {
+          "restart_at": "redefine_tied_teams",
+          "eliminated_teams_locked": false,
+          "steps": [
+            {
+              "step": "sub_group_record",
+              "params": {},
+              "cites": "Section 2.b(3+).i.1: 'If all the Tied Teams are common opponents: The Tied Team with the best record among the Tied Teams'",
+              "when": "round_robin_among_tied"
+            },
+            {
+              "step": "sweep_in_out",
+              "params": {},
+              "cites": "Section 2.b(3+).ii.1: 'If all the Tied Teams are not common opponents: The Tied Team which defeated each of the other Tied Teams is placed into the Championship Game and removed from the tie. The tied team which lost to each of the other Tied Teams is removed from the tie.'",
+              "when": "not_round_robin_among_tied"
+            },
+            {
+              "step": "external_ranking",
+              "params": {
+                "min_conference_games": 4
+              },
+              "cites": "Section 2.b(3+).i.2 / ii.2: both branches converge here -- 'The Tied Team with the best ranking in the Team Success Ranking provided by SportSource Analytics'"
+            },
+            {
+              "step": "random_draw",
+              "params": {},
+              "cites": "Section 2.b(3+).i.3 / ii.3: both branches converge here -- 'The participant shall be chosen by a draw as administered by the Commissioner or Commissioner's designee.'"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
