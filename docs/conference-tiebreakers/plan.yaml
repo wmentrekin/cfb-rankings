@@ -1,0 +1,209 @@
+artifact: plan
+feature: "conference-tiebreakers"
+mode: "large-initiative"
+status: ready
+owner_skill: work
+based_on: "docs/conference-tiebreakers/requirements.yaml"
+
+objective: >
+  A generic, declarative tiebreaker engine driving conference standings order, with each
+  conference's published procedure expressed as reviewable configuration.
+
+approach:
+  summary: >
+    Split the problem in two along the line the environment forces: a generic ENGINE, which can
+    be built and fully tested here, and RULE DATA, which cannot be authored here because the
+    source documents are unreachable. The engine ships with a small vocabulary of typed step
+    primitives and a recursive peel-off driver modelled on the NFL's published restart rule.
+    Configuration is per-conference and per-season, carries provenance, and is the only thing
+    that must change when a conference rewrites its rules -- as the ACC did in July 2026.
+  key_decisions:
+    - id: "K1"
+      decision: "Rules are configuration, engine is generic."
+      detail: >
+        A YAML file of per-conference ordered step lists, separate lists for two-team and
+        multi-team ties, each entry a typed primitive with optional parameters. The engine knows
+        nothing about any specific conference.
+    - id: "K2"
+      decision: "Step primitive vocabulary, fixed and small."
+      detail: >
+        head_to_head, sub_group_record, sweep_in_out, common_opponents{min_sample},
+        opponents_conf_pct, record_vs_placed, our_rating, overall_record. Each is implemented
+        once, takes (tied_group, all_rows, frozen_order) and returns either an ordered partition
+        or None meaning "no opinion". A step returning None is skipped, exactly as the NFL skips
+        common games below its four-game minimum.
+    - id: "K3"
+      decision: "Recursive peel-off with a conference-declared restart point."
+      detail: >
+        After a step partitions a group, each resulting sub-group re-enters the procedure at the
+        conference's declared restart step -- following nflseedR's encoding of the NFL rule that
+        a remaining two-club tie restarts at step 1 of the two-club format. Group size strictly
+        decreases on every peel, which is what guarantees termination.
+    - id: "K4"
+      decision: "record_vs_placed reads a FROZEN ordering."
+      detail: >
+        The ordering by conference win percentage alone, computed once before any tiebreaker
+        runs, and never the partially-resolved order. Circular by construction otherwise. This
+        is a declared convention, not a derivation -- no conference specifies the resolution.
+    - id: "K5"
+      decision: "min_sample defaults to 2 for common_opponents."
+      detail: >
+        Proportional to the NFL's 4-of-16 gate against college's 8-9 conference games, and
+        empirically correct: the 2025 ACC five-way had a common set of exactly one team, so a
+        gate of 2 skips the step and lets strength of schedule decide, which is what really
+        happened.
+    - id: "K6"
+      decision: "our_rating substitutes for every external-ranking step, and is gated."
+      detail: >
+        It carries the same min_conference_games gate as any other step, so it cannot fire in
+        the thin-information early season. Without that gate it would always resolve (ratings
+        never tie) and would pre-empt the overall-record fallback the user asked for.
+    - id: "K7"
+      decision: "Fallback chain, always total."
+      detail: >
+        Chain exhausted or every step gated -> overall record, then our rating, then team name.
+        Name is the final term and guarantees a total order for any input.
+    - id: "K8"
+      decision: "resolved_by is recorded per team."
+      detail: >
+        The name of the step that fixed its position, or 'fallback'. Exposed in the payload;
+        rendering is a separate frontend decision. It is also how the acceptance tests assert
+        that the RIGHT step decided, not merely that the order came out right by luck.
+    - id: "K9"
+      decision: "Conference win percentage stays the primary key, outside the engine."
+      detail: >
+        Every conference orders by it first; the engine is only invoked on teams tied on it.
+        _conf_net is deleted -- win differential appears in no rulebook, and head-to-head or
+        common opponents is what actually separates two 1.000 teams.
+
+contracts:
+  interfaces:
+    - "order_tied_group(group, rows, season, frozen_order, rules) -> List[List[entry]]  # ordered partition"
+    - "apply_step(step, group, rows, season, frozen_order) -> Optional[List[List[entry]]]  # None = no opinion"
+    - "load_conference_rules(path) -> Dict[conference, RuleSet]  # validated at load, not at use"
+    - "_sort_conference_teams(...)  # signature unchanged; internals replaced below conf_pct"
+  schemas:
+    - "NEW config file: per conference -> {seasons, provenance, two_team[], multi_team{restart_at, steps[]}}"
+    - "Payload: each standings entry gains resolved_by (string). No existing field changes value."
+  config_changes:
+    - "_conf_net removed (K9). _placement_net retained as part of the overall-record fallback."
+
+branching:
+  strategy: "single-branch"
+  branch_name: "work/conference-tiebreakers"
+  worktrees: []
+
+execution_batches:
+  - id: "B1"
+    goal: "The engine, the schema, and the step primitives -- everything that does not require unreachable rule text."
+    gated_on: "user checkpoint only"
+    tasks:
+      - id: "T1"
+        title: "Rule schema, loader and validation"
+        objective: "Define the config format, load it, and reject a malformed or unknown-step config loudly at load time rather than silently at use."
+        assigned_domain: "data-engineer"
+        model_routing: {task_profile: implementation, uncertainty: low, consequence: medium, scope_size: bounded, determinism: deterministic, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", routing_enforced: true, escalation_tier: frontier, escalation_condition: "If the schema cannot express a researched conference's procedure."}
+        owned_scope: ["new rules config file", "new loader module", "its tests"]
+        forbidden_scope: ["artifacts/schedule.py", "live DB", "R2"]
+        dependencies: []
+        parallelizable: true
+        expected_validation: ["AC9", "a config naming an unknown step primitive fails at load with a message naming it"]
+      - id: "T2"
+        title: "Step primitives"
+        objective: "Implement the eight primitives from K2, each pure and independently testable."
+        assigned_domain: "data-engineer"
+        model_routing: {task_profile: implementation, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", routing_enforced: true, escalation_tier: frontier, escalation_condition: "If a primitive cannot be defined without guessing at rule intent."}
+        owned_scope: ["new engine module: step primitives", "its tests"]
+        forbidden_scope: ["artifacts/schedule.py", "the driver (T3)", "live DB", "R2"]
+        dependencies: []
+        parallelizable: true
+        expected_validation:
+          - "Each primitive tested in isolation against the real 2025 numbers where one exists."
+          - "common_opponents returns None below min_sample -- the ACC one-team case."
+          - "opponents_conf_pct reproduces Duke 32-32 .500 ahead of the other four."
+      - id: "T3"
+        title: "Recursive peel-off driver"
+        objective: "Per K3: apply steps in order, partition, restart sub-groups at the declared step, terminate always."
+        assigned_domain: "data-engineer"
+        model_routing: {task_profile: implementation, uncertainty: high, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: frontier, requested_reasoning: high, provider_model: "Claude Opus 5", routing_enforced: true, escalation_tier: frontier, escalation_condition: "If termination cannot be proven for some input shape."}
+        owned_scope: ["new engine module: driver", "its tests"]
+        forbidden_scope: ["artifacts/schedule.py", "live DB", "R2"]
+        dependencies: ["T1", "T2"]
+        parallelizable: false
+        expected_validation:
+          - "AC8 -- termination on a fully tied conference where no step separates anyone."
+          - "A property test: the output is always a permutation of the input, for randomised groups."
+      - id: "T4"
+        title: "Wire into _sort_conference_teams, remove _conf_net, add resolved_by"
+        objective: "Replace the flat key's post-conf_pct terms with an engine call; keep the signature and the displayed records unchanged."
+        assigned_domain: "data-engineer"
+        model_routing: {task_profile: implementation, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", routing_enforced: true, escalation_tier: frontier, escalation_condition: "If existing hand-built-entry tests cannot be preserved."}
+        owned_scope: ["artifacts/schedule.py", "tests for the wiring"]
+        forbidden_scope: ["the engine modules", "live DB", "R2"]
+        dependencies: ["T3"]
+        parallelizable: false
+        expected_validation: ["AC6", "AC7", "existing hand-built-entry tests still pass or their change is justified"]
+  - id: "B2"
+    goal: "Populate the rule config from primary sources."
+    gated_on: "USER supplying primary rule text -- unreachable from this environment"
+    tasks:
+      - id: "T5"
+        title: "Author the per-conference rule config"
+        objective: "Transcribe the user's supplied rule text into config, marking provenance per conference."
+        assigned_domain: "data-engineer"
+        model_routing: {task_profile: documentation, uncertainty: low, consequence: high, scope_size: bounded, determinism: deterministic, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", routing_enforced: true, escalation_tier: frontier, escalation_condition: "If supplied text is ambiguous about step order."}
+        owned_scope: ["the rules config file"]
+        forbidden_scope: ["engine code", "live DB", "R2"]
+        dependencies: ["T1"]
+        parallelizable: false
+        expected_validation: ["AC1-AC4 against the real 2025 fixtures"]
+  - id: "B3"
+    goal: "Verification and surface."
+    tasks:
+      - id: "T6"
+        title: "Acceptance fixtures from the real 2025 ties"
+        objective: "Fixtures for the ACC, MAC, American and Mountain West cases, asserting BOTH the order and resolved_by."
+        assigned_domain: "generalist-developer"
+        model_routing: {task_profile: test_design, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", routing_enforced: true, escalation_tier: frontier, escalation_condition: "If a fixture cannot be built without live data."}
+        owned_scope: ["tests/"]
+        forbidden_scope: ["live DB", "R2", "weakening an assertion to get green"]
+        dependencies: ["T4"]
+        parallelizable: false
+        expected_validation: ["AC1-AC5"]
+
+ordering_notes:
+  - "T1 and T2 are genuinely independent and run concurrently. T3 needs both. T4 needs T3."
+  - "B2 is BLOCKED on the user and is the reason this is large-initiative rather than bounded-feature."
+  - "B1 delivers a complete, tested engine with no rules in it -- useful and reviewable on its own."
+
+risks:
+  - id: "R1"
+    risk: "The rule data is unverifiable from here and two of ten research reports were already wrong."
+    mitigation: "Rules are config with per-conference provenance. B1 ships no rule content. Acceptance fixtures assert against real outcomes, which is what caught both earlier errors."
+  - id: "R2"
+    risk: "The engine reproduces the right ORDER for the wrong REASON and nobody notices."
+    mitigation: "resolved_by is asserted in every acceptance test, not just the order. This is exactly how the ACC error surfaced."
+  - id: "R3"
+    risk: "A conference's real procedure cannot be expressed by the primitive vocabulary."
+    mitigation: "T1's escalation condition. The vocabulary was drawn from all ten researched procedures, but they are provisional; an unexpressible rule is a schema bug to escalate, not to approximate."
+  - id: "R4"
+    risk: "Silent behaviour change for conferences with no config."
+    mitigation: "AC7 -- explicit fallback to current behaviour, tested."
+  - id: "R5"
+    risk: "This supersedes part of PR #18 while that PR is open."
+    mitigation: "D4 -- recommend merging #18 first and rebasing. Flagged at the checkpoint."
+
+model_routing_notes:
+  - "T3 is frontier/high: the recursive driver is where a termination or correctness bug would be both easiest to introduce and hardest to see. Everything else balanced/medium."
+
+open_questions:
+  - "Q1-Q4 from requirements.yaml, all for the user at the checkpoint."
+
+review:
+  status: draft
+  loop_count: 0
+  notes: []
+
+checkpoint:
+  required_before_execution: true
+  status: pending
