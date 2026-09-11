@@ -128,4 +128,11 @@ jobs:
             grep "OVERRIDE_FAILURE" output.log
             exit 1
           fi
+          # Separate token, same reasoning: a schema mismatch stops ingest dead, and main.py's
+          # own exit code cannot be seen from here because the run step ends in `|| true`.
+          if grep -q "INGEST_FAILURE" output.log; then
+            echo "::error::Ingest could not run -- database schema does not match the code (unapplied migration?):"
+            grep "INGEST_FAILURE" output.log
+            exit 1
+          fi
 

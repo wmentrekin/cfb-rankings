@@ -11,6 +11,41 @@ load_dotenv()
 API_KEY = os.getenv("API_KEY")
 BASE_URL = "https://api.collegefootballdata.com"
 
+
+def _extract_playoff_fields(game: dict) -> None:
+    """Defensive extraction of the nested `playoff` object CFBD's /games response carries
+    (present only on CFP-affiliated games -- most games, including all regular-season and
+    non-CFP postseason games, have no `playoff` object at all). Mutates `game` in place, adding
+    the camelCase keys the DataFrame column-selection step below expects. Never raises on a
+    missing object or a missing/renamed field within it -- default to None so the vast majority
+    of rows simply carry nulls here.
+
+    GamePlayoff has exactly eight fields (confirmed against the OpenAPI-generated CFBD client):
+    competition, format, round, round_name, bracket_slot, home_seed, away_seed, bowl_name.
+    round_order is NOT one of them -- it lives on PlayoffMatchup, which belongs to a different
+    endpoint (/playoffs/cfp), never called here. Reading playoff.get("round_order") was
+    therefore reading a key that cannot exist on this object, silently returning None every time
+    (why playoff_round_order has been NULL for every season, not just 2025 -- see migration
+    0005's header). `round` is the field that does exist and was presumably intended; the DB
+    column name is unchanged (playoff_round_order), only this extraction's source key changes.
+
+    Pulled out to a standalone function (rather than an inline loop in get_games_by_year_week)
+    specifically so it can be unit-tested against a synthetic games_data list, with no network or
+    DB call -- see tests/test_get_games_playoff_extraction.py. The `round_order` regression this
+    exists to guard against (a `.get()` on a key that cannot exist, silently returning None) went
+    unnoticed for a year precisely because nothing exercised this loop in isolation before.
+    """
+    playoff = game.get("playoff") or {}
+    if not isinstance(playoff, dict):
+        playoff = {}
+    game["playoffRoundName"] = playoff.get("round_name") or playoff.get("roundName")
+    game["playoffRoundOrder"] = playoff.get("round")
+    game["playoffBracketSlot"] = playoff.get("bracket_slot") or playoff.get("bracketSlot")
+    game["playoffBowlName"] = playoff.get("bowl_name") or playoff.get("bowlName")
+    game["playoffHomeSeed"] = playoff.get("home_seed") or playoff.get("homeSeed")
+    game["playoffAwaySeed"] = playoff.get("away_seed") or playoff.get("awaySeed")
+
+
 def get_games_by_year_week(year, week=None, season_type='regular'):
     """
     Fetches game data from the College Football Data API for a given year and optional week.
@@ -48,24 +83,14 @@ def get_games_by_year_week(year, week=None, season_type='regular'):
             "away_team", "away_score", "neutral_site", "conference_game", "venue", "venueid",
             "home_conference", "away_conference", "margin", "winner", "alpha", "notes",
             "playoff_round_name", "playoff_round_order", "playoff_bracket_slot", "playoff_bowl_name",
+            "playoff_home_seed", "playoff_away_seed",
         ])
 
-    # Defensive extraction of the nested `playoff` object (present only on
-    # CFP-affiliated games -- most games, including all regular-season and
-    # non-CFP postseason games, have no `playoff` object at all). Never
-    # raise on a missing object or a missing/renamed field within it --
-    # default to None so the vast majority of rows simply carry nulls here.
     for game in games_data:
-        playoff = game.get("playoff") or {}
-        if not isinstance(playoff, dict):
-            playoff = {}
-        game["playoffRoundName"] = playoff.get("round_name") or playoff.get("roundName")
-        game["playoffRoundOrder"] = playoff.get("round_order") or playoff.get("roundOrder")
-        game["playoffBracketSlot"] = playoff.get("bracket_slot") or playoff.get("bracketSlot")
-        game["playoffBowlName"] = playoff.get("bowl_name") or playoff.get("bowlName")
+        _extract_playoff_fields(game)
 
     games_df = pd.DataFrame(games_data)
-    games_df = games_df[["id","season","week","seasonType", "startDate","homeTeam","homePoints","awayTeam","awayPoints","neutralSite","conferenceGame","venue","venueId","homeConference","awayConference","notes","playoffRoundName","playoffRoundOrder","playoffBracketSlot","playoffBowlName"]]
+    games_df = games_df[["id","season","week","seasonType", "startDate","homeTeam","homePoints","awayTeam","awayPoints","neutralSite","conferenceGame","venue","venueId","homeConference","awayConference","notes","playoffRoundName","playoffRoundOrder","playoffBracketSlot","playoffBowlName","playoffHomeSeed","playoffAwaySeed"]]
     games_df["id"] = pd.to_numeric(games_df["id"], errors="coerce").fillna(0).astype("Int64")
     games_df["venueId"] = pd.to_numeric(games_df["venueId"], errors="coerce").fillna(0).astype(int)
     games_df["homePoints"] = pd.to_numeric(games_df["homePoints"], errors="coerce").fillna(0).astype("Int64")
@@ -99,6 +124,8 @@ def get_games_by_year_week(year, week=None, season_type='regular'):
         'playoffRoundOrder': 'playoff_round_order',
         'playoffBracketSlot': 'playoff_bracket_slot',
         'playoffBowlName': 'playoff_bowl_name',
+        'playoffHomeSeed': 'playoff_home_seed',
+        'playoffAwaySeed': 'playoff_away_seed',
     })
 
     games_df['home_score'] = games_df['home_score'].astype('Int64')
@@ -113,6 +140,12 @@ def get_games_by_year_week(year, week=None, season_type='regular'):
     # majority of rows (non-playoff games), and that null is the correct
     # value, not a default to paper over.
     games_df['playoff_round_order'] = pd.to_numeric(games_df['playoff_round_order'], errors="coerce").astype("Int64")
+    # playoff_home_seed/playoff_away_seed: same nullable-int, no-fillna discipline as
+    # playoff_round_order above -- null for every non-CFP-bracket row, which is correct, not a
+    # gap. K8: schema-confirmed only (GamePlayoff's home_seed/away_seed), never verified against
+    # a live CFBD payload from this sandbox -- see migration 0005's header.
+    games_df['playoff_home_seed'] = pd.to_numeric(games_df['playoff_home_seed'], errors="coerce").astype("Int64")
+    games_df['playoff_away_seed'] = pd.to_numeric(games_df['playoff_away_seed'], errors="coerce").astype("Int64")
     # playoff_bracket_slot is documented by CFBD as a STRING field (not
     # numeric) -- do not cast it. A numeric coercion here would silently
     # null out any real value that isn't purely digits (e.g. a bracket

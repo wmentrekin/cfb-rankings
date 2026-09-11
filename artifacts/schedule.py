@@ -34,6 +34,7 @@ from dotenv import load_dotenv  # type: ignore
 from sqlalchemy import create_engine  # type: ignore
 
 from artifacts import schedule_standings
+from artifacts.bowl_names import short_bowl_name
 from artifacts.r2 import get_r2_client, upload_json
 from artifacts.rankings import CONFERENCE_DISPLAY_NAMES, _resolve_logo, compute_rank_and_delta
 from utils import football_day, get_cfb_week
@@ -140,6 +141,13 @@ CFP_SLOTS: List[Tuple[str, str]] = [
 ]
 _CFP_SLOT_IDS = {slot_id for slot_id, _ in CFP_SLOTS}
 
+# T4/AC5: distinct status for a team that earned a first-round CFP bye -- see _cfp_bye_cell and
+# the cfp-r1-bowls branch of _build_team_weeks. Previously this slot NEVER fell through to a bye
+# at all (it unconditionally emitted the bowl-eligibility placeholder, reading as merely
+# "Eligible" -- indistinguishable from, and arguably worse than, a team that missed the playoff
+# entirely). See docs/schedule-grid/implementation-report.yaml:119 for where this was deferred.
+CFP_BYE_STATUS = "cfp_bye"
+
 
 # ---------------------------------------------------------------------------
 # Date/datetime coercion -- schedule_grid rows arrive here either as plain
@@ -234,6 +242,24 @@ def _display_conference_name(raw_conference: Optional[str]) -> str:
 # instead of the championship column. That is the conservative direction --
 # rendering a real game in the wrong column beats asserting a matchup that was
 # never determined, which is the failure this rule exists to prevent.
+#
+# THE OTHER DIRECTION -- a real false positive, not just a misplaced column: a
+# make-up or postponed game that instead sits ALONE in a late bucket (no
+# scheduling collision with the real slate) satisfies this rule's shape
+# perfectly and gets identified as the conference's championship game, even
+# though it is not one. UPDATED CONSEQUENCE (season-grid-postseason-format):
+# this used to be cosmetic -- the game rendered in the Conference Championship
+# column instead of a week column, nothing else. It no longer is. The same
+# identification now also feeds _exclude_championship_games_from_conf_records
+# (subtracts this game from both participants' DISPLAYED conf_record) and
+# _resolve_conference_champions (crowns its winner, who then sorts first via
+# _is_champion) -- so a false positive here misstates a real, played
+# conference game's tally and promotes the wrong team to the top of its
+# conference. Still accepted, not mitigated further in this pass: the
+# structural signal (lone game, later than the regular slate) is the best
+# available without hand-curating a real championship-game schedule, and a
+# make-up game landing alone on/after what would be championship weekend is
+# an edge case, not the common path.
 #
 # VERIFIED against live 2024, 2025 and 2026 data (Supabase project
 # oyqgmbgwohlnrxodvilt): every real title game is still identified for both
@@ -431,6 +457,17 @@ def _game_name_for_row(row: Dict[str, Any]) -> Optional[str]:
     if row.get("season_type") != "postseason":
         return None
     return row.get("playoff_bowl_name") or row.get("notes") or None
+
+
+def _playoff_round_for_row(row: Dict[str, Any]) -> Optional[str]:
+    """K5: playoff_round is non-null ONLY for a real CFP-round postseason game -- same
+    season_type gate as _game_name_for_row, plus playoff_round_name itself, which CFBD already
+    leaves null for ordinary (non-CFP) bowls and every non-postseason row. Exists so the
+    frontend can badge a CFP game without string-matching "College Football Playoff" inside
+    game_name -- a label this same pass is shortening (K6)."""
+    if row.get("season_type") != "postseason":
+        return None
+    return row.get("playoff_round_name")
 
 
 # ---------------------------------------------------------------------------
@@ -665,17 +702,29 @@ def _cell_from_row(row: Dict[str, Any], logos_by_team: Dict[str, Any]) -> Dict[s
     else:
         team_score = int(team_score) if team_score is not None else None
         opp_score = int(opp_score) if opp_score is not None else None
+    game_name = _game_name_for_row(row)
     return {
         "season_type": row.get("season_type"),
         "opponent": opponent,
         "opponent_logo_url": opponent_logo,
         "conditional_opponent": None,  # only ever set on a computed 'possible' placeholder cell
-        "game_name": _game_name_for_row(row),
+        "game_name": game_name,
+        # K6: one-line form of game_name via artifacts/bowl_names.py -- null wherever game_name
+        # is null (guarded here rather than inside short_bowl_name, which treats a null input as
+        # a pass-through the same way, but this keeps the None-ness decision co-located with
+        # every other field on this cell).
+        "game_name_short": short_bowl_name(game_name) if game_name is not None else None,
         "home_away": row.get("home_away"),
         "neutral_site": bool(row.get("neutral_site")) if row.get("neutral_site") is not None else False,
         "status": status,
         "team_score": team_score,
         "opp_score": opp_score,
+        # K5: non-null only for a real CFP-round game -- see _playoff_round_for_row.
+        "playoff_round": _playoff_round_for_row(row),
+        # cfp_seed: null on every real-row cell -- this field exists only to carry a CFP bye
+        # team's seed (see _cfp_bye_cell); a real game's own seed is not surfaced here today
+        # (out of scope -- no acceptance criterion asks for it on a played/scheduled game).
+        "cfp_seed": None,
     }
 
 
@@ -687,11 +736,14 @@ def _placeholder_cell(logical_season_type: str, status: str, conditional_opponen
         "opponent_logo_url": None,
         "conditional_opponent": conditional_opponent,
         "game_name": None,
+        "game_name_short": None,
         "home_away": None,
         "neutral_site": False,
         "status": status,
         "team_score": None,
         "opp_score": None,
+        "playoff_round": None,
+        "cfp_seed": None,
     }
 
 
@@ -702,11 +754,14 @@ def _bye_cell(logical_season_type: str) -> Dict[str, Any]:
         "opponent_logo_url": None,
         "conditional_opponent": None,
         "game_name": None,
+        "game_name_short": None,
         "home_away": None,
         "neutral_site": False,
         "status": "bye",
         "team_score": None,
         "opp_score": None,
+        "playoff_round": None,
+        "cfp_seed": None,
     }
 
 
@@ -720,11 +775,73 @@ def _tbd_cell(logical_season_type: str) -> Dict[str, Any]:
         "opponent_logo_url": None,
         "conditional_opponent": None,
         "game_name": None,
+        "game_name_short": None,
         "home_away": None,
         "neutral_site": False,
         "status": "tbd",
         "team_score": None,
         "opp_score": None,
+        "playoff_round": None,
+        "cfp_seed": None,
+    }
+
+
+def _team_seed_from_row(row: Dict[str, Any]) -> Optional[int]:
+    """This team's CFP seed, from a schedule_grid row it appears in (its cfp-quarterfinals row,
+    for the bye case).
+
+    Reads schedule_grid's team_seed directly rather than picking between
+    playoff_home_seed/playoff_away_seed on home_away. Migration 0006 flips the seed in the view,
+    the same way it already flips team_score/opp_score and conference -- re-deriving "which side
+    am I?" here would duplicate, in Python, the one thing that view exists to do once.
+
+    K8: home_seed/away_seed's existence on CFBD's GamePlayoff is confirmed only at the schema
+    level (read from the OpenAPI-generated client) -- nobody has confirmed they're actually
+    POPULATED for real games, and this environment cannot call CFBD to check. So an absent or
+    non-numeric value degrades to None here rather than guessing -- the caller (_cfp_bye_cell)
+    turns that into a plain label instead of a wrong seed number.
+    """
+    seed = row.get("team_seed")
+    if seed is None:
+        return None
+    try:
+        return int(seed)
+    except (TypeError, ValueError):
+        return None
+
+
+def _cfp_bye_cell(logical_season_type: str, seed: Optional[int]) -> Dict[str, Any]:
+    """T4/AC5: a team with a real cfp-quarterfinals row but no real cfp-r1-bowls row earned a
+    first-round CFP bye. Distinct from BOTH _bye_cell (no game exists at all that slot) and the
+    bowl-eligibility placeholder (which reads as merely "Eligible", indistinguishable from a
+    team that never made the playoff).
+
+    REVISED (fix-cycle-1 design correction): the seed is carried as its OWN nullable field,
+    cfp_seed -- an integer when resolved, null when not -- rather than pre-composed into
+    game_name as "Bye (No. N)" prose. Baking it into game_name conflicted with
+    _game_name_for_row's own contract (non-null only for a real, determined game; this is
+    neither) and inverted K5's whole argument: K5 exists precisely so the frontend does not have
+    to derive structured meaning (a badge) from a label's prose, and writing an integer into a
+    sentence two functions before the frontend reads it is that same coupling in the other
+    direction. game_name/game_name_short stay null here, exactly like _bye_cell -- the frontend
+    composes its own label from status == CFP_BYE_STATUS plus cfp_seed (present or absent), the
+    same K8 degrade (a resolved seed renders it, an absent one falls back to a plain "CFP Bye"
+    label) now expressed as a data question instead of a string-presence question.
+    """
+    return {
+        "season_type": logical_season_type,
+        "opponent": None,
+        "opponent_logo_url": None,
+        "conditional_opponent": None,
+        "game_name": None,
+        "game_name_short": None,
+        "home_away": None,
+        "neutral_site": False,
+        "status": CFP_BYE_STATUS,
+        "team_score": None,
+        "opp_score": None,
+        "playoff_round": None,
+        "cfp_seed": seed,
     }
 
 
@@ -752,9 +869,20 @@ def _build_team_weeks(
             weeks.append({"slot_id": slot_id, "label": label, **_placeholder_cell(logical_type, championship_status, conditional_opponent)})
             continue
         if slot_id == CFP_SLOTS[0][0]:
+            # T4/AC5: the only available bye signal is structural -- a real row in
+            # cfp-quarterfinals (checked here) with no real row in cfp-r1-bowls (already true,
+            # or this branch would never have been reached: the `real_row is not None` check
+            # above always wins once a real cfp-r1-bowls row exists) means this team earned a
+            # first-round bye, not that it merely "made a bowl."
+            quarterfinal_row = team_slot_rows.get(CFP_SLOTS[1][0])
+            if quarterfinal_row is not None:
+                seed = _team_seed_from_row(quarterfinal_row)
+                weeks.append({"slot_id": slot_id, "label": label, **_cfp_bye_cell(logical_type, seed)})
+                continue
             # Bowl eligibility (possible/eligible/ineligible) is computed unconditionally for
-            # every team, so this slot NEVER falls through to plain 'bye' -- unlike Conference
-            # Championship/Army-Navy/the other 3 CFP slots, which do.
+            # every team, so absent a detected bye above, this slot NEVER falls through to a
+            # plain 'bye' -- unlike Conference Championship/Army-Navy/the other 3 CFP slots,
+            # which do.
             weeks.append({"slot_id": slot_id, "label": label, **_placeholder_cell(logical_type, bowl_status, None)})
             continue
         if slot_id in flex_tbd_slot_ids:
@@ -772,7 +900,10 @@ def _build_team_weeks(
 # ---------------------------------------------------------------------------
 # Within-conference sort (approximation, documented limitation -- NOT real
 # tiebreaker bylaws, per plan.yaml key_decisions):
-#   conf win% desc -> head-to-head IF exactly two teams tied on conf win%
+#   conference-championship winner first (K3/K9 -- see _is_champion in
+#   build_schedule_payload) -> conf win% desc -> head-to-head IF exactly two
+#   teams tied on conf win% AND on champion status (K4 -- see the grouping
+#   loop below for why a champion must never be grouped with a non-champion)
 #   and played each other this season -> overall win% desc -> name asc.
 # Independents: overall win% desc -> name asc (no conference tiebreak
 # question for them).
@@ -827,20 +958,50 @@ def _sort_conference_teams(entries: List[Dict[str, Any]], rows: List[Dict[str, A
         # tied teams grows the group to three and silently disables their head-to-head swap,
         # displaying the loser of that game above the winner. Ordering among played teams is
         # unchanged, since _conf_played is True for all of them.
-        entries.sort(key=lambda e: (-(e["_conf_pct"] if e["_conf_pct"] is not None else -1.0),
+        # T2/K4: champion status (default False, so hand-built entries in existing tests that
+        # never set _is_champion keep sorting exactly as before) is the TOP sort tier -- a
+        # conference-championship-game winner sorts first regardless of its conf_pct.
+        entries.sort(key=lambda e: (-e.get("_is_champion", False),
+                                    -(e["_conf_pct"] if e["_conf_pct"] is not None else -1.0),
                                     -e["_conf_played"], -e["_overall_pct"], e["team"]))
         i, n = 0, len(entries)
         while i < n:
             j = i
-            # Group on percentage AND whether the team has played. Percentage alone is not
-            # enough: an unplayed record scores 0.5, which ties it with every 1-1, 2-2 and
-            # 3-3 team, so one 0-0 team joining two genuinely tied teams grows the group to
-            # three and silently cancels their head-to-head swap -- displaying the loser of
-            # that game above the winner. A team that has played nobody cannot be part of a
-            # head-to-head tie by definition, so it must never join the group.
+            # Group on percentage, whether the team has played, AND champion status (T2/K4).
+            # Percentage alone is not enough: an unplayed record scores 0.5, which ties it with
+            # every 1-1, 2-2 and 3-3 team, so one 0-0 team joining two genuinely tied teams grows
+            # the group to three and silently cancels their head-to-head swap -- displaying the
+            # loser of that game above the winner. A team that has played nobody cannot be part
+            # of a head-to-head tie by definition, so it must never join the group.
+            #
+            # The _is_champion term guards a DIFFERENT failure: a champion can easily tie a
+            # non-champion on conf_pct (the championship game itself isn't the only thing that
+            # separates them), and if that non-champion beat the champion earlier in the regular
+            # season, the swap below would fire on that meeting and undo the whole champion-first
+            # rule from the sort key above -- silently, since the swap has no notion of
+            # championship status without this check. A unique champion (True) can therefore
+            # never share a group with anyone else (all False), so the swap below never touches it.
+            #
+            # INTERACTION WITH THE THREE-WAY PROTECTION ABOVE (fix-cycle-1, documented rather
+            # than fixed -- the review judged the result arguably correct, just previously
+            # unstated and untested): the "group grows to three, swap disabled" protection
+            # described two paragraphs up is NOT unconditional once _is_champion is part of the
+            # grouping key. Three teams genuinely tied on conf_pct with one of them a champion do
+            # NOT form one group of three -- the champion (True) splits off into its own
+            # single-team group, leaving the other two (both False) as a group of exactly two,
+            # which re-enables their head-to-head swap. Concrete case (see
+            # tests/test_conference_championship_records.py's three-way-tie test): A, B, C all
+            # 1-1, B beat A head-to-head. With no champion, all three group together and the
+            # swap never fires -- name order, ['A', 'B', 'C']. With C the champion, C sorts alone
+            # ahead of {A, B}, and THAT pair's now-exposed head-to-head swap fires on its own
+            # meeting -- ['C', 'B', 'A']. This is consistent with the rule as specified (a
+            # champion's own group can never be swapped; nothing protects the teams IT excludes
+            # from the group it no longer joins), but is a real, non-obvious consequence of
+            # narrowing the grouping key, not a re-derivation of the three-way protection itself.
             while j + 1 < n and entries[j + 1]["_conf_pct"] is not None and entries[i]["_conf_pct"] is not None \
                     and abs(entries[j + 1]["_conf_pct"] - entries[i]["_conf_pct"]) < 1e-9 \
-                    and entries[j + 1]["_conf_played"] == entries[i]["_conf_played"]:
+                    and entries[j + 1]["_conf_played"] == entries[i]["_conf_played"] \
+                    and entries[j + 1].get("_is_champion", False) == entries[i].get("_is_champion", False):
                 j += 1
             group = entries[i:j + 1]
             if len(group) == 2 and group[0]["_conf_pct"] is not None and group[0]["_conf_played"]:
@@ -856,7 +1017,125 @@ def _sort_conference_teams(entries: List[Dict[str, Any]], rows: List[Dict[str, A
         del e["_overall_pct"]
         del e["_conf_pct"]
         del e["_conf_played"]
+        # K10: scratch state, stripped before these entries reach the published payload --
+        # pop (not del) because, unlike the three fields above, this function itself never sets
+        # _is_champion unconditionally, so hand-built entries in existing tests that never set
+        # it at all must not raise a KeyError here.
+        e.pop("_is_champion", None)
     return entries
+
+
+# ---------------------------------------------------------------------------
+# T1/K1 -- post-hoc conf_record exclusion (see the long comment inside the
+# function body for why this cannot live inside compute_team_records's tally)
+# ---------------------------------------------------------------------------
+def _exclude_championship_games_from_conf_records(
+    standings: Dict[str, Dict[str, Any]],
+    rows: List[Dict[str, Any]],
+    season: int,
+    champ_game_ids: set,
+) -> None:
+    """
+    Subtract the identified conference-championship game from each participant's DISPLAYED
+    conf_record, in place, on the `standings` dict compute_standings() already returned.
+
+    THIS CANNOT LIVE INSIDE compute_team_records'S TALLY INSTEAD -- the naive version (exclude
+    the championship game_ids from the conf_rows tally itself) looks obviously correct, but
+    compute_standings is the only caller of compute_team_records, and it feeds that SAME records
+    dict straight into compute_conference_championship_status, which reads conf_wins and
+    conf_games_remaining to decide clinched/eliminated/possible. identify_conference_championship_
+    games does not gate on the game's status -- it happily identifies a scheduled-but-unplayed
+    title game too. So stripping that row from the tally would also shrink conf_games_remaining
+    (R_T) for BOTH participants in the week before kickoff. Since eliminated = B_T <
+    nth_highest_other_W and B_T = W_T + R_T, a smaller R_T makes elimination MORE likely -- the two
+    teams about to play for the conference title would be marked "Eliminated" during championship
+    week, every season. compute_conference_championship_status's own docstring says it must never
+    assert "eliminated" incorrectly. So the status math (compute_standings, called by this
+    function's caller BEFORE this runs) always sees unmodified rows, and only the separate,
+    already-built conf_record dict that gets DISPLAYED is adjusted here, afterward.
+
+    Only rows with status in ('win', 'loss') are ever subtracted: an unplayed championship game
+    was never counted in compute_team_records's tally to begin with (it only counts win/loss
+    rows), so there is nothing to remove from the display for it either -- this is what keeps an
+    identified-but-unplayed game from changing anything at all (see
+    tests/test_conference_championship_records.py's K1 regression test, which pins conf_record
+    itself in the unplayed case, not just championship_status -- fix-cycle-1 review found the
+    status math had a passing test but the displayed record did not).
+
+    Fix-cycle-1 hardening: also requires conference_game=True on the row itself, duplicating the
+    invariant identify_conference_championship_games already enforces when it builds
+    champ_game_ids in the first place. Structurally redundant today -- every row sharing a
+    champ_game_ids game_id already IS a conference game -- but cheap insurance against exactly
+    the failure mode this function exists to prevent (a wrong subtraction from a displayed
+    record) if that upstream invariant is ever loosened without this function being revisited.
+    """
+    if not champ_game_ids:
+        return
+    for row in rows:
+        if row.get("season") != season:
+            continue
+        if row.get("game_id") not in champ_game_ids:
+            continue
+        if not row.get("conference_game"):
+            continue
+        status = row.get("status")
+        if status not in ("win", "loss"):
+            continue
+        st = standings.get(row.get("team"))
+        if st is None or st.get("conf_record") is None:
+            continue
+        key = "wins" if status == "win" else "losses"
+        st["conf_record"][key] -= 1
+
+
+# ---------------------------------------------------------------------------
+# T2/K3 -- resolve each identified championship game to its ACTUAL winner
+# ---------------------------------------------------------------------------
+def _resolve_conference_champions(
+    champ_games_by_conf: Dict[str, int],
+    rows: List[Dict[str, Any]],
+    season: int,
+) -> Dict[str, str]:
+    """
+    Dict[raw conference -> winning team name], for conferences whose identified championship
+    game (identify_conference_championship_games) has actually been PLAYED.
+
+    K3: an identified-but-unplayed game contributes NO entry here -- a team that has merely
+    clinched a spot in the title game is not a champion, so that conference's sort order stays
+    untouched (see _sort_conference_teams's _is_champion default of False) until the game
+    resolves.
+
+    The "both sides win" case -- two rows of the same game_id both reading status='win' -- is
+    unreachable: status is score-derived (schedule_grid's CASE expression), so at most one of a
+    game's two team-perspective rows can ever read 'win'. Never a source of ambiguity here.
+    """
+    game_id_to_conf = {game_id: conf for conf, game_id in champ_games_by_conf.items()}
+    if len(game_id_to_conf) != len(champ_games_by_conf):
+        # "Shouldn't happen" -- champ_games_by_conf is Dict[conference -> game_id], one entry
+        # per conference, but this inverts it to Dict[game_id -> conference], which is silently
+        # LOSSY if two different conferences were ever identified against the SAME game_id:
+        # whichever conference iterates last in champ_games_by_conf.items() wins the inversion,
+        # and the other is dropped from champion resolution entirely -- no exception, just a
+        # missing champion for that conference. Every neighbouring "shouldn't happen" case in
+        # this file logs rather than silently proceeding; matching that here.
+        collided = [conf for conf, gid in champ_games_by_conf.items() if game_id_to_conf.get(gid) != conf]
+        logger.warning(
+            "schedule.py: %d conference(s) were identified against a championship game_id shared "
+            "with another conference -- %s -- and were dropped from champion resolution by the "
+            "many-to-one game_id->conference inversion. Should be structurally impossible (a "
+            "conference_game row belongs to exactly one conference).", len(collided), collided,
+        )
+    champions: Dict[str, str] = {}
+    for row in rows:
+        if row.get("season") != season:
+            continue
+        game_id = row.get("game_id")
+        if game_id not in game_id_to_conf:
+            continue
+        if row.get("status") != "win":
+            continue
+        champions[game_id_to_conf[game_id]] = row.get("team")
+    return champions
 
 
 # ---------------------------------------------------------------------------
@@ -908,10 +1187,24 @@ def build_schedule_payload(
     # Sun Belt today) get per-division championship statuses instead of a blank column; every
     # other conference's teams map to None and are computed exactly as before.
     divisions = {team: meta.get("division") for team, meta in teams_meta.items()}
-    standings = schedule_standings.compute_standings(rows, season, divisions=divisions)
-    fbs_team_names = set(teams_meta.keys())
 
-    champ_game_ids = set(identify_conference_championship_games(rows, season).values())
+    # T1/K2: identification must run BEFORE compute_standings, not after (it did, at the old
+    # :914 vs :911) -- so its result is available for the post-hoc conf_record exclusion right
+    # below. This reorder is inert on its own: the only statement previously between the two
+    # call sites was the unrelated fbs_team_names assignment, simply moved down with it.
+    champ_games_by_conf = identify_conference_championship_games(rows, season)
+    champ_game_ids = set(champ_games_by_conf.values())
+
+    standings = schedule_standings.compute_standings(rows, season, divisions=divisions)
+    # T1/K1: compute_standings above ran on UNMODIFIED rows, so championship_status is safe (see
+    # _exclude_championship_games_from_conf_records's docstring). Only the conf_record that gets
+    # DISPLAYED is adjusted, here, afterward.
+    _exclude_championship_games_from_conf_records(standings, rows, season, champ_game_ids)
+    # T2/K3: the identified game's actual winner (None for a conference with no identified game,
+    # or one that hasn't been played yet) -- see _resolve_conference_champions.
+    conference_champions = _resolve_conference_champions(champ_games_by_conf, rows, season)
+
+    fbs_team_names = set(teams_meta.keys())
     army_navy_game_id = identify_army_navy_game(rows, season)
     canonical_columns = build_canonical_columns(rows, season, champ_game_ids, army_navy_game_id)
     week_slot_ids_sorted = [slot_id for slot_id, _label in canonical_columns if slot_id.startswith("week-")]
@@ -988,6 +1281,9 @@ def build_schedule_payload(
                 "record": record,
                 "conf_record": conf_record,
                 "division": team_division(team),
+                # T2/K10: scratch state consumed by _sort_conference_teams and stripped there
+                # before these entries are returned -- never reaches the published payload.
+                "_is_champion": conference_champions.get(raw_conf) == team,
                 "weeks": weeks,
             })
 

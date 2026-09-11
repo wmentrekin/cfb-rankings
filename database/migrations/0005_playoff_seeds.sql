@@ -1,0 +1,41 @@
+-- Migration: 0005_playoff_seeds
+-- Feature: season-grid-postseason-format (B2/T4)
+--
+-- Purpose: widen `games` with the two CFP seed fields CFBD's nested `playoff` object on
+-- /games (GamePlayoff) carries alongside the four fields migration 0002 already added columns
+-- for. Platform research (B0) confirmed GamePlayoff has exactly eight fields: competition,
+-- format, round, round_name, bracket_slot, home_seed, away_seed, bowl_name -- get_games.py read
+-- only round_name/bracket_slot/bowl_name plus (mistakenly, see below) round_order. This
+-- migration adds columns for the two that were simply never ingested: home_seed, away_seed.
+-- Ingesting them lets artifacts/schedule.py derive a first-round-CFP-bye team's seed from its
+-- quarterfinal row (the only slot a bye team has a real row in), rendering e.g. "Bye (No. 1)"
+-- instead of a bare bye label.
+--
+-- WHY playoff_round_order HAS BEEN NULL FOR EVERY SEASON, NOT JUST 2025 (no schema change here
+-- -- the column already exists via migration 0002 -- but this is the migration touching
+-- get_games.py's playoff extraction, so the explanation belongs with this change): the
+-- extraction read playoff.get("round_order"), but round_order IS NOT A FIELD OF GamePlayoff AT
+-- ALL. It lives on PlayoffMatchup, which belongs to a DIFFERENT CFBD endpoint (/playoffs/cfp),
+-- never called by this pipeline. That .get() was therefore reading a key that cannot exist on
+-- the /games response's playoff object, silently returning None on every single row, for every
+-- season, since migration 0002 landed -- not a 2025-specific data gap. Fixed in this same change
+-- (get_games.py now reads `round`, the field that does exist and was presumably intended); the
+-- playoff_round_order COLUMN is unchanged, keeping its existing name since nothing downstream
+-- needs to be repointed -- only the extraction's source key changes.
+--
+-- CONFIDENCE ON THE NEW COLUMNS: schema-level only, not payload-level. home_seed/away_seed's
+-- existence was established by reading the OpenAPI-generated CFBD client, not by a live CFBD
+-- call -- this environment cannot make one, so nobody has confirmed these fields are actually
+-- POPULATED for real games. That is why the consuming code (artifacts/schedule.py) degrades to
+-- a plain bye label whenever a seed is null rather than asserting a seed number -- see K8 in
+-- docs/season-grid-postseason-format/plan.yaml. A wrong seed on a public page is worse than an
+-- absent one.
+--
+-- Both columns are nullable INTEGER with no default: additive and safe for every existing row.
+-- Populated only on rows CFBD tags as CFP-affiliated, matching the other playoff_* columns'
+-- population pattern from migration 0002 -- everything else (regular season, non-CFP
+-- postseason) is null, which is correct, not a gap.
+
+ALTER TABLE games
+  ADD COLUMN playoff_home_seed INTEGER,
+  ADD COLUMN playoff_away_seed INTEGER;
