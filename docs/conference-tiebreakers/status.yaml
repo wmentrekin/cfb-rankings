@@ -1,0 +1,169 @@
+artifact: status
+feature: "conference-tiebreakers"
+mode: "large-initiative"
+stage: "planning"
+owner_skill: work
+
+objective: >
+  Replace the conference standings ordering with each conference's actual published tiebreaker
+  procedure, applied continuously all season rather than only to select championship-game
+  participants. Overall record becomes a fallback that only applies where the tiebreaker chain
+  cannot produce an answer.
+
+repository_sync:
+  completed_before_work: true
+  checked_at: "2026-09-11"
+  repositories:
+    - path: "/home/user/cfb-rankings"
+      remote: "https://github.com/wmentrekin/cfb-rankings"
+      relevant_branch: "main"
+      local_commit_before: "d4e45b92e08a068db2fbb5a32cbbf60953657044"
+      remote_commit_after_fetch: "d4e45b92e08a068db2fbb5a32cbbf60953657044"
+      local_commit_after: "d4e45b92e08a068db2fbb5a32cbbf60953657044"
+      result: "current"
+      notes: "Clean tree. Feature branch cut from main, NOT from work/standings-record-magnitude (PR #18)."
+  accepted_unverified_states: []
+  not_involved:
+    - "/home/user/personal-site -- backend-only feature; personal-site PR #24 is unrelated and still open."
+
+branching:
+  branch_name: "work/conference-tiebreakers"
+  notes: >
+    Cut from main. PR #18 (work/standings-record-magnitude) is open and overlaps: its _conf_net
+    term is SUPERSEDED by this work (win differential appears in no conference rulebook), while
+    its _placement_net survives as part of the overall-record fallback. Recommend merging #18
+    first and rebasing this branch, rather than stacking -- see decisions D4.
+
+summary:
+  current_focus: "Planning. Blocked on a product decision and on primary-source rule text."
+  last_completed: >
+    Discovery complete: ten per-conference research reports, one prior-art report, four real
+    2025 ties recomputed from live data, and the egress constraint characterised.
+  current_blocker: >
+    Primary rule documents are unreachable from this environment (gateway 403 on every
+    conference host). Rules must come from the user as pasted or uploaded text.
+
+artifacts:
+  requirements: "docs/conference-tiebreakers/requirements.yaml"
+  plan: "docs/conference-tiebreakers/plan.yaml"
+  implementation_report: null
+
+pr:
+  number: null
+  url: null
+  status: "not_opened"
+  related:
+    - repo: "wmentrekin/cfb-rankings"
+      number: 18
+      url: "https://github.com/wmentrekin/cfb-rankings/pull/18"
+      status: "open"
+      note: "Record-magnitude interim fix. Its _conf_net is superseded by this feature."
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    task_profile: "orchestration"
+    requested_model_tier: "frontier"
+    requested_reasoning: "high"
+    requested_provider_model: "Claude Opus 5"
+    actual_model: "claude-opus-5"
+    routing_enforced: true
+    escalation_count: 0
+    status: "active"
+    stage: "planning"
+    task: "Preparing the plan and the pre-execution checkpoint."
+    last_update: "2026-09-11"
+    blocker: ""
+  - id: "conference-research-x10"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "claude-sonnet-5"
+    routing_enforced: true
+    status: "complete"
+    stage: "discovery"
+    task: "One tiebreaker procedure per FBS conference."
+    last_update: "2026-09-11"
+    blocker: "Two of ten reports were wrong until recomputation caught them. All step orders are provisional."
+  - id: "prior-art-researcher"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "claude-sonnet-5"
+    routing_enforced: true
+    status: "complete"
+    stage: "discovery"
+    task: "How other projects build live standings engines with real tiebreakers."
+    last_update: "2026-09-11"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: pending
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers:
+  - id: "B1"
+    blocker: >
+      Primary rule documents cannot be read from this environment. Verified at the network
+      layer, not just the tool layer: curl to theamerican.org and en.wikipedia.org both get
+      "CONNECT tunnel failed, response 403" from the egress gateway, while
+      raw.githubusercontent.com returns 200. The policy is a development-infrastructure
+      allowlist. No retry or alternate route is legitimate.
+    consequence: >
+      Rule content cannot be authored from research. It must be supplied by the user and stored
+      as reviewable configuration with per-conference provenance.
+    owner: "user"
+
+decisions:
+  - id: "D1"
+    decision: "Rules live as configuration data, not code."
+    rationale: >
+      The step ORDER differs genuinely between conferences, the content cannot be verified from
+      here, and two of ten research reports were already wrong. A config file with provenance
+      marks is correctable by someone who can read the source PDFs; hard-coded logic is not.
+  - id: "D2"
+    decision: "The information threshold is a per-step sample-size gate, not a season-phase switch."
+    rationale: >
+      Follows the NFL's own rule text, where the common-games step requires a minimum of four
+      common games and is skipped when unmet. Achieves what the user asked for -- overall record
+      deciding early-season cases -- without inventing a calendar rule no conference publishes.
+  - id: "D3"
+    decision: "record_vs_placed reads the last STABLE ordering, never the in-progress one."
+    rationale: >
+      "Record against the next-highest-placed team" is circular by construction. Prior art
+      (league-standings) resolves this by making resolution scope an explicit config choice
+      rather than solving the loop. Reading a frozen prior ordering guarantees termination.
+  - id: "D4"
+    decision: "Recommend merging PR #18 before this branch proceeds, rather than stacking."
+    rationale: >
+      #18 fixes a live visible defect and is complete. This feature supersedes only its
+      _conf_net term. Stacking would couple a small finished fix to a large blocked one.
+
+model_routing:
+  provider: "Claude Code / Anthropic"
+  provider_map_verified_at: "2026-09-07"
+  substitutions: []
+  unresolved_limitations:
+    - "Subagent reasoning level is inherited from the main conversation; model selection is enforced."
+    - "No subagent can reach conference websites; every research handoff must carry its facts inline."
+
+next_action: "Pre-execution checkpoint: the user chooses scope and supplies primary rule text."
+next_recommended_command: "$work"
+user_input_needed: true
