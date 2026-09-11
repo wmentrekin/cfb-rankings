@@ -257,6 +257,102 @@ def test_pac12_two_team_split_head_to_head_produces_washington_state_first():
     )
 
 
+# ---------------------------------------------------------------------------
+# RECORD MAGNITUDE. A percentage discards how many games produced it, so two records that
+# reduce to the same ratio compared equal and fell through to model rank. _placement_net and
+# _conf_net (wins - losses) restore the magnitude the ratio threw away.
+#
+# WHY NET DIFFERENTIAL AND NOT RAW WINS: at equal percentage the two agree above .500 and
+# DISAGREE below it. 1-3 and 2-6 are both .250; raw wins ranks 2-6 higher (2 > 1), which puts
+# a team with three extra losses above one with a tidier record. Net differential ranks 1-3
+# higher (-2 > -4) and never inverts a losing team. At exactly .500 net ties (0 == 0) and
+# declines to invent a preference, where raw wins would assert 4-4 over 1-1.
+# ---------------------------------------------------------------------------
+def test_two_wins_outrank_one_win_when_conference_play_has_not_started():
+    """The reported 2026 USC case. Every Big Ten team was 0-0 in conference, so conf_pct took
+    the 0.5 sentinel for all of them and _conf_played was False for all of them; 2-0 and 1-0
+    both give a placement pct of 1.000, so rank alone decided and USC's worse rank buried it
+    beneath fourteen 1-0 teams."""
+    entries = [_entry("Rival-1-0", 1, 0, 0, 0), _entry("USC", 2, 0, 0, 0)]
+    entries[0]["rank"] = 3      # better rank
+    entries[1]["rank"] = 25     # worse rank, but a game further clear
+    sorted_teams = [e["team"] for e in _sort_conference_teams(entries, [], 2026)]
+    assert sorted_teams == ["USC", "Rival-1-0"], sorted_teams
+
+
+def test_conference_record_magnitude_is_not_covered_by_conf_played():
+    """The conference-play twin of the case above, and the reason _conf_played does not already
+    handle it: both teams HAVE played conference games, so _conf_played is True for both, and
+    4-0 and 2-0 both give a conf_pct of 1.000. Overall records are identical here so the
+    placement terms tie too, isolating _conf_net as the only thing that can separate them."""
+    entries = [_entry("Conf-2-0", 4, 0, 2, 0), _entry("Conf-4-0", 4, 0, 4, 0)]
+    entries[0]["rank"] = 3
+    entries[1]["rank"] = 25
+    sorted_teams = [e["team"] for e in _sort_conference_teams(entries, [], 2026)]
+    assert sorted_teams == ["Conf-4-0", "Conf-2-0"], sorted_teams
+
+
+def test_independents_branch_also_respects_record_magnitude():
+    """Independents take a separate sort branch with no conference terms in it at all, so the
+    same ratio defect lived there independently and had to be fixed in both places."""
+    entries = [_entry("Ind-1-0", 1, 0, None, None), _entry("Ind-2-0", 2, 0, None, None)]
+    entries[0]["rank"] = 3
+    entries[1]["rank"] = 25
+    sorted_teams = [e["team"] for e in _sort_conference_teams(entries, [], 2026)]
+    assert sorted_teams == ["Ind-2-0", "Ind-1-0"], sorted_teams
+
+
+def test_below_500_fewer_losses_wins_where_raw_win_count_would_invert():
+    """1-3 and 2-6 are both .250. This is the case that rules OUT ranking by raw wins: that
+    rule would put 2-6 first for having two wins to one. Ranks are set so the model cannot be
+    what produces the expected order."""
+    entries = [_entry("Team-2-6", 2, 6, 2, 6), _entry("Team-1-3", 1, 3, 1, 3)]
+    entries[0]["rank"] = 3
+    entries[1]["rank"] = 25
+    sorted_teams = [e["team"] for e in _sort_conference_teams(entries, [], 2026)]
+    assert sorted_teams == ["Team-1-3", "Team-2-6"], sorted_teams
+
+
+def test_at_500_net_differential_ties_and_defers_to_rank():
+    """4-4 and 1-1 are both .500 and both net 0. Net differential deliberately takes no view
+    here -- there is no obvious reason a .500 team with more games is better -- so rank decides,
+    exactly as it did before this change."""
+    entries = [_entry("Team-4-4", 4, 4, 4, 4), _entry("Team-1-1", 1, 1, 1, 1)]
+    entries[0]["rank"] = 25
+    entries[1]["rank"] = 3
+    sorted_teams = [e["team"] for e in _sort_conference_teams(entries, [], 2026)]
+    assert sorted_teams == ["Team-1-1", "Team-4-4"], sorted_teams
+
+
+def test_unplayed_sentinel_still_sits_between_a_win_and_a_loss():
+    """The 0.5 "no games played" sentinel is load-bearing and predates this change: 0-0 must
+    sort below 1-0 and above 0-1. Net differential is 0 for the unplayed team, +1 and -1 for
+    the others, so it agrees with the sentinel rather than fighting it."""
+    entries = [_entry("Team-0-1", 0, 1, 0, 1), _entry("Team-0-0", 0, 0, 0, 0),
+               _entry("Team-1-0", 1, 0, 1, 0)]
+    sorted_teams = [e["team"] for e in _sort_conference_teams(entries, [], 2026)]
+    assert sorted_teams == ["Team-1-0", "Team-0-0", "Team-0-1"], sorted_teams
+
+
+def test_head_to_head_still_outranks_record_magnitude():
+    """DELIBERATE, not an oversight. The head-to-head swap groups on conf_pct/_conf_played/_tier
+    and does NOT consider _conf_net, so a head-to-head result can still reorder two teams the
+    net term separated. That is correct: head-to-head is step 1 of every published conference
+    tiebreaker, above every record-based measure. Pinned here so a future change to the grouping
+    predicate has to be a decision rather than an accident."""
+    entries = [_entry("Beat-Them", 2, 1, 2, 1), _entry("More-Games", 4, 2, 4, 2)]
+    rows = [
+        dict(season=2026, game_id=1, team="Beat-Them", opponent="More-Games",
+             conference_game=True, status="win"),
+        dict(season=2026, game_id=1, team="More-Games", opponent="Beat-Them",
+             conference_game=True, status="loss"),
+    ]
+    # Both .667 on conf_pct; More-Games leads on net (+2 vs +1) so the sort places it first,
+    # and the head-to-head swap then overturns that.
+    sorted_teams = [e["team"] for e in _sort_conference_teams(entries, rows, 2026)]
+    assert sorted_teams == ["Beat-Them", "More-Games"], sorted_teams
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

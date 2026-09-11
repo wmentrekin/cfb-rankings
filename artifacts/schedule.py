@@ -1150,9 +1150,10 @@ def _head_to_head_winner(rows: List[Dict[str, Any]], season: int, team_a: str, t
 _UNRANKED_SORT_SENTINEL = 10**9
 
 
-def _placement_pct(entry: Dict[str, Any], rows: List[Dict[str, Any]], season: int, champ_game_ids: set) -> float:
+def _placement_record(entry: Dict[str, Any], rows: List[Dict[str, Any]], season: int,
+                      champ_game_ids: set) -> Tuple[int, int]:
     """
-    T2/K6: this team's win percentage for STANDINGS PLACEMENT only -- excludes any postseason
+    T2/K6: this team's (wins, losses) for STANDINGS PLACEMENT only -- excludes any postseason
     (season_type=='postseason') row AND any row whose game_id is one of the identified
     conference-championship games, per the user's rule that "bowl/playoff results must not
     affect standings placement." Does NOT touch the DISPLAYED record (entry["record"]) -- that
@@ -1204,6 +1205,14 @@ def _placement_pct(entry: Dict[str, Any], rows: List[Dict[str, Any]], season: in
     # wrong ORDER is exactly the failure class this function was added to fix.
     w = max(0, entry["record"]["wins"] - postseason_wins - champ_wins)
     l = max(0, entry["record"]["losses"] - postseason_losses - champ_losses)
+    return w, l
+
+
+def _placement_pct(entry: Dict[str, Any], rows: List[Dict[str, Any]], season: int, champ_game_ids: set) -> float:
+    """This team's placement WIN PERCENTAGE -- _placement_record's ratio. Kept as its own
+    function, rather than folded into the caller, because several tests call it directly and
+    because the 0.5 "no counted games" sentinel belongs with the ratio, not with the record."""
+    w, l = _placement_record(entry, rows, season, champ_game_ids)
     return (w / (w + l)) if (w + l) > 0 else 0.5
 
 
@@ -1221,7 +1230,13 @@ def _sort_conference_teams(
     """
     champ_game_ids = champ_game_ids or set()
     for e in entries:
-        e["_placement_pct"] = _placement_pct(e, rows, season, champ_game_ids)
+        pw, pl = _placement_record(e, rows, season, champ_game_ids)
+        e["_placement_pct"] = (pw / (pw + pl)) if (pw + pl) > 0 else 0.5
+        # MAGNITUDE, not just rate. A percentage discards how many games produced it, so 2-0
+        # and 1-0 both score 1.000 and nothing below separated them except model rank -- the
+        # 2026 USC case. Net differential rather than raw wins: at equal percentage the two
+        # agree above .500 and disagree below it, where "more wins" ranks 2-6 ABOVE 1-3.
+        e["_placement_net"] = pw - pl
         # Whether any conference game has been played, used only as a sort tiebreak below.
         e["_conf_played"] = bool(e["conf_record"] and (e["conf_record"]["wins"] + e["conf_record"]["losses"]) > 0)
         if e["conf_record"] is not None:
@@ -1230,8 +1245,14 @@ def _sort_conference_teams(
             # matching the placement-pct logic. This fixes the NC State vs Duke case where
             # a team with 0-1 conference record should sort below a team with 0-0.
             e["_conf_pct"] = (cw / (cw + cl)) if (cw + cl) > 0 else 0.5
+            # The conference-play twin of _placement_net, and NOT already covered by
+            # _conf_played: 4-0 and 2-0 in conference both score 1.000 and both have played.
+            e["_conf_net"] = cw - cl
         else:
             e["_conf_pct"] = None
+            # Independents have no conference record; they never reach the branch that reads
+            # this, but the key must be buildable uniformly.
+            e["_conf_net"] = 0
         # T2/K5: 2 = conference-championship winner, 1 = CCG loser, 0 = everyone else. Derived
         # from the two separate entry flags build_schedule_payload sets (both default False via
         # .get, so hand-built entries in existing tests that set only "_is_champion", or neither
@@ -1281,7 +1302,9 @@ def _sort_conference_teams(
         # function for why, with the concrete 2025 Oklahoma/Vanderbilt/Texas example.
         entries.sort(key=lambda e: (-e["_tier"],
                                     -(e["_conf_pct"] if e["_conf_pct"] is not None else -1.0),
-                                    -e["_conf_played"], -e["_placement_pct"], _rank_sort_key(e), e["team"]))
+                                    -e["_conf_net"], -e["_conf_played"],
+                                    -e["_placement_pct"], -e["_placement_net"],
+                                    _rank_sort_key(e), e["team"]))
         i, n = 0, len(entries)
         while i < n:
             j = i
@@ -1333,11 +1356,14 @@ def _sort_conference_teams(
                     entries[i], entries[i + 1] = entries[i + 1], entries[i]
             i = j + 1
     else:
-        entries.sort(key=lambda e: (-e["_placement_pct"], _rank_sort_key(e), e["team"]))
+        entries.sort(key=lambda e: (-e["_placement_pct"], -e["_placement_net"],
+                                    _rank_sort_key(e), e["team"]))
 
     for e in entries:
         del e["_placement_pct"]
+        del e["_placement_net"]
         del e["_conf_pct"]
+        del e["_conf_net"]
         del e["_conf_played"]
         del e["_tier"]
         # K10: scratch state, stripped before these entries reach the published payload --
