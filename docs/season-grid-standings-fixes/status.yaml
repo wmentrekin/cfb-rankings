@@ -3,7 +3,7 @@
 artifact: status
 feature: "season-grid-standings-fixes"
 mode: "bounded-feature"
-stage: "discovery"
+stage: "execution"
 owner_skill: work
 
 objective: >
@@ -49,13 +49,13 @@ branching:
     frontend PR against an explicit user instruction. Flagged to the user at the checkpoint.
 
 summary:
-  current_focus: "Discovery: confirm the identification-signal design and the standings-ordering contract before planning."
-  last_completed: "Root cause established and verified against live data for issues 1-3 and 7."
+  current_focus: "Execution batch B1: T1, T3, T5 and T6 running concurrently; T2 gated on T1."
+  last_completed: "Pre-execution checkpoint approved by the user: proceed with all six tasks."
   current_blocker: ""
 
 artifacts:
-  requirements: null
-  plan: null
+  requirements: "docs/season-grid-standings-fixes/requirements.yaml"
+  plan: "docs/season-grid-standings-fixes/plan.yaml"
   implementation_report: null
 
 pr:
@@ -96,7 +96,7 @@ loops:
 
 checkpoint:
   pre_execution_required: true
-  pre_execution_status: pending
+  pre_execution_status: approved
   options:
     - proceed
     - revise_plan
@@ -131,6 +131,6 @@ model_routing:
   unresolved_limitations:
     - "Subagents inherit extended-thinking state from the main conversation; reasoning level is advisory, model selection is enforced."
 
-next_action: "Spawn discovery agents for the identification-signal design and the standings-ordering contract."
+next_action: "Run B1, then T2, then T4 verification, then open the cfb-rankings PR."
 next_recommended_command: "$work"
 user_input_needed: false
