@@ -3,7 +3,7 @@
 artifact: status
 feature: "season-grid-standings-fixes"
 mode: "bounded-feature"
-stage: "execution"
+stage: "verification"
 owner_skill: work
 
 objective: >
@@ -49,8 +49,8 @@ branching:
     frontend PR against an explicit user instruction. Flagged to the user at the checkpoint.
 
 summary:
-  current_focus: "Execution batch B1: T1, T3, T5 and T6 running concurrently; T2 gated on T1."
-  last_completed: "Pre-execution checkpoint approved by the user: proceed with all six tasks."
+  current_focus: "Verification: independent frontier-tier review on PR #16."
+  last_completed: "All six tasks implemented; 255 tests pass; PR #16 opened; personal-site PR #24 updated."
   current_blocker: ""
 
 artifacts:
@@ -59,9 +59,9 @@ artifacts:
   implementation_report: null
 
 pr:
-  number: null
-  url: null
-  status: "not_opened"
+  number: 16
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/16"
+  status: "open"
   related:
     - repo: "wmentrekin/personal-site"
       number: 24
@@ -131,6 +131,6 @@ model_routing:
   unresolved_limitations:
     - "Subagents inherit extended-thinking state from the main conversation; reasoning level is advisory, model selection is enforced."
 
-next_action: "Run B1, then T2, then T4 verification, then open the cfb-rankings PR."
+next_action: "Integrate review findings, then hand both PRs to the user for preview verification."
 next_recommended_command: "$work"
 user_input_needed: false
