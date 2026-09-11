@@ -1,0 +1,116 @@
+name: Backfill Games
+
+# Ingest-only backfill of one (season, season_type, week) slice into the `games` table.
+# See scripts/backfill_games.py for the full rationale and blast radius.
+#
+# WHY THIS EXISTS SEPARATELY FROM test-week-run.yml: that workflow runs all of main.py --
+# ingest, rating model, ratings write, rankings publish. Recovering one missing game from a
+# finished season through it would rewrite every rating that season serves on the live
+# Rankings tab. This workflow only ever touches `games`.
+#
+# SAFETY POLARITY: the shell test below is `[ "$APPLY" = "true" ]`, so the safe path (no
+# --apply, nothing written) is the one that ANY other input falls into, including a
+# malformed dispatch. Note this is the opposite literal from publish-schedule-artifact.yml's
+# `[ "$DRY_RUN" = "false" ]` -- both are written so the unsafe branch requires an exact
+# match, which is the property that matters; neither is a typo.
+#
+# This does NOT republish any artifact. After a successful apply, run
+# "Publish Season Schedule Artifact" for the same season to regenerate the Season Grid.
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: 'Season year (e.g. 2025)'
+        required: true
+      week:
+        description: 'CFBD week. Leave blank to fetch the whole season_type -- read the dry run first, it rewrites every existing row.'
+        required: false
+      season_type:
+        description: 'regular or postseason'
+        type: choice
+        options: [regular, postseason]
+        default: regular
+      apply:
+        description: 'Actually write to the games table (unchecked = dry run, writes nothing)'
+        type: boolean
+        default: false
+
+concurrency:
+  # Shares weekly-update.yml's group: a manual backfill upserting `games` must not race the
+  # scheduled pipeline reading those same rows to train the model. cancel-in-progress is
+  # false -- an in-flight write must finish, not be cancelled partway through the slate.
+  group: weekly-rankings
+  cancel-in-progress: false
+
+jobs:
+  backfill_games:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra pipeline
+
+      - name: Run backfill
+        env:
+          API_KEY: ${{ secrets.CFBD_API_KEY }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          # Dispatch inputs reach the shell as environment variables, never interpolated into
+          # the script body -- `${{ }}` is substituted before bash sees the line, so an input
+          # like `2025"; curl ...` would run as its own command.
+          SEASON: ${{ github.event.inputs.season }}
+          WEEK: ${{ github.event.inputs.week }}
+          SEASON_TYPE: ${{ github.event.inputs.season_type }}
+          APPLY: ${{ github.event.inputs.apply }}
+        run: |
+          EXTRA_ARGS=""
+          if [ "$APPLY" = "true" ]; then
+            EXTRA_ARGS="--apply"
+          fi
+          if [ -n "$WEEK" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --week $WEEK"
+          fi
+          # Deliberately NOT wrapped in `|| true`: a backfill that fails must fail the job.
+          # The script already exits non-zero on an empty CFBD response and on a read-back
+          # that cannot find the rows it claimed to write.
+          uv run python scripts/backfill_games.py \
+            --season "$SEASON" \
+            --season-type "$SEASON_TYPE" \
+            $EXTRA_ARGS > output.log 2>&1
+          tail -n 200 output.log
+
+      - name: Fail job unless the apply confirmed
+        # The script's own read-back is the structural half of this check; this is the
+        # log-visible half, and it is what catches an apply that silently wrote nothing.
+        # Only meaningful on a real apply -- skipped entirely on a dry run, where the marker
+        # is never expected. Same marker idiom as publish-schedule-artifact.yml.
+        if: github.event.inputs.apply == 'true'
+        run: |
+          if ! grep -q "BACKFILL_APPLIED" output.log; then
+            echo "::error::No confirmation that the backfill wrote anything -- 'BACKFILL_APPLIED' not found in output.log."
+            exit 1
+          fi
+          grep "BACKFILL_APPLIED" output.log
+
+      - name: Upload run log artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backfill-games-log-${{ github.event.inputs.season }}
+          path: output.log
