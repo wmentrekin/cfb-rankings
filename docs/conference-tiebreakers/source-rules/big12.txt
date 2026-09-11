@@ -1,0 +1,51 @@
+BIG 12 CONFERENCE — FOOTBALL CHAMPIONSHIP TIEBREAKER POLICIES
+("Edward Jones Big 12 Football Championship", 2024 onward, 16 teams)
+Supplied by repo owner 2026-09-11.
+
+Beginning with the 2024 football season with 16 teams, the Big 12 football schedule does not
+include a full round-robin rotation. The goal for determining the participants is to seed the
+two teams with the best Conference winning percentage.
+
+TWO-TEAM TIE
+If two teams are tied for first place both teams participate in the championship game and the
+winner of the game between the two teams shall be the #1 seed. If the two teams tied for the
+No. 1 position did not play, the two-team tiebreaking procedures apply to determine first place.
+If there is not a tie for first place, but two teams are tied for second, the two-team
+tiebreaker applies and the winner is the #2 seed.
+
+  a. Head-to-head competition among the two tied teams.
+  b. Win percentage against all common conference opponents among the tied teams.
+  c. Win percentage against the next highest placed common opponent in the standings (based on
+     the record in all games played within the Conference), proceeding through the standings.
+     When arriving at another group of tied teams while comparing records, use each team's win
+     percentage against the collective tied teams AS A GROUP (prior to that group's own
+     tie-breaking procedure) rather than the performance against individual tied teams.
+  d. Combined win percentage in conference games of conference opponents (strength of
+     conference schedule).
+  e. Total number of wins in a 12-game season. Only one win against a team from the NCAA
+     Football Championship Subdivision or lower division will be counted annually. Any games
+     exempted from counting against the annual maximum number of football contests per NCAA
+     rules (current Bylaw 17.10.5.2.1) shall not be included.
+  f. Highest ranking by SportSource Analytics (team Rating Score metric) following the last
+     weekend of regular-season games.
+  g. Coin toss.
+
+MULTIPLE-TEAM TIES
+After one team has an advantage and is "seeded", all remaining teams in the multiple-team
+tiebreaker repeat the tie-breaking procedure. If at any point the multiple-team tie is reduced
+to two teams, the two-team tie-breaking procedure applies.
+
+  a. Winning percentage in games among the tied teams:
+     1. If all teams involved in the tie did not play each other, but one team defeated all
+        other teams involved in the tie, that team is removed from the tiebreaker, and the
+        remaining teams revert to the beginning of the applicable tiebreaker process.
+     2. If all teams involved in the tie did not play each other and no team defeated all other
+        teams involved in the tie, move to the next step.
+  b. Winning percentage against all common conference opponents played by all other teams
+     involved in the tie.
+  c. Record against the next highest placed common opponent in the standings, proceeding
+     through the standings. Same "collective tied teams as a group" rule as two-team step c.
+  d. Combined win percentage in conference games of conference opponents.
+  e. Total number of wins in a 12-game season (same FCS cap and exemptions as above).
+  f. Highest ranking by SportSource Analytics (team Rating Score metric).
+  g. Coin toss.
