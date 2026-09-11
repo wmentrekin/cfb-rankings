@@ -40,6 +40,8 @@ Run: python -m pytest tests/ -q
 """
 import itertools
 import sys
+
+import pytest
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -575,7 +577,8 @@ def test_independents_unaffected():
 def _find_underscore_keys(obj, path=""):
     """Recursively collect every dict key starting with '_' anywhere in `obj`, with a path for
     a useful failure message. The published payload must contain none -- every underscore-
-    prefixed field (_overall_pct, _conf_pct, _conf_played, _is_champion) is scratch state that
+    prefixed field (_placement_pct, _conf_pct, _conf_played, _tier, _is_champion, _is_ccg_loser)
+    is scratch state that
     _sort_conference_teams strips before its entries are returned."""
     found = []
     if isinstance(obj, dict):
@@ -597,7 +600,7 @@ def test_is_champion_absent_from_published_payload():
     leaked = _find_underscore_keys(payload)
     assert leaked == [], (
         f"internal scratch field(s) leaked into the published payload: {leaked}. K10: "
-        "_is_champion (and its neighbors _conf_pct/_conf_played/_overall_pct) are scratch state "
+        "_is_champion (and its neighbors _conf_pct/_conf_played/_placement_pct/_tier) are scratch state "
         "and must be popped/deleted before _sort_conference_teams returns its entries."
     )
 
@@ -716,6 +719,23 @@ def test_placement_pct_excludes_the_identified_championship_game():
     assert _placement_pct(entry, rows, SEASON, champ_game_ids={99}) == 9 / 12
 
 
+def test_placement_pct_clamps_at_zero_on_an_inconsistent_entry():
+    """PR #16 review finding. The subtraction trusts that entry["record"] already counts every
+    row this function can find -- true of compute_team_records in the real pipeline, not true
+    of a hand-built entry. Without the clamp this returns -0.5, which sorts a team BELOW a
+    genuine 0.000 team instead of above it: a silently wrong ORDER, the exact failure class
+    _placement_pct exists to fix."""
+    entry = {"team": "Team", "record": {"wins": 1, "losses": 3}}
+    rows = [
+        dict(season=SEASON, team="Team", season_type="postseason", status="win", game_id=1),
+        dict(season=SEASON, team="Team", season_type="postseason", status="win", game_id=2),
+    ]
+    # 1 - 2 = -1 wins before clamping; 3 losses survive untouched.
+    pct = _placement_pct(entry, rows, SEASON, champ_game_ids=set())
+    assert pct == 0.0, pct
+    assert pct >= 0.0
+
+
 def test_placement_pct_no_counted_games_uses_0_5_sentinel():
     entry = {"team": "Team", "record": {"wins": 1, "losses": 0}}
     # The team's only game is the championship game itself -- once excluded, 0 counted games.
@@ -742,7 +762,8 @@ _SEC_RANKS = {
 }
 
 
-def _sec_single_row(game_id, team, opponent, status, conference_game, season_type, week_offset, neutral_site=False):
+def _sec_single_row(game_id, team, opponent, status, conference_game, season_type, week_offset,
+                    neutral_site=False, notes=None):
     """One team-oriented row against a unique filler opponent never added to teams_meta -- same
     trick as _row()/_played() above, extended with an explicit season_type so postseason rows
     can be built directly (the shared _row() helper always hardcodes season_type='regular')."""
@@ -758,6 +779,7 @@ def _sec_single_row(game_id, team, opponent, status, conference_game, season_typ
         start_date=(_SEASON_START + timedelta(days=7 * week_offset)).isoformat() + " 19:00:00",
         home_away="home",
         neutral_site=neutral_site,
+        notes=notes,
     )
 
 
@@ -795,7 +817,14 @@ def _sec_rest_block(game_id_iter, team, start_week, nonconf_w, nonconf_l, post_w
     return rows
 
 
-def _sec_seven_team_rows():
+# The two shapes CFBD has emitted for a conference championship game. Both must produce the
+# same standings, and the SEC fixture below is built under each in turn -- see the docstring on
+# test_2025_sec_seven_team_standings_order for why running only one of them is not enough.
+_LEGACY_SHAPE = {"conference_game": True, "notes": None}
+_CFBD_2025_SHAPE = {"conference_game": False, "notes": "SEC Championship"}
+
+
+def _sec_seven_team_rows(ccg_shape=_LEGACY_SHAPE):
     game_id_iter = itertools.count(1)
     rows = []
 
@@ -808,11 +837,17 @@ def _sec_seven_team_rows():
     rows += _sec_conf_block(game_id_iter, "Texas", 6, 2)
     rows += _sec_conf_block(game_id_iter, "Vanderbilt", 6, 2)
 
-    # SEC Championship: Georgia over Alabama, week 8 -- alone in its bucket, strictly later than
-    # every team's week 0-7 conference slate above, so it is correctly identified.
+    # SEC Championship: Georgia over Alabama, week 8. Under _LEGACY_SHAPE it is identified
+    # structurally (alone in its bucket, strictly later than every team's week 0-7 slate);
+    # under _CFBD_2025_SHAPE the structural rule cannot see it at all -- conference_game is
+    # False -- and only the notes signal identifies it. The two shapes also reach Georgia's
+    # and Alabama's displayed 7-1 conference record by OPPOSITE routes: legacy counts the
+    # title game into the tally and subtracts it back out, while 2025 never counts it.
     ccg_id = next(game_id_iter)
-    rows.append(_sec_single_row(ccg_id, "Georgia", "Alabama", "win", True, "regular", 8, neutral_site=True))
-    rows.append(_sec_single_row(ccg_id, "Alabama", "Georgia", "loss", True, "regular", 8, neutral_site=True))
+    rows.append(_sec_single_row(ccg_id, "Georgia", "Alabama", "win", ccg_shape["conference_game"],
+                                "regular", 8, neutral_site=True, notes=ccg_shape["notes"]))
+    rows.append(_sec_single_row(ccg_id, "Alabama", "Georgia", "loss", ccg_shape["conference_game"],
+                                "regular", 8, neutral_site=True, notes=ccg_shape["notes"]))
 
     # Non-conference regular season + postseason, per team -- see the ground-truth table in the
     # task brief. Georgia/Alabama start at week 9 (after their own week-8 CCG row); every other
@@ -832,8 +867,14 @@ def _sec_teams_meta():
     return _teams_meta(_SEC_TEAMS, _SEC)
 
 
-def test_2025_sec_seven_team_standings_order():
-    rows = _sec_seven_team_rows()
+@pytest.mark.parametrize("ccg_shape", [_LEGACY_SHAPE, _CFBD_2025_SHAPE], ids=["legacy", "cfbd-2025"])
+def test_2025_sec_seven_team_standings_order(ccg_shape):
+    """Runs under BOTH CFBD championship-game shapes. Running only the legacy one -- which is
+    what this test originally did -- would have passed without the identification fix this
+    feature exists to deliver, because the structural rule alone already identifies a legacy-
+    shaped title game. The live 2025 season is the cfbd-2025 shape; the legacy case stays so a
+    future change cannot quietly break the seasons still stored that way."""
+    rows = _sec_seven_team_rows(ccg_shape)
     payload = build_schedule_payload(rows, _sec_teams_meta(), SEASON, team_ranks=_SEC_RANKS)
     entries = {e["team"]: e for e in _conf_entries(payload, "SEC")}
 

@@ -232,6 +232,8 @@ def test_diverted_sun_belt_title_game_leaves_no_phantom_week_column():
 # =============================================================================
 import logging  # noqa: E402
 
+import pytest  # noqa: E402
+
 
 def _champ_notes_game(game_id, conference, notes, season=2025,
                        home="Home Team", away="Away Team", start_date="2025-12-06 12:00:00"):
@@ -334,6 +336,30 @@ def test_notes_prefix_mismatch_identifies_nothing_and_logs_a_warning(caplog):
     assert any("Big 12 Championship" in rec.getMessage() for rec in caplog.records), (
         f"expected a warning naming the notes mismatch, got: "
         f"{[rec.getMessage() for rec in caplog.records]}"
+    )
+
+
+@pytest.mark.parametrize("notes", [
+    "SEC Championship Game",   # trailing word after the suffix
+    "SEC championship",        # lowercase -- the match predicate is case-sensitive
+], ids=["trailing-word", "lowercase"])
+def test_notes_suffix_surprise_still_logs_even_though_it_does_not_match(caplog, notes):
+    """PR #16 review finding. K2's promise is that a CFBD naming change surfaces as a log line
+    rather than a silent miss, but the warning originally fired only on a PREFIX mismatch. A
+    SUFFIX surprise -- a trailing word, or different casing -- fell through in silence, which
+    would silently reintroduce the very defect the notes path exists to fix, for every
+    conference at once and with nothing in the logs to say why.
+
+    The MATCH predicate deliberately stays strict (these still identify nothing); only the LOG
+    trigger is loose. Matching loosely instead would let an unrelated game carrying the word
+    through, which is the worse error."""
+    rows = _champ_notes_game(603001, "SEC", notes)
+    with caplog.at_level(logging.WARNING):
+        found = identify_conference_championship_games(rows, 2025)
+    assert found == {}, found
+    assert any("does not END" in rec.getMessage() for rec in caplog.records), (
+        f"expected a warning that the notes value contains but does not end with the suffix, "
+        f"got: {[rec.getMessage() for rec in caplog.records]}"
     )
 
 

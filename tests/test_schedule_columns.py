@@ -148,20 +148,6 @@ def test_identified_championship_does_not_mint_a_week_column():
     assert "week-14" in slot_ids, "the Nov 29-30 regular slate keeps its own column"
 
 
-if __name__ == "__main__":
-    failures = 0
-    for name, fn in sorted(globals().items()):
-        if name.startswith("test_") and callable(fn):
-            try:
-                fn()
-                print(f"PASS  {name}")
-            except AssertionError as exc:
-                failures += 1
-                print(f"FAIL  {name}: {exc}")
-    print(f"\n{failures} failure(s)")
-    sys.exit(1 if failures else 0)
-
-
 def test_no_army_navy_column_when_the_season_has_no_army_navy_game():
     """A season whose data carries no Army-Navy row at all must not publish the column.
 
@@ -203,3 +189,17 @@ def test_army_navy_column_is_kept_when_the_game_exists():
 
     slot_ids = [slot_id for slot_id, _ in build_canonical_columns(rows, 2026, set(), army_navy_id)]
     assert "army-navy" in slot_ids
+
+
+if __name__ == "__main__":
+    failures = 0
+    for name, fn in sorted(globals().items()):
+        if name.startswith("test_") and callable(fn):
+            try:
+                fn()
+                print(f"PASS  {name}")
+            except AssertionError as exc:
+                failures += 1
+                print(f"FAIL  {name}: {exc}")
+    print(f"\n{failures} failure(s)")
+    sys.exit(1 if failures else 0)

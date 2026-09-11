@@ -432,6 +432,23 @@ def identify_conference_championship_games(
             continue
         stripped_notes = notes.strip()
         if not stripped_notes.endswith(_CHAMPIONSHIP_SUFFIX):
+            # K2, widened after the PR #16 review: the MATCH predicate stays a strict,
+            # case-sensitive endswith, but the LOG trigger is deliberately looser. Without
+            # this branch the "naming surprise becomes a visible log line" property below
+            # only held for a PREFIX surprise; a SUFFIX one -- 'SEC Championship Game', or
+            # 'SEC championship' -- fell out here in silence and silently reintroduced the
+            # exact defect this notes path exists to fix, for every conference at once.
+            # Matching loosely instead would be the wrong trade: it would let a genuinely
+            # unrelated game carrying the word through. Log loudly, match strictly.
+            if _CHAMPIONSHIP_SUFFIX.lower() in stripped_notes.lower():
+                logger.warning(
+                    "schedule.py: season=%s game_id=%s notes=%r contains %r but does not END "
+                    "with it, so it is NOT treated as a championship-game label. If CFBD has "
+                    "changed its naming convention, this conference will fall back to the "
+                    "structural rule and may identify nothing at all -- update "
+                    "_CHAMPIONSHIP_SUFFIX rather than ignoring this warning.",
+                    season, row.get("game_id"), notes, _CHAMPIONSHIP_SUFFIX,
+                )
             continue
         if _is_army_navy_pairing(row.get("team"), row.get("opponent")):
             continue  # see module docstring section above -- deliberate carve-out
@@ -1177,8 +1194,16 @@ def _placement_pct(entry: Dict[str, Any], rows: List[Dict[str, Any]], season: in
             else:
                 champ_losses += 1
 
-    w = entry["record"]["wins"] - postseason_wins - champ_wins
-    l = entry["record"]["losses"] - postseason_losses - champ_losses
+    # Clamped at 0. The subtraction assumes entry["record"] already counts every row this
+    # loop can find, which compute_team_records guarantees in the real pipeline (it tallies
+    # every win/loss row for the team regardless of season_type or conference_game, from this
+    # same `rows` list). A hand-built entry whose "record" disagrees with `rows` breaks that
+    # assumption and can drive either term negative -- record=1-3 against two postseason win
+    # rows yields -1 wins and a pct of -0.5, which would sort BELOW a genuine 0.000 team
+    # rather than above it. Unreachable from the pipeline, cheap to foreclose, and a silently
+    # wrong ORDER is exactly the failure class this function was added to fix.
+    w = max(0, entry["record"]["wins"] - postseason_wins - champ_wins)
+    l = max(0, entry["record"]["losses"] - postseason_losses - champ_losses)
     return (w / (w + l)) if (w + l) > 0 else 0.5
 
 
@@ -1362,12 +1387,17 @@ def _exclude_championship_games_from_conf_records(
     itself in the unplayed case, not just championship_status -- fix-cycle-1 review found the
     status math had a passing test but the displayed record did not).
 
-    Fix-cycle-1 hardening: also requires conference_game=True on the row itself, duplicating the
-    invariant identify_conference_championship_games already enforces when it builds
-    champ_game_ids in the first place. Structurally redundant today -- every row sharing a
-    champ_game_ids game_id already IS a conference game -- but cheap insurance against exactly
-    the failure mode this function exists to prevent (a wrong subtraction from a displayed
-    record) if that upstream invariant is ever loosened without this function being revisited.
+    DO NOT DELETE THE conference_game=True CHECK BELOW. It was added in fix-cycle-1 as
+    "cheap insurance" against an upstream invariant being loosened, and described then as
+    structurally redundant. That description is now INVERTED and the guard is load-bearing:
+    CFBD reports a conference championship game as conference_game=FALSE (see the module
+    comment on identify_conference_championship_games), so from the 2025 season onward a CCG
+    row is never counted into conf_record in the first place -- schedule_standings.
+    compute_team_records tallies conference records from conference_game rows only. This
+    function subtracting it again would subtract a game that was never added.
+
+    Concretely, with the guard removed, 2025 publishes Georgia at 6-1 and Alabama at 7-0 in
+    the SEC; both are really 7-1. Mutation-verified during the PR #16 review.
     """
     if not champ_game_ids:
         return
