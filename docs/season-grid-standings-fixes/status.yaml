@@ -49,8 +49,8 @@ branching:
     frontend PR against an explicit user instruction. Flagged to the user at the checkpoint.
 
 summary:
-  current_focus: "Verification: independent frontier-tier review on PR #16."
-  last_completed: "All six tasks implemented; 255 tests pass; PR #16 opened; personal-site PR #24 updated."
+  current_focus: "Both PRs ready for the user to verify on the preview build before merge."
+  last_completed: "Review cycle 1 complete: six findings addressed, 259 tests pass, both PRs pushed."
   current_blocker: ""
 
 artifacts:
@@ -91,7 +91,7 @@ loops:
     count: 0
     max: 2
   execution_verification:
-    count: 0
+    count: 1
     max: 2
 
 checkpoint:
@@ -131,6 +131,6 @@ model_routing:
   unresolved_limitations:
     - "Subagents inherit extended-thinking state from the main conversation; reasoning level is advisory, model selection is enforced."
 
-next_action: "Integrate review findings, then hand both PRs to the user for preview verification."
+next_action: "User verifies both preview builds. Nothing merges without that."
 next_recommended_command: "$work"
-user_input_needed: false
+user_input_needed: true
