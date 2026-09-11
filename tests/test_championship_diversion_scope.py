@@ -48,11 +48,11 @@ from artifacts.schedule_standings import (  # noqa: E402
 
 
 def _game(game_id, season, home, away, start_date, conference, conference_game=True,
-          season_type="regular"):
+          season_type="regular", notes=None):
     """Expand one game into the two team-oriented rows schedule_grid emits."""
     common = dict(game_id=game_id, season=season, season_type=season_type,
                   conference=conference, conference_game=conference_game,
-                  start_date=start_date)
+                  start_date=start_date, notes=notes)
     return [
         dict(team=home, opponent=away, home_away="home", **common),
         dict(team=away, opponent=home, home_away="away", **common),
@@ -218,6 +218,244 @@ def test_diverted_sun_belt_title_game_leaves_no_phantom_week_column():
     nov_week = f"week-{_get_week_slot(SUN_BELT_2025[0])}"
     assert nov_week in slot_ids, f"the Sun Belt's regular slate column must survive: {slot_ids}"
 
+
+
+# =============================================================================
+# T1 (season-grid-standings-fixes, K1/K2/K3): the AUTHORITATIVE NOTES SIGNAL.
+#
+# CFBD's 2025 data model tags every real conference championship game with
+# conference_game=FALSE and notes='<Conference> Championship' -- the structural
+# rule above requires conference_game=TRUE to even nominate a candidate, so
+# without this signal 2025 identifies NOTHING for any of its nine real title
+# games. See the module comment above identify_conference_championship_games
+# in artifacts/schedule.py for the full rationale.
+# =============================================================================
+import logging  # noqa: E402
+
+import pytest  # noqa: E402
+
+
+def _champ_notes_game(game_id, conference, notes, season=2025,
+                       home="Home Team", away="Away Team", start_date="2025-12-06 12:00:00"):
+    """One 2025-shaped championship-game fixture: conference_game=False, notes set, exactly
+    the CFBD data shape T1 fixes identification for."""
+    return _game(game_id, season, home, away, start_date, conference,
+                 conference_game=False, season_type="regular", notes=notes)
+
+
+# All nine real 2025 conference championship games, per the task brief's verified ground
+# truth -- seven match their own `conference` value by plain equality after stripping
+# " Championship"; American Athletic and Mid-American need the alias map (K3).
+NINE_2025_CHAMPIONSHIPS = {
+    "ACC": (601001, "ACC Championship"),
+    "SEC": (601002, "SEC Championship"),
+    "Big Ten": (601003, "Big Ten Championship"),
+    "Big 12": (601004, "Big 12 Championship"),
+    "American Athletic": (601005, "American Championship"),
+    "Conference USA": (601006, "Conference USA Championship"),
+    "Mid-American": (601007, "MAC Championship"),
+    "Mountain West": (601008, "Mountain West Championship"),
+    "Sun Belt": (601009, "Sun Belt Championship"),
+}
+
+NINE_2025_CHAMPIONSHIP_ROWS = []
+for _conf, (_gid, _notes) in NINE_2025_CHAMPIONSHIPS.items():
+    NINE_2025_CHAMPIONSHIP_ROWS.extend(_champ_notes_game(_gid, _conf, _notes))
+
+
+def test_all_nine_2025_shaped_championships_are_identified_including_aliases():
+    """T1 test 1: every one of the nine real 2025 championship games is identified from
+    notes alone, including the two aliased conferences (American -> American Athletic,
+    MAC -> Mid-American) -- despite conference_game=False, which the structural rule alone
+    would treat as disqualifying."""
+    found = identify_conference_championship_games(NINE_2025_CHAMPIONSHIP_ROWS, 2025)
+    expected = {conf: gid for conf, (gid, _notes) in NINE_2025_CHAMPIONSHIPS.items()}
+    assert found == expected, found
+    # Explicitly confirm the two alias conferences specifically resolved correctly.
+    assert found["American Athletic"] == 601005
+    assert found["Mid-American"] == 601007
+
+
+# --- 2024-shaped season: notes absent/None, conference_game=True -- the structural rule
+# must behave EXACTLY as it did before T1 (real 2024 ACC title game shape). -----------
+ACC_2024_STRUCTURAL = _rows(
+    (401628356, 2024, "Wake Forest", "NC State", "2024-09-13 23:30:00", "ACC"),
+    (401635536, 2024, "Georgia Tech", "Clemson", "2024-09-14 16:00:00", "ACC"),
+    (401635525, 2024, "Pittsburgh", "Miami", "2024-11-29 17:00:00", "ACC"),
+    (401635524, 2024, "Duke", "Wake Forest", "2024-11-29 20:30:00", "ACC"),
+    (401645401, 2024, "SMU", "Clemson", "2024-12-07 20:00:00", "ACC"),
+    # Decoy: conference_game=False, tagged conference='ACC', sitting alone in an EVEN LATER
+    # bucket than the real title game -- if the structural rule's conference_game gate were
+    # ever dropped, this would be wrongly identified instead of 401645401. Pins that gate.
+    (401699999, 2024, "Notre Dame", "USC", "2024-12-14 20:00:00", "ACC", False),
+)
+
+
+def test_2024_shaped_season_identifies_exactly_what_the_structural_rule_did_before():
+    """T1 test 2: notes is absent (None, the _game() default) on every row here, exactly the
+    pre-2025 CFBD shape (confirmed live: notes is NULL on all ~23,000 rows for 2014-2024) --
+    the notes signal must never fire, so the outcome is identical to the pure structural rule."""
+    for row in ACC_2024_STRUCTURAL:
+        assert row["notes"] is None  # pins the "2024-shaped" premise of this fixture
+    found = identify_conference_championship_games(ACC_2024_STRUCTURAL, 2024)
+    assert found == {"ACC": 401645401}, found
+
+
+# --- Real 2025 Pac-12: two-team remnant, no notes row at all -- must still identify
+# nothing (pins that the member-count gate is still live on the structural path when
+# there is no authoritative notes match to bypass it). ---------------------------------
+PAC12_2025_NO_NOTES = _rows(
+    (401752900, 2025, "Oregon State", "Washington State", "2025-11-01 20:00:00", "Pac-12", True),
+    (401752946, 2025, "Washington State", "Oregon State", "2025-11-29 20:00:00", "Pac-12", True),
+)
+
+
+def test_two_team_pac12_with_no_notes_rows_still_identifies_nothing():
+    """T1 test 3: the notes signal has nothing to match here (every row's notes is None), so
+    it never reaches the bypass -- the structural rule's member-count gate is still the thing
+    stopping this two-team rematch from being crowned a championship."""
+    for row in PAC12_2025_NO_NOTES:
+        assert row["notes"] is None  # pins that this fixture carries no notes row to match
+    found = identify_conference_championship_games(PAC12_2025_NO_NOTES, 2025)
+    assert found == {}, f"invented a championship for a two-team conference: {found}"
+
+
+# --- A notes value ending in "Championship" whose prefix does NOT match the row's own
+# conference -- K2's mismatch path. -----------------------------------------------------
+def test_notes_prefix_mismatch_identifies_nothing_and_logs_a_warning(caplog):
+    """T1 test 4: 'Big 12 Championship' notes on a row whose OWN conference is 'Big Ten' (a
+    deliberately wrong pairing, both real QUALIFYING_CHAMPIONSHIP_CONFERENCES members so this
+    exercises the prefix-equality check itself, not the qualifying-conferences gate) must not
+    match -- the prefix must resolve to THAT SAME row's conference, not just be a plausible-
+    looking championship string. K2: logged, then falls through to (and is stopped by, single
+    row / no other bucket) the structural rule."""
+    rows = _champ_notes_game(602001, "Big Ten", "Big 12 Championship")
+    with caplog.at_level(logging.WARNING):
+        found = identify_conference_championship_games(rows, 2025)
+    assert found == {}, found
+    assert any("Big 12 Championship" in rec.getMessage() for rec in caplog.records), (
+        f"expected a warning naming the notes mismatch, got: "
+        f"{[rec.getMessage() for rec in caplog.records]}"
+    )
+
+
+@pytest.mark.parametrize("notes", [
+    "SEC Championship Game",   # trailing word after the suffix
+    "SEC championship",        # lowercase -- the match predicate is case-sensitive
+], ids=["trailing-word", "lowercase"])
+def test_notes_suffix_surprise_still_logs_even_though_it_does_not_match(caplog, notes):
+    """PR #16 review finding. K2's promise is that a CFBD naming change surfaces as a log line
+    rather than a silent miss, but the warning originally fired only on a PREFIX mismatch. A
+    SUFFIX surprise -- a trailing word, or different casing -- fell through in silence, which
+    would silently reintroduce the very defect the notes path exists to fix, for every
+    conference at once and with nothing in the logs to say why.
+
+    The MATCH predicate deliberately stays strict (these still identify nothing); only the LOG
+    trigger is loose. Matching loosely instead would let an unrelated game carrying the word
+    through, which is the worse error."""
+    rows = _champ_notes_game(603001, "SEC", notes)
+    with caplog.at_level(logging.WARNING):
+        found = identify_conference_championship_games(rows, 2025)
+    assert found == {}, found
+    assert any("does not END" in rec.getMessage() for rec in caplog.records), (
+        f"expected a warning that the notes value contains but does not end with the suffix, "
+        f"got: {[rec.getMessage() for rec in caplog.records]}"
+    )
+
+
+# --- 2026 kickoff-classic notes values -- none end with "Championship". ---------------
+KICKOFF_CLASSICS_2026 = _rows(
+    (701001, 2026, "Kansas State", "Iowa State", "2026-08-27 23:00:00", "Big 12",
+     True, "regular"),
+)
+KICKOFF_CLASSICS_2026[0]["notes"] = "Aer Lingus College Football Classic"
+KICKOFF_CLASSICS_2026[1]["notes"] = "Aer Lingus College Football Classic"
+
+
+def test_2026_kickoff_classic_notes_values_identify_nothing():
+    """T1 test 5: none of the three real 2026 non-null notes values end with 'Championship'
+    (confirmed live) -- the notes signal must not fire for them, and this single-row fixture
+    also can't satisfy the structural rule (only one bucket), so the result is empty."""
+    found = identify_conference_championship_games(KICKOFF_CLASSICS_2026, 2026)
+    assert found == {}, found
+
+
+# --- Postseason CFP National Championship -- must not be identified as a CONFERENCE
+# championship despite its notes literally containing "Championship". -----------------
+def test_postseason_national_championship_notes_identifies_nothing():
+    """T1 test 6: season_type='postseason' gates the notes signal exactly like it already
+    gates the structural one -- the CFP National Championship is not a conference title
+    game no matter what its notes column says."""
+    rows = _game(
+        401764870, 2025, "Ohio State", "Notre Dame", "2026-01-19 20:00:00", "SEC",
+        conference_game=False, season_type="postseason", notes="CFP National Championship",
+    )
+    found = identify_conference_championship_games(rows, 2025)
+    assert found == {}, found
+
+
+def test_postseason_row_with_a_conference_matching_notes_still_identifies_nothing():
+    """T1 test 6b: unlike the CFP National Championship fixture above (whose notes prefix
+    doesn't resolve to 'SEC' anyway), THIS row's notes prefix DOES resolve to its own
+    conference -- it is excluded purely by season_type != 'regular', proving that gate is
+    actually load-bearing on the notes path and not simply redundant with the prefix check."""
+    rows = _game(
+        605001, 2025, "Georgia", "Alabama", "2025-12-06 20:00:00", "SEC",
+        conference_game=False, season_type="postseason", notes="SEC Championship",
+    )
+    found = identify_conference_championship_games(rows, 2025)
+    assert found == {}, found
+
+
+# --- A conference with BOTH an authoritative notes match and a competing structural
+# candidate -- notes must win. -----------------------------------------------------------
+def test_notes_match_wins_over_a_competing_structural_candidate():
+    """T1 test 7: SEC has a real notes-tagged championship row (conference_game=False) AND a
+    separate, self-sufficient structural candidate -- a regular conference_game=True slate
+    plus a LATER lone conference_game=True game -- that would, ON ITS OWN, satisfy the
+    structural rule and get identified as a DIFFERENT game_id (603003) if the structural rule
+    ran for this conference. The notes match must win outright, proving the structural rule
+    does not merely lose a tie-break but does not run at all once notes resolves the
+    conference."""
+    notes_game = _champ_notes_game(603001, "SEC", "SEC Championship",
+                                    home="Georgia", away="Alabama",
+                                    start_date="2025-12-06 20:00:00")
+    regular_slate = _game(
+        603002, 2025, "LSU", "Texas A&M", "2025-11-29 17:00:00", "SEC",
+        conference_game=True, season_type="regular",
+    )
+    # Alone in its own later bucket -- structurally indistinguishable from a real title game,
+    # so this WOULD be (wrongly) identified as SEC's championship if notes did not take
+    # priority and suppress the structural rule for this conference entirely.
+    competing_structural = _game(
+        603003, 2025, "Missouri", "Vanderbilt", "2025-12-13 16:00:00", "SEC",
+        conference_game=True, season_type="regular",
+    )
+    rows = notes_game + regular_slate + competing_structural
+    found = identify_conference_championship_games(rows, 2025)
+    assert found == {"SEC": 603001}, found
+
+
+# --- Two distinct authoritative notes matches in the same conference -- ambiguity. -----
+def test_two_distinct_notes_matches_in_one_conference_identify_nothing_and_warn(caplog):
+    """T1 ambiguity handling: a conference plays at most one championship game, so two
+    DISTINCT game_ids both producing an authoritative notes match in the same season is a
+    'shouldn't happen' -- logged, and the whole conference falls through to the structural
+    rule (which also finds nothing here, since neither row is conference_game=True)."""
+    game_a = _champ_notes_game(604001, "Big 12", "Big 12 Championship",
+                                home="Colorado", away="Iowa State",
+                                start_date="2025-12-06 12:00:00")
+    game_b = _champ_notes_game(604002, "Big 12", "Big 12 Championship",
+                                home="Kansas State", away="BYU",
+                                start_date="2025-12-06 15:30:00")
+    rows = game_a + game_b
+    with caplog.at_level(logging.WARNING):
+        found = identify_conference_championship_games(rows, 2025)
+    assert found == {}, found
+    assert any("Big 12" in rec.getMessage() for rec in caplog.records), (
+        f"expected a warning naming the ambiguous conference, got: "
+        f"{[rec.getMessage() for rec in caplog.records]}"
+    )
 
 
 def test_two_team_conference_playing_twice_is_not_a_championship():

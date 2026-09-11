@@ -148,6 +148,49 @@ def test_identified_championship_does_not_mint_a_week_column():
     assert "week-14" in slot_ids, "the Nov 29-30 regular slate keeps its own column"
 
 
+def test_no_army_navy_column_when_the_season_has_no_army_navy_game():
+    """A season whose data carries no Army-Navy row at all must not publish the column.
+
+    Nothing but that one game is ever diverted into the army-navy slot, so with no game to
+    divert the column is one no team can ever fill. 2025 is the live case and the reason this
+    test exists: its regular season ends 2025-12-07 and its postseason opens 2025-12-14, so the
+    real 2025-12-13 Army-Navy game is absent from the data entirely. Before the guard in
+    build_canonical_columns, 2025 published a completely empty trailing column -- reported by
+    the user as "a completely empty week 17 column", and still empty (relabelled "Week 16")
+    once championship identification was fixed.
+
+    ACC_2025 is used precisely because it contains no Army-Navy game, the same shape as the
+    real season.
+    """
+    champ = set(identify_conference_championship_games(ACC_2025, 2025).values())
+    assert identify_army_navy_game(ACC_2025, 2025) is None, "fixture precondition"
+
+    slot_ids = [slot_id for slot_id, _ in build_canonical_columns(ACC_2025, 2025, champ, None)]
+
+    assert "army-navy" not in slot_ids, (
+        "no Army-Navy game exists this season, so the column can never be filled"
+    )
+    # The rest of the layout is untouched -- this guard removes one column, nothing else.
+    assert "conf-championship" in slot_ids
+    assert slot_ids[-4:] == [
+        "cfp-r1-bowls", "cfp-quarterfinals", "cfp-semifinals", "cfp-national-championship",
+    ]
+
+
+def test_army_navy_column_is_kept_when_the_game_exists():
+    """The counterpart guard: the omission is keyed on the game's absence, never on a season.
+
+    Pins that 2026 -- which does carry an Army-Navy row -- is completely unaffected, so the
+    change above cannot silently drop the column from a season that needs it.
+    """
+    rows = ACC_2026 + ARMY_NAVY_2026
+    army_navy_id = identify_army_navy_game(rows, 2026)
+    assert army_navy_id is not None, "fixture precondition"
+
+    slot_ids = [slot_id for slot_id, _ in build_canonical_columns(rows, 2026, set(), army_navy_id)]
+    assert "army-navy" in slot_ids
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

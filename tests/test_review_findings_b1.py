@@ -82,7 +82,7 @@ def test_an_unplayed_team_does_not_cancel_a_head_to_head_tiebreak():
 def test_overall_record_sentinel_is_covered():
     """Pins the OVERALL-record sentinel, which no test exercised.
 
-    Mutating artifacts/schedule.py's _overall_pct sentinel from 0.5 back to -1.0 left all
+    Mutating artifacts/schedule.py's overall-percentage sentinel from 0.5 back to -1.0 left all
     50 tests green while genuinely changing output. Independents have no conference record,
     so they sort purely on overall percentage -- which is exactly where that sentinel is
     load-bearing and where the gap showed.

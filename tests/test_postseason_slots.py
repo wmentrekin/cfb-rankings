@@ -5,7 +5,7 @@ These are characterization tests, not specifications. Before this file, `_bucket
 `_game_name_for_row` had ZERO test coverage, and `compute_team_records` had no test asserting
 postseason games count toward a team's record (also uncovered). Phase 2 of the Season Grid
 work is a PLANNED rewrite of postseason bowl-name formatting (sponsor-stripping -- see
-docs/season-grid-2025-postseason/requirements.yaml non_goals and plan.yaml risk R3), so these
+the season-grid-2025-postseason non_goals and plan risk R3), so these
 tests exist to make that future diff legible, not to bless today's output as correct or final.
 
 The `_game_name_for_row` coverage below is deliberately split in two:
@@ -289,7 +289,7 @@ def test_bye_status_absent_for_an_ordinary_bowl_team():
     assert bowl_cell["slot_id"] == CFP_R1_BOWLS
     assert bowl_cell["status"] != CFP_BYE_STATUS
     assert bowl_cell["game_name"] == "Union Home Mortgage Gasparilla Bowl"
-    assert bowl_cell["game_name_short"] == "Gasparilla Bowl"
+    assert bowl_cell["game_name_short"] == "Gasparilla"
 
 
 def test_bye_seed_present_is_carried_as_its_own_field_not_baked_into_game_name():
@@ -366,13 +366,15 @@ def test_playoff_round_is_null_on_every_placeholder_and_bye_cell():
 # K6 -- short bowl/CFP-round display names (artifacts/bowl_names.py)
 # ===========================================================================
 @pytest.mark.parametrize("full,expected_short", [
-    ("Union Home Mortgage Gasparilla Bowl", "Gasparilla Bowl"),
-    ("Bucked Up LA Bowl", "LA Bowl"),
-    ("Scooter's Coffee Frisco Bowl", "Frisco Bowl"),
-    ("Radiance Technologies Independence Bowl", "Independence Bowl"),
-    ("Pop-Tarts Bowl", "Pop-Tarts Bowl"),
-    ("Xbox Bowl", "Xbox Bowl"),
-    ("Rate Bowl", "Rate Bowl"),
+    # K9: short names now strip the trailing "Bowl" too (see docs/season-grid-standings-fixes),
+    # not just the sponsor -- "Gasparilla", not "Gasparilla Bowl".
+    ("Union Home Mortgage Gasparilla Bowl", "Gasparilla"),
+    ("Bucked Up LA Bowl", "LA"),
+    ("Scooter's Coffee Frisco Bowl", "Frisco"),
+    ("Radiance Technologies Independence Bowl", "Independence"),
+    ("Pop-Tarts Bowl", "Pop-Tarts"),
+    ("Xbox Bowl", "Xbox"),
+    ("Rate Bowl", "Rate"),
 ], ids=["gasparilla", "la-bowl", "frisco", "independence", "pop-tarts", "xbox", "rate"])
 def test_short_bowl_name_for_2025s_real_ordinary_bowls(full, expected_short):
     assert short_bowl_name(full) == expected_short
@@ -381,16 +383,17 @@ def test_short_bowl_name_for_2025s_real_ordinary_bowls(full, expected_short):
 @pytest.mark.parametrize("full,expected_short", [
     # Fix-cycle-1: real 2025 bowls whose ROOT is more than one token -- the exact cases a
     # single-trailing-token rule got wrong (see artifacts/bowl_names.py's module docstring for
-    # the wrong output each of these used to produce).
-    ("TransPerfect Music City Bowl", "Music City Bowl"),
-    ("Isleta New Mexico Bowl", "New Mexico Bowl"),
-    ("Lockheed Martin Armed Forces Bowl", "Armed Forces Bowl"),
-    ("SERVPRO First Responder Bowl", "First Responder Bowl"),
-    ("SRS Distribution Las Vegas Bowl", "Las Vegas Bowl"),
-    ("R+L Carriers New Orleans Bowl", "New Orleans Bowl"),
-    ("RoofClaim.com Boca Raton Bowl", "Boca Raton Bowl"),
-    ("Duke's Mayo Bowl", "Duke's Mayo Bowl"),  # sponsor-eponymous rebrand, no separate root
-    ("Myrtle Beach Bowl", "Myrtle Beach Bowl"),  # no title sponsor at all
+    # the wrong output each of these used to produce). K9: now also stripped of the trailing
+    # "Bowl" itself.
+    ("Liberty Mutual Music City Bowl", "Music City"),
+    ("Isleta New Mexico Bowl", "New Mexico"),
+    ("Lockheed Martin Armed Forces Bowl", "Armed Forces"),
+    ("SERVPRO First Responder Bowl", "First Responder"),
+    ("SRS Distribution Las Vegas Bowl", "Las Vegas"),
+    ("New Orleans Bowl", "New Orleans"),
+    ("Bush's Boca Raton Bowl", "Boca Raton"),
+    ("Duke's Mayo Bowl", "Duke's Mayo"),  # sponsor-eponymous rebrand, no separate root
+    ("Myrtle Beach Bowl", "Myrtle Beach"),  # no title sponsor at all
 ], ids=["music-city", "new-mexico", "armed-forces", "first-responder", "las-vegas",
         "new-orleans", "boca-raton", "dukes-mayo", "myrtle-beach"])
 def test_short_bowl_name_for_2025s_real_multi_token_root_bowls(full, expected_short):
@@ -399,16 +402,119 @@ def test_short_bowl_name_for_2025s_real_multi_token_root_bowls(full, expected_sh
 
 @pytest.mark.parametrize("full,expected_short", [
     ("College Football Playoff First Round Game", "First Round"),
-    ("Rose Bowl", "Rose Bowl"),
-    ("Sugar Bowl", "Sugar Bowl"),
-    ("Cotton Bowl", "Cotton Bowl"),
-    ("Orange Bowl", "Orange Bowl"),
-    ("Fiesta Bowl", "Fiesta Bowl"),
-    ("Peach Bowl", "Peach Bowl"),
+    ("Rose Bowl", "Rose"),
+    ("Sugar Bowl", "Sugar"),
+    ("Cotton Bowl", "Cotton"),
+    ("Orange Bowl", "Orange"),
+    ("Fiesta Bowl", "Fiesta"),
+    ("Peach Bowl", "Peach"),
     ("College Football Playoff National Championship Presented by AT&T", "National Championship"),
 ], ids=["first-round", "rose", "sugar", "cotton", "orange", "fiesta", "peach", "championship"])
 def test_short_bowl_name_for_2025s_real_cfp_rounds(full, expected_short):
     assert short_bowl_name(full) == expected_short
+
+
+# The complete 2025 postseason name universe (R3/K9): all 35 ordinary bowls curated in
+# _ROOT_NAMES plus all 8 CFP-related names, input -> expected output, as a single pinned table.
+# This is the deliverable that makes the K9 change reviewable -- see
+# docs/season-grid-standings-fixes/plan.yaml risk R3. Every entry here also appears, split across
+# concerns, in the parametrized tests above/below; this table is what pins the WHOLE 2025 season
+# in one place so a future change can't fix one bowl's test while silently breaking another's.
+_COMPLETE_2025_TABLE = [
+    ("Union Home Mortgage Gasparilla Bowl", "Gasparilla"),
+    ("Bucked Up LA Bowl", "LA"),
+    ("Scooter's Coffee Frisco Bowl", "Frisco"),
+    ("Radiance Technologies Independence Bowl", "Independence"),
+    ("Pop-Tarts Bowl", "Pop-Tarts"),
+    ("Xbox Bowl", "Xbox"),
+    ("Rate Bowl", "Rate"),
+    ("Duke's Mayo Bowl", "Duke's Mayo"),
+    ("Myrtle Beach Bowl", "Myrtle Beach"),
+    ("Liberty Mutual Music City Bowl", "Music City"),
+    ("Isleta New Mexico Bowl", "New Mexico"),
+    ("Lockheed Martin Armed Forces Bowl", "Armed Forces"),
+    ("SERVPRO First Responder Bowl", "First Responder"),
+    ("SRS Distribution Las Vegas Bowl", "Las Vegas"),
+    ("New Orleans Bowl", "New Orleans"),
+    ("Bush's Boca Raton Bowl", "Boca Raton"),
+    ("68 Ventures Bowl", "68 Ventures"),
+    ("AutoZone Liberty Bowl", "Liberty"),
+    ("Bad Boy Mowers Pinstripe Bowl", "Pinstripe"),
+    ("Cheez-It Citrus Bowl", "Citrus"),
+    ("Famous Idaho Potato Bowl", "Idaho Potato"),
+    ("GameAbove Sports Bowl", "GameAbove Sports"),
+    ("Go Bowling Military Bowl", "Military"),
+    ("IS4S Salute to Veterans Bowl", "Salute to Veterans"),
+    ("JLab Birmingham Bowl", "Birmingham"),
+    ("Kinder's Texas Bowl", "Texas"),
+    ("ReliaQuest Bowl", "ReliaQuest"),
+    ("Sheraton Hawaiʻi Bowl", "Hawaiʻi"),
+    ("Snoop Dogg Arizona Bowl", "Arizona"),
+    ("StaffDNA Cure Bowl", "Cure"),
+    ("TaxSlayer Gator Bowl", "Gator"),
+    ("Tony the Tiger Sun Bowl", "Sun"),
+    ("Trust & Will Holiday Bowl", "Holiday"),
+    ("Valero Alamo Bowl", "Alamo"),
+    ("Wasabi Fenway Bowl", "Fenway"),
+    ("Sugar Bowl", "Sugar"),
+    ("Orange Bowl", "Orange"),
+    ("Cotton Bowl", "Cotton"),
+    ("Rose Bowl", "Rose"),
+    ("Peach Bowl", "Peach"),
+    ("Fiesta Bowl", "Fiesta"),
+    ("College Football Playoff First Round Game", "First Round"),
+    ("College Football Playoff National Championship Presented by AT&T", "National Championship"),
+]
+
+
+def test_complete_2025_bowl_and_cfp_name_table_is_exactly_43_entries():
+    """Guards the table's own completeness (35 ordinary bowls + 8 CFP names) so a future edit
+    that silently drops or duplicates an entry is caught here, not just in the loop below."""
+    assert len(_COMPLETE_2025_TABLE) == 43
+    assert len({full for full, _ in _COMPLETE_2025_TABLE}) == 43
+
+
+@pytest.mark.parametrize("full,expected_short", _COMPLETE_2025_TABLE,
+                          ids=[full for full, _ in _COMPLETE_2025_TABLE])
+def test_short_bowl_name_pins_the_complete_2025_name_table(full, expected_short):
+    assert short_bowl_name(full) == expected_short
+
+
+def test_short_bowl_name_never_inspects_a_sponsor_that_itself_contains_the_word_bowl():
+    """Trap (K9): 'Go Bowling Military Bowl' has a SPONSOR containing 'Bowl' ('Go Bowling').
+    Matching and stripping operate only on the curated root ('Military Bowl'), never on
+    substrings of the raw input, so 'Go Bowling' must never be inspected or altered."""
+    assert short_bowl_name("Go Bowling Military Bowl") == "Military"
+
+
+def test_short_bowl_name_matches_the_okina_in_hawaii_bowl():
+    """Trap (K9): 'Hawaiʻi Bowl' contains U+02BB ʻOKINA, not an ASCII apostrophe. This
+    root is newly curated, so this is the first time this character reaches the matching logic
+    at all -- pin it explicitly rather than relying on it passing incidentally inside the
+    complete-table test above."""
+    assert short_bowl_name("Sheraton Hawaiʻi Bowl") == "Hawaiʻi"
+    assert "ʻ" in short_bowl_name("Sheraton Hawaiʻi Bowl")
+
+
+def test_short_bowl_name_refuses_to_strip_to_an_empty_or_blank_result(monkeypatch):
+    """K9 guard: _strip_trailing_bowl must never turn a resolved root into an empty or
+    whitespace-only string. No real curated root is this degenerate (every real root has real
+    content before "Bowl"), so this pins the guard directly against a deliberately-constructed
+    pathological root via monkeypatch rather than resting on today's data never triggering it."""
+    assert bowl_names._strip_trailing_bowl("  Bowl") == "  Bowl"
+    assert bowl_names._strip_trailing_bowl(" Bowl Classic") == " Bowl Classic"
+    monkeypatch.setattr(bowl_names, "_ROOT_NAMES_BY_LENGTH_DESC", ["  Bowl"])
+    assert bowl_names.short_bowl_name("Sponsor   Bowl") == "  Bowl"
+
+
+def test_short_bowl_name_strips_bowl_classic_before_bowl(monkeypatch):
+    """K9: '_strip_trailing_bowl' checks the trailing ' Bowl Classic' suffix before ' Bowl'. No
+    real 2025 root has this shape, so this pins it via a monkeypatched curated root -- if the
+    ' Bowl Classic' case were dropped (leaving only the plain ' Bowl' strip), a root ending in
+    ' Bowl Classic' does not end in ' Bowl' (it ends in 'Classic'), so no strip would fire at
+    all and the orphaned 'Classic' qualifier would leak into the displayed name."""
+    monkeypatch.setattr(bowl_names, "_ROOT_NAMES_BY_LENGTH_DESC", ["Frisco Bowl Classic"])
+    assert bowl_names.short_bowl_name("Sponsor Frisco Bowl Classic") == "Frisco"
 
 
 def test_short_bowl_name_passes_through_an_unrecognized_bowl_unchanged():
@@ -427,7 +533,7 @@ def test_short_bowl_name_prefers_the_longest_matching_curated_root(monkeypatch):
     so this patches in an artificial one ('Beach Bowl' / 'Myrtle Beach Bowl') rather than
     resting on a coincidence of the current data. The longer, more specific root must win."""
     monkeypatch.setattr(bowl_names, "_ROOT_NAMES_BY_LENGTH_DESC", ["Myrtle Beach Bowl", "Beach Bowl"])
-    assert bowl_names.short_bowl_name("Some Sponsor Myrtle Beach Bowl") == "Myrtle Beach Bowl"
+    assert bowl_names.short_bowl_name("Some Sponsor Myrtle Beach Bowl") == "Myrtle Beach"
 
 
 def test_short_bowl_name_degrades_to_the_full_name_for_an_unmapped_non_bowl_shape():

@@ -1,5 +1,5 @@
 """Tests for T1 (conference records exclude the conference championship game) and T2
-(conference champions sort first), per docs/season-grid-postseason-format/plan.yaml batch B1.
+(conference champions sort first), from the season-grid-postseason-format work, batch B1.
 
 The conference-record exclusion (T1) had ZERO characterization before this file -- neither the
 happy path nor the K1 regression it guards against. Every fixture below is invented; real team
@@ -9,7 +9,7 @@ numbers describe an actual season.
 
 Covers:
   1. Duke 6-2 / Virginia 7-1 for a 2025-shaped ACC fixture (the exact live case
-     docs/season-grid-postseason-format/requirements.yaml verified), and overall win/loss
+     season-grid-postseason-format requirements verified), and overall win/loss
      records left untouched by the exclusion.
   2. The championship game's winner (Duke) sorts first despite a WORSE displayed conference
      percentage than the team it beat (Virginia) -- K3.
@@ -38,7 +38,10 @@ test re-run to confirm it fails, change reverted -- see the task report for the 
 Run: python -m pytest tests/ -q
      (or: python tests/test_conference_championship_records.py)
 """
+import itertools
 import sys
+
+import pytest
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -48,6 +51,8 @@ from artifacts import schedule_standings  # noqa: E402
 from artifacts.schedule import (  # noqa: E402
     CONF_CHAMPIONSHIP_SLOT_ID,
     _exclude_championship_games_from_conf_records,
+    _head_to_head_winner,
+    _placement_pct,
     _resolve_conference_champions,
     _sort_conference_teams,
     build_schedule_payload,
@@ -139,7 +144,7 @@ _FILLERS = [f"ACC Filler {i}" for i in range(1, 9)]
 def _duke_virginia_2025_rows():
     """
     A 2025-shaped ACC fixture reproducing the exact live case
-    docs/season-grid-postseason-format/requirements.yaml verified: Duke and Virginia each play
+    season-grid-postseason-format requirements verified: Duke and Virginia each play
     an 8-game non-championship conference slate, then meet in the ACC title game (game_id 17,
     alone in the latest week bucket), which Duke wins.
 
@@ -572,7 +577,8 @@ def test_independents_unaffected():
 def _find_underscore_keys(obj, path=""):
     """Recursively collect every dict key starting with '_' anywhere in `obj`, with a path for
     a useful failure message. The published payload must contain none -- every underscore-
-    prefixed field (_overall_pct, _conf_pct, _conf_played, _is_champion) is scratch state that
+    prefixed field (_placement_pct, _conf_pct, _conf_played, _tier, _is_champion, _is_ccg_loser)
+    is scratch state that
     _sort_conference_teams strips before its entries are returned."""
     found = []
     if isinstance(obj, dict):
@@ -594,8 +600,308 @@ def test_is_champion_absent_from_published_payload():
     leaked = _find_underscore_keys(payload)
     assert leaked == [], (
         f"internal scratch field(s) leaked into the published payload: {leaked}. K10: "
-        "_is_champion (and its neighbors _conf_pct/_conf_played/_overall_pct) are scratch state "
+        "_is_champion (and its neighbors _conf_pct/_conf_played/_placement_pct/_tier) are scratch state "
         "and must be popped/deleted before _sort_conference_teams returns its entries."
+    )
+
+
+# ---------------------------------------------------------------------------
+# T2/K8: _head_to_head_winner direct tests -- the tallying fix for a split series.
+# ---------------------------------------------------------------------------
+def test_head_to_head_1_1_split_returns_none():
+    """A split series is a WASH, not a tiebreak -- the exact defect (issue 7) this task fixes."""
+    rows = _played(1, "Alpha", "Beta", ACC) + _played(2, "Beta", "Alpha", ACC)
+    assert _head_to_head_winner(rows, SEASON, "Alpha", "Beta") is None
+
+
+def test_head_to_head_2_2_split_returns_none():
+    rows = (
+        _played(1, "Alpha", "Beta", ACC)
+        + _played(2, "Beta", "Alpha", ACC)
+        + _played(3, "Alpha", "Beta", ACC)
+        + _played(4, "Beta", "Alpha", ACC)
+    )
+    assert _head_to_head_winner(rows, SEASON, "Alpha", "Beta") is None
+
+
+def test_head_to_head_2_0_sweep_returns_the_winner():
+    rows = _played(1, "Alpha", "Beta", ACC) + _played(2, "Alpha", "Beta", ACC)
+    assert _head_to_head_winner(rows, SEASON, "Alpha", "Beta") == "Alpha"
+    # Order of the two teams passed in must not matter.
+    assert _head_to_head_winner(rows, SEASON, "Beta", "Alpha") == "Alpha"
+
+
+def test_head_to_head_no_meeting_returns_none():
+    rows = _played(1, "Alpha", "Gamma", ACC) + _played(2, "Beta", "Delta", ACC)
+    assert _head_to_head_winner(rows, SEASON, "Alpha", "Beta") is None
+
+
+def test_head_to_head_single_meeting_counted_once_not_twice():
+    """K8's actual trap: every played game contributes TWO team-oriented rows sharing one
+    game_id. A single meeting must be tallied ONCE, not read as a 2-0 sweep."""
+    rows = _played(1, "Alpha", "Beta", ACC)  # one game: Alpha's win row + Beta's loss row
+    assert _head_to_head_winner(rows, SEASON, "Alpha", "Beta") == "Alpha"
+
+    # Proof it wasn't double-counted: dropping Beta's own-perspective row (the one a correct
+    # implementation never needed in the first place) must not change the outcome. If the
+    # winner had depended on tallying wins_a=1 from Alpha's row AND wins_b(as a loss for
+    # Alpha)=... this assertion isolates that only Alpha's own-perspective row ever mattered.
+    only_alpha_perspective = [r for r in rows if r["team"] == "Alpha"]
+    assert _head_to_head_winner(only_alpha_perspective, SEASON, "Alpha", "Beta") == "Alpha"
+
+
+# ---------------------------------------------------------------------------
+# T2/K5: a CCG LOSER (tier 1) tied with, and previously beaten by, a non-participant (tier 0)
+# must not be swapped below it -- the loser-tier analog of the champion test above (K4), pinning
+# that the head-to-head grouping predicate keys on _tier, not _is_champion.
+# ---------------------------------------------------------------------------
+def _k4_loser_tier_rows():
+    """Gamma wins the ACC championship against Alpha, making Alpha the CCG LOSER (tier 1), not
+    the champion. Beta ties Alpha 1-1 on (post-exclusion) conference record and beat it EARLIER
+    in the regular season. Eta/Theta/Iota are fillers (Alpha's/Beta's/Gamma's compensating
+    results) left OUT of teams_meta, same trick as _k4_head_to_head_rows, both to satisfy
+    identify_conference_championship_games' >=4-distinct-member gate and to keep Alpha and Beta
+    the only two teams_meta entries so they are guaranteed adjacent after sorting."""
+    rows = []
+    rows += _played(1, "Beta", "Alpha", ACC)   # earlier regular-season meeting: Beta wins
+    rows += _played(2, "Alpha", "Eta", ACC)    # Alpha's compensating win
+    rows += _played(3, "Theta", "Beta", ACC)   # Beta's compensating loss
+    rows += _played(4, "Gamma", "Iota", ACC)   # Gamma's own conference involvement (unrelated)
+    # ACC Championship: Gamma over Alpha -- alone in the latest bucket.
+    rows += _played(5, "Gamma", "Alpha", ACC, neutral_site=True)
+    return rows
+
+
+def _k4_loser_tier_teams_meta():
+    # Deliberately Alpha/Beta only -- see the fixture's docstring.
+    return _teams_meta(["Alpha", "Beta"], ACC)
+
+
+def test_ccg_loser_not_swapped_below_team_that_beat_it_head_to_head():
+    rows = _k4_loser_tier_rows()
+    payload = build_schedule_payload(rows, _k4_loser_tier_teams_meta(), SEASON)
+    entries = {e["team"]: e for e in _conf_entries(payload, "ACC")}
+
+    # Sanity-check the tie the test depends on.
+    assert entries["Alpha"]["conf_record"] == {"wins": 1, "losses": 1}, entries["Alpha"]["conf_record"]
+    assert entries["Beta"]["conf_record"] == {"wins": 1, "losses": 1}, entries["Beta"]["conf_record"]
+
+    names = _conf_names(payload, "ACC")
+    assert names == ["Alpha", "Beta"], (
+        f"got {names}. Alpha is the CCG LOSER (tier 1) and must sort above Beta (tier 0) despite "
+        "Beta having won their EARLIER regular-season meeting. If this reads ['Beta', 'Alpha'] "
+        "instead, the head-to-head grouping predicate keyed on _is_champion instead of _tier "
+        "(K5): Alpha is not a champion, so it would have grouped with Beta (both False) and the "
+        "swap would have fired on their earlier meeting, silently undoing the loser-tier rule."
+    )
+
+
+# ---------------------------------------------------------------------------
+# T2/K6: _placement_pct direct tests. These matter as their OWN tests, not just via the
+# sort-order tests below: placement pct only changes an ORDER when two teams differ on it
+# while tied on conference pct, so a fixture that happens to separate its teams earlier in
+# the key would let a broken _placement_pct pass unnoticed. Exercised directly against the
+# function so its arithmetic is pinned independently of any particular fixture's shape.
+# ---------------------------------------------------------------------------
+def test_placement_pct_excludes_postseason_rows():
+    entry = {"team": "Team", "record": {"wins": 10, "losses": 3}}
+    rows = [dict(season=SEASON, team="Team", season_type="postseason", status="loss", game_id=201)]
+    # (10, 3) displayed, minus the 1 postseason loss found in `rows` -> (10, 2).
+    assert _placement_pct(entry, rows, SEASON, champ_game_ids=set()) == 10 / 12
+
+
+def test_placement_pct_excludes_the_identified_championship_game():
+    entry = {"team": "Team", "record": {"wins": 10, "losses": 3}}
+    rows = [dict(season=SEASON, team="Team", season_type="regular", status="win", game_id=99)]
+    # (10, 3) displayed, minus the 1 championship-game win (game_id 99 is in champ_game_ids)
+    # -> (9, 3). Deliberately season_type='regular' (a CCG always is) so this cannot pass merely
+    # because of the postseason branch above.
+    assert _placement_pct(entry, rows, SEASON, champ_game_ids={99}) == 9 / 12
+
+
+def test_placement_pct_clamps_at_zero_on_an_inconsistent_entry():
+    """PR #16 review finding. The subtraction trusts that entry["record"] already counts every
+    row this function can find -- true of compute_team_records in the real pipeline, not true
+    of a hand-built entry. Without the clamp this returns -0.5, which sorts a team BELOW a
+    genuine 0.000 team instead of above it: a silently wrong ORDER, the exact failure class
+    _placement_pct exists to fix."""
+    entry = {"team": "Team", "record": {"wins": 1, "losses": 3}}
+    rows = [
+        dict(season=SEASON, team="Team", season_type="postseason", status="win", game_id=1),
+        dict(season=SEASON, team="Team", season_type="postseason", status="win", game_id=2),
+    ]
+    # 1 - 2 = -1 wins before clamping; 3 losses survive untouched.
+    pct = _placement_pct(entry, rows, SEASON, champ_game_ids=set())
+    assert pct == 0.0, pct
+    assert pct >= 0.0
+
+
+def test_placement_pct_no_counted_games_uses_0_5_sentinel():
+    entry = {"team": "Team", "record": {"wins": 1, "losses": 0}}
+    # The team's only game is the championship game itself -- once excluded, 0 counted games.
+    rows = [dict(season=SEASON, team="Team", season_type="regular", status="win", game_id=1)]
+    assert _placement_pct(entry, rows, SEASON, champ_game_ids={1}) == 0.5
+
+
+# ---------------------------------------------------------------------------
+# T2/K4-K8: the full 2025 SEC shape -- champion, CCG loser, then the remaining teams by
+# conference record with tiebreakers (issue 4), verified against the exact live 2025 numbers.
+# This fixture is the one that distinguishes the two candidate tiebreak orders, so it is worth
+# stating what it proves. Placement win% is compared BEFORE model rank (see the long comment
+# above _sort_conference_teams): Oklahoma and Vanderbilt tie at .833 placement (post-bowl
+# exclusion) while Texas sits at .75, so Texas sorts last despite ranking 11 to Vanderbilt's 14.
+# A rank-first key would instead produce Oklahoma, Texas, Vanderbilt, promoting a 9-3 team over
+# a 10-2 one on rating alone. Rank still decides Ole Miss over Texas A&M, who are tied on BOTH
+# conference and placement record and never played -- the exhausted case rank exists for.
+# ---------------------------------------------------------------------------
+_SEC = "SEC"
+_SEC_TEAMS = ["Georgia", "Alabama", "Ole Miss", "Texas A&M", "Oklahoma", "Texas", "Vanderbilt"]
+_SEC_RANKS = {
+    "Georgia": 5, "Ole Miss": 6, "Texas A&M": 8, "Oklahoma": 10, "Texas": 11, "Alabama": 12,
+    "Vanderbilt": 14,
+}
+
+
+def _sec_single_row(game_id, team, opponent, status, conference_game, season_type, week_offset,
+                    neutral_site=False, notes=None):
+    """One team-oriented row against a unique filler opponent never added to teams_meta -- same
+    trick as _row()/_played() above, extended with an explicit season_type so postseason rows
+    can be built directly (the shared _row() helper always hardcodes season_type='regular')."""
+    return dict(
+        game_id=game_id,
+        season=SEASON,
+        season_type=season_type,
+        team=team,
+        opponent=opponent,
+        conference=_SEC,
+        conference_game=conference_game,
+        status=status,
+        start_date=(_SEASON_START + timedelta(days=7 * week_offset)).isoformat() + " 19:00:00",
+        home_away="home",
+        neutral_site=neutral_site,
+        notes=notes,
+    )
+
+
+def _sec_conf_block(game_id_iter, team, wins, losses):
+    """`wins` + `losses` conference games at weeks 0..(wins+losses-1) -- a normal regular slate
+    with several teams' games sharing each early bucket, which identify_conference_championship_
+    games never inspects (only the LATEST bucket matters)."""
+    rows = []
+    week = 0
+    for w in range(wins):
+        rows.append(_sec_single_row(next(game_id_iter), team, f"{team} Conf W{w}", "win", True, "regular", week))
+        week += 1
+    for l in range(losses):
+        rows.append(_sec_single_row(next(game_id_iter), team, f"{team} Conf L{l}", "loss", True, "regular", week))
+        week += 1
+    return rows
+
+
+def _sec_rest_block(game_id_iter, team, start_week, nonconf_w, nonconf_l, post_w, post_l):
+    """Non-conference regular-season games, then postseason games, starting at `start_week`."""
+    rows = []
+    week = start_week
+    for w in range(nonconf_w):
+        rows.append(_sec_single_row(next(game_id_iter), team, f"{team} NonConf W{w}", "win", False, "regular", week))
+        week += 1
+    for l in range(nonconf_l):
+        rows.append(_sec_single_row(next(game_id_iter), team, f"{team} NonConf L{l}", "loss", False, "regular", week))
+        week += 1
+    for w in range(post_w):
+        rows.append(_sec_single_row(next(game_id_iter), team, f"{team} Bowl W{w}", "win", False, "postseason", week))
+        week += 1
+    for l in range(post_l):
+        rows.append(_sec_single_row(next(game_id_iter), team, f"{team} Bowl L{l}", "loss", False, "postseason", week))
+        week += 1
+    return rows
+
+
+# The two shapes CFBD has emitted for a conference championship game. Both must produce the
+# same standings, and the SEC fixture below is built under each in turn -- see the docstring on
+# test_2025_sec_seven_team_standings_order for why running only one of them is not enough.
+_LEGACY_SHAPE = {"conference_game": True, "notes": None}
+_CFBD_2025_SHAPE = {"conference_game": False, "notes": "SEC Championship"}
+
+
+def _sec_seven_team_rows(ccg_shape=_LEGACY_SHAPE):
+    game_id_iter = itertools.count(1)
+    rows = []
+
+    # Conference slate: 8 games each, weeks 0-7.
+    rows += _sec_conf_block(game_id_iter, "Georgia", 7, 1)
+    rows += _sec_conf_block(game_id_iter, "Alabama", 7, 1)
+    rows += _sec_conf_block(game_id_iter, "Ole Miss", 7, 1)
+    rows += _sec_conf_block(game_id_iter, "Texas A&M", 7, 1)
+    rows += _sec_conf_block(game_id_iter, "Oklahoma", 6, 2)
+    rows += _sec_conf_block(game_id_iter, "Texas", 6, 2)
+    rows += _sec_conf_block(game_id_iter, "Vanderbilt", 6, 2)
+
+    # SEC Championship: Georgia over Alabama, week 8. Under _LEGACY_SHAPE it is identified
+    # structurally (alone in its bucket, strictly later than every team's week 0-7 slate);
+    # under _CFBD_2025_SHAPE the structural rule cannot see it at all -- conference_game is
+    # False -- and only the notes signal identifies it. The two shapes also reach Georgia's
+    # and Alabama's displayed 7-1 conference record by OPPOSITE routes: legacy counts the
+    # title game into the tally and subtracts it back out, while 2025 never counts it.
+    ccg_id = next(game_id_iter)
+    rows.append(_sec_single_row(ccg_id, "Georgia", "Alabama", "win", ccg_shape["conference_game"],
+                                "regular", 8, neutral_site=True, notes=ccg_shape["notes"]))
+    rows.append(_sec_single_row(ccg_id, "Alabama", "Georgia", "loss", ccg_shape["conference_game"],
+                                "regular", 8, neutral_site=True, notes=ccg_shape["notes"]))
+
+    # Non-conference regular season + postseason, per team -- see the ground-truth table in the
+    # task brief. Georgia/Alabama start at week 9 (after their own week-8 CCG row); every other
+    # team starts at week 8 (they have no CCG row to collide with).
+    rows += _sec_rest_block(game_id_iter, "Georgia", 9, 4, 0, 0, 1)
+    rows += _sec_rest_block(game_id_iter, "Alabama", 9, 3, 1, 1, 1)
+    rows += _sec_rest_block(game_id_iter, "Ole Miss", 8, 4, 0, 2, 1)
+    rows += _sec_rest_block(game_id_iter, "Texas A&M", 8, 4, 0, 0, 1)
+    rows += _sec_rest_block(game_id_iter, "Oklahoma", 8, 4, 0, 0, 1)
+    rows += _sec_rest_block(game_id_iter, "Texas", 8, 3, 1, 1, 0)
+    rows += _sec_rest_block(game_id_iter, "Vanderbilt", 8, 4, 0, 0, 1)
+
+    return rows
+
+
+def _sec_teams_meta():
+    return _teams_meta(_SEC_TEAMS, _SEC)
+
+
+@pytest.mark.parametrize("ccg_shape", [_LEGACY_SHAPE, _CFBD_2025_SHAPE], ids=["legacy", "cfbd-2025"])
+def test_2025_sec_seven_team_standings_order(ccg_shape):
+    """Runs under BOTH CFBD championship-game shapes. Running only the legacy one -- which is
+    what this test originally did -- would have passed without the identification fix this
+    feature exists to deliver, because the structural rule alone already identifies a legacy-
+    shaped title game. The live 2025 season is the cfbd-2025 shape; the legacy case stays so a
+    future change cannot quietly break the seasons still stored that way."""
+    rows = _sec_seven_team_rows(ccg_shape)
+    payload = build_schedule_payload(rows, _sec_teams_meta(), SEASON, team_ranks=_SEC_RANKS)
+    entries = {e["team"]: e for e in _conf_entries(payload, "SEC")}
+
+    # Displayed record/conf_record, verified against the live 2025 DB (task brief) -- unchanged
+    # by the ordering work (K6 never touches these).
+    assert entries["Georgia"]["record"] == {"wins": 12, "losses": 2}, entries["Georgia"]["record"]
+    assert entries["Georgia"]["conf_record"] == {"wins": 7, "losses": 1}, entries["Georgia"]["conf_record"]
+    assert entries["Alabama"]["record"] == {"wins": 11, "losses": 4}, entries["Alabama"]["record"]
+    assert entries["Alabama"]["conf_record"] == {"wins": 7, "losses": 1}, entries["Alabama"]["conf_record"]
+    assert entries["Ole Miss"]["record"] == {"wins": 13, "losses": 2}, entries["Ole Miss"]["record"]
+    assert entries["Ole Miss"]["conf_record"] == {"wins": 7, "losses": 1}, entries["Ole Miss"]["conf_record"]
+    assert entries["Texas A&M"]["record"] == {"wins": 11, "losses": 2}, entries["Texas A&M"]["record"]
+    assert entries["Texas A&M"]["conf_record"] == {"wins": 7, "losses": 1}, entries["Texas A&M"]["conf_record"]
+    assert entries["Oklahoma"]["record"] == {"wins": 10, "losses": 3}, entries["Oklahoma"]["record"]
+    assert entries["Texas"]["record"] == {"wins": 10, "losses": 3}, entries["Texas"]["record"]
+    assert entries["Vanderbilt"]["record"] == {"wins": 10, "losses": 3}, entries["Vanderbilt"]["record"]
+
+    names = _conf_names(payload, "SEC")
+    assert names == [
+        "Georgia", "Alabama", "Ole Miss", "Texas A&M", "Oklahoma", "Vanderbilt", "Texas",
+    ], (
+        f"got {names}. Expected the champion (Georgia), then the CCG loser (Alabama), then the "
+        "remaining teams by conference record with tiebreakers -- Ole Miss ahead of Texas A&M "
+        "purely on model rank (6 vs 8, tied on BOTH conference and placement record, and they "
+        "never played each other); then Oklahoma and Vanderbilt (both .833 placement) ahead of "
+        "Texas (.75), because placement record is compared before rank, so Texas's better rank "
+        "(11 vs Vanderbilt's 14) does not lift it over a whole game of record."
     )
 
 

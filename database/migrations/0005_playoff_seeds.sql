@@ -28,7 +28,7 @@
 -- call -- this environment cannot make one, so nobody has confirmed these fields are actually
 -- POPULATED for real games. That is why the consuming code (artifacts/schedule.py) degrades to
 -- a plain bye label whenever a seed is null rather than asserting a seed number -- see K8 in
--- docs/season-grid-postseason-format/plan.yaml. A wrong seed on a public page is worse than an
+-- the season-grid-postseason-format plan. A wrong seed on a public page is worse than an
 -- absent one.
 --
 -- Both columns are nullable INTEGER with no default: additive and safe for every existing row.
