@@ -1,5 +1,5 @@
 """Tests for T1 (conference records exclude the conference championship game) and T2
-(conference champions sort first), per docs/season-grid-postseason-format/plan.yaml batch B1.
+(conference champions sort first), from the season-grid-postseason-format work, batch B1.
 
 The conference-record exclusion (T1) had ZERO characterization before this file -- neither the
 happy path nor the K1 regression it guards against. Every fixture below is invented; real team
@@ -9,7 +9,7 @@ numbers describe an actual season.
 
 Covers:
   1. Duke 6-2 / Virginia 7-1 for a 2025-shaped ACC fixture (the exact live case
-     docs/season-grid-postseason-format/requirements.yaml verified), and overall win/loss
+     season-grid-postseason-format requirements verified), and overall win/loss
      records left untouched by the exclusion.
   2. The championship game's winner (Duke) sorts first despite a WORSE displayed conference
      percentage than the team it beat (Virginia) -- K3.
@@ -142,7 +142,7 @@ _FILLERS = [f"ACC Filler {i}" for i in range(1, 9)]
 def _duke_virginia_2025_rows():
     """
     A 2025-shaped ACC fixture reproducing the exact live case
-    docs/season-grid-postseason-format/requirements.yaml verified: Duke and Virginia each play
+    season-grid-postseason-format requirements verified: Duke and Virginia each play
     an 8-game non-championship conference slate, then meet in the ACC title game (game_id 17,
     alone in the latest week bucket), which Duke wins.
 

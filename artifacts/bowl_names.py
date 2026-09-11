@@ -1,5 +1,5 @@
 """artifacts/bowl_names.py -- short, one-line display names for postseason games (K6, see
-docs/season-grid-postseason-format/plan.yaml).
+the season-grid-postseason-format plan).
 
 REVISED after fix-cycle-1 review: the first version of this module used a STRUCTURAL rule ("the
 root name is the single token before a trailing 'Bowl'") instead of a curated map, reasoning that

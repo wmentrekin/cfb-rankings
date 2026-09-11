@@ -5,7 +5,7 @@ These are characterization tests, not specifications. Before this file, `_bucket
 `_game_name_for_row` had ZERO test coverage, and `compute_team_records` had no test asserting
 postseason games count toward a team's record (also uncovered). Phase 2 of the Season Grid
 work is a PLANNED rewrite of postseason bowl-name formatting (sponsor-stripping -- see
-docs/season-grid-2025-postseason/requirements.yaml non_goals and plan.yaml risk R3), so these
+the season-grid-2025-postseason non_goals and plan risk R3), so these
 tests exist to make that future diff legible, not to bless today's output as correct or final.
 
 The `_game_name_for_row` coverage below is deliberately split in two:
