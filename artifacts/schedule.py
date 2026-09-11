@@ -272,7 +272,93 @@ def _display_conference_name(raw_conference: Optional[str]) -> str:
 # games are now identified where they previously were not, the rest of the
 # 2024/2025 real-data picture is unchanged, and 2026 still identifies nothing
 # for every conference.
+#
+# T1 (season-grid-standings-fixes, K1/K2/K3) -- AUTHORITATIVE NOTES SIGNAL:
+# CFBD changed its 2025 data model so a conference championship game arrives
+# with conference_game=FALSE (not TRUE) and notes='<Conference> Championship'.
+# The structural rule above requires conference_game=TRUE to even nominate a
+# candidate, so for 2025 it identifies NOTHING for any of the nine real
+# championship games -- every one of them silently falls into a week column
+# instead of the dedicated Conference Championship column.
+#
+# `notes` is checked FIRST, as an ADDITIONAL, higher-priority signal layered on
+# top of the structural rule -- not a replacement for it. A row is an
+# AUTHORITATIVE championship match when ALL of: season_type=='regular';
+# notes, stripped, ends with "Championship"; the prefix (notes minus that
+# trailing "Championship", stripped) resolves -- via
+# _CHAMPIONSHIP_NOTES_CONFERENCE_ALIASES, else identity -- to that SAME row's
+# own `conference` value; that conference is in `qualifying_conferences`; and
+# the row is not the Army-Navy pairing (same carve-out as the structural rule,
+# see above -- Army-Navy's own notes, when present, would never end with
+# "Championship", but the carve-out costs nothing to keep for defense in
+# depth).
+#
+# On an authoritative match, that conference's championship game is resolved
+# from `notes` ALONE -- the conference_game gate, the MEMBER-COUNT gate and
+# the bucket-isolation ("lone game in the latest bucket") rule are all
+# bypassed for it, and the structural rule does not run for that conference at
+# all this season. This is safe specifically BECAUSE those three gates guard
+# an INFERENTIAL rule (a shape in the data that's usually, not certainly, a
+# championship game), while a `notes` label naming the exact conference is
+# AUTHORITATIVE -- CFBD is telling us directly, not leaving us to guess from
+# game count and date ordering.
+#
+# In particular, bypassing the member-count gate is safe here ONLY because the
+# 2025 two-team Pac-12 remnant (Oregon State/Washington State, who played each
+# other twice and have no title game) carries NO notes row at all -- it has
+# nothing to match, so it never reaches the bypass and still falls through to
+# (and is still stopped by) the structural rule's member-count gate below.
+# This is pinned by test_two_team_conference_playing_twice_is_not_a_championship
+# in tests/test_championship_diversion_scope.py, extended with a notes=None
+# assertion alongside the pre-existing conference_game=True one -- if a future
+# CFBD data shape ever attached a notes value to a non-championship rematch
+# like this, the member-count gate would no longer be there to catch it.
+#
+# If NO authoritative notes match exists for a conference, that conference
+# falls through to today's structural rule COMPLETELY UNCHANGED -- this is how
+# every pre-2025 season (notes is NULL on every row, 2014-2024 confirmed
+# live) and 2026 (notes non-null on exactly 3 week-1 kickoff-classic rows,
+# none ending in "Championship") keep behaving exactly as before this change.
+#
+# AMBIGUITY: notes matching is per-row, but a real game has two team-
+# perspective rows (both carrying the same notes and the same conference for
+# a championship game) -- collapsed to a single game_id naturally. If two or
+# more DISTINCT game_ids in the same conference somehow BOTH produce an
+# authoritative notes match in one season, that is a "shouldn't happen" (a
+# conference plays at most one championship game): logged and the whole
+# conference falls through to the structural rule rather than guessing which
+# match is the real one.
+#
+# MISMATCH (K2): a row whose notes ends with "Championship" but whose prefix
+# does NOT resolve to that row's OWN conference is logged and ignored (falls
+# through to the structural rule for its conference) rather than silently
+# treated as a non-match. This is deliberate, not paranoia: nobody has ever
+# seen what CFBD actually calls a Pac-12 title game -- the real 2025 Pac-12
+# has no championship game at all, and the 2026 Pac-12's has not been played
+# yet -- so if CFBD's naming ever surprises us there (or for any other
+# conference, on a future data-shape change), this is how that becomes a
+# visible log line instead of a silent miss that quietly reintroduces this
+# same defect.
 # ---------------------------------------------------------------------------
+
+# T1/K3: CFBD's `notes` abbreviates two conference names differently than the
+# raw `conference` string schedule_grid rows otherwise carry (confirmed live,
+# 2025 season): 'American Championship' for the American Athletic Conference,
+# and 'MAC Championship' for the Mid-American Conference. The other seven 2025
+# championship-conference notes values match their row's own `conference`
+# string by plain equality after stripping " Championship" and need no alias.
+# This is an IDENTIFICATION concern (resolving a notes string to the
+# conference it names), not a standings-format concern, so it lives here
+# beside the function that consumes it rather than in schedule_standings.py.
+# RE-VERIFY EACH OFFSEASON, same discipline as QUALIFYING_CHAMPIONSHIP_CONFERENCES
+# and FLEX_WEEK_TBD_CONFIG -- CFBD's notes abbreviations are not a documented,
+# stable contract and could change or gain new curated conferences.
+_CHAMPIONSHIP_NOTES_CONFERENCE_ALIASES: Dict[str, str] = {
+    "American": "American Athletic",
+    "MAC": "Mid-American",
+}
+
+
 def identify_conference_championship_games(
     rows: List[Dict[str, Any]],
     season: int,
@@ -329,15 +415,74 @@ def identify_conference_championship_games(
             **schedule_standings.DIVISIONAL_CHAMPIONSHIP_CONFERENCES,
         }
 
+    # T1/K1/K2: AUTHORITATIVE NOTES SIGNAL -- see the module comment above for the full
+    # rationale. Runs first and independently of the structural candidate-gathering below;
+    # a conference resolved here is excluded from the structural pass entirely (see
+    # `notes_resolved_conferences` below), not merely given a preferred candidate.
+    _CHAMPIONSHIP_SUFFIX = "Championship"
+    notes_game_ids_by_conf: Dict[str, set] = defaultdict(set)
+    for row in rows:
+        if row.get("season") != season:
+            continue
+        if row.get("season_type") != "regular":
+            continue
+        notes = row.get("notes")
+        if not isinstance(notes, str):
+            continue
+        stripped_notes = notes.strip()
+        if not stripped_notes.endswith(_CHAMPIONSHIP_SUFFIX):
+            continue
+        if _is_army_navy_pairing(row.get("team"), row.get("opponent")):
+            continue  # see module docstring section above -- deliberate carve-out
+        row_conf = row.get("conference")
+        prefix = stripped_notes[: -len(_CHAMPIONSHIP_SUFFIX)].strip()
+        resolved_conf = _CHAMPIONSHIP_NOTES_CONFERENCE_ALIASES.get(prefix, prefix)
+        if resolved_conf != row_conf:
+            # K2: a naming surprise, not a silent miss -- see module comment ("MISMATCH").
+            logger.warning(
+                "schedule.py: season=%s game_id=%s notes=%r (resolved prefix %r) does not match "
+                "its own row's conference %r -- ignoring this row's notes signal for championship "
+                "identification and falling through to the structural rule for %r.",
+                season, row.get("game_id"), notes, resolved_conf, row_conf, row_conf,
+            )
+            continue
+        if row_conf not in qualifying_conferences:
+            continue
+        notes_game_ids_by_conf[row_conf].add(row.get("game_id"))
+
+    result: Dict[str, int] = {}
+    notes_resolved_conferences: set = set()
+    for conf, game_ids in notes_game_ids_by_conf.items():
+        if len(game_ids) > 1:
+            # "Shouldn't happen" -- a conference plays at most one championship game, so two
+            # distinct game_ids both matching authoritatively means something is wrong with the
+            # data, not with this function's logic. Fall through to the structural rule rather
+            # than guess which of the two is real.
+            logger.warning(
+                "schedule.py: conference %r season=%s has %d distinct game_ids with an "
+                "authoritative championship-notes match (%s) -- a conference plays at most one "
+                "championship game, so this should be structurally impossible. Falling through "
+                "to the structural rule for this conference instead of picking one arbitrarily.",
+                conf, season, len(game_ids), sorted(game_ids),
+            )
+            continue
+        result[conf] = next(iter(game_ids))
+        notes_resolved_conferences.add(conf)
+
     candidates: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for row in rows:
         if row.get("season") != season:
             continue
         if row.get("season_type") != "regular":
             continue
+        conf = row.get("conference")
+        if conf in notes_resolved_conferences:
+            # T1/K1: an authoritative notes match already resolved this conference above --
+            # the structural rule (and its conference_game/member-count/bucket-isolation gates)
+            # does not run for it at all this season. See module comment.
+            continue
         if not row.get("conference_game"):
             continue
-        conf = row.get("conference")
         if conf not in qualifying_conferences:
             continue
         if _is_army_navy_pairing(row.get("team"), row.get("opponent")):
@@ -347,7 +492,6 @@ def identify_conference_championship_games(
             continue
         candidates[conf].append(row)
 
-    result: Dict[str, int] = {}
     for conf, crows in candidates.items():
         # MEMBER-COUNT GATE. A conference too small to hold a championship game cannot have
         # one, however its schedule happens to be shaped. Without this, the 2025 Pac-12 --
@@ -678,10 +822,27 @@ def build_canonical_columns(
         army_navy_week, "Army-Navy", ARMY_NAVY_SLOT[1], always_suffix=labels_collide
     )
 
-    return week_columns + [
-        (CONF_CHAMPIONSHIP_SLOT_ID, ccg_label),
-        (ARMY_NAVY_SLOT_ID, army_navy_label),
-    ] + CFP_SLOTS
+    postseason_columns = [(CONF_CHAMPIONSHIP_SLOT_ID, ccg_label)]
+
+    # OMIT the Army-Navy column entirely when this season has no Army-Navy game.
+    # Nothing but that one game is ever diverted into this slot (_classify_row_slot's
+    # army_navy_game_id branch is the only writer), so with no game to divert the column
+    # is one no team can ever fill -- exactly the failure this function's docstring
+    # describes for week columns, reached from the other direction. 2025 is the live case:
+    # its regular season ends 2025-12-07 and its postseason opens 2025-12-14, so the real
+    # 2025-12-13 Army-Navy game is simply absent from the data. Before this guard, that
+    # season published a completely empty column (labelled "Week 17" when no championship
+    # game was identified either, "Week 16" once they were) -- a user-reported defect.
+    #
+    # SELF-HEALING, and deliberately not gated on the season: this is keyed on the game's
+    # absence, not on a hardcoded season number, so backfilling the missing 2025 row makes
+    # the column reappear with no code change. An in-progress season is unaffected --
+    # identify_army_navy_game does not filter on status, so a SCHEDULED Army-Navy game
+    # still yields a game_id and still mints the column.
+    if army_navy_game_id is not None:
+        postseason_columns.append((ARMY_NAVY_SLOT_ID, army_navy_label))
+
+    return week_columns + postseason_columns + CFP_SLOTS
 
 
 # ---------------------------------------------------------------------------
