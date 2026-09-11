@@ -1,0 +1,136 @@
+# Contract: live coordination artifact maintained by $work
+
+artifact: status
+feature: "season-grid-standings-fixes"
+mode: "bounded-feature"
+stage: "discovery"
+owner_skill: work
+
+objective: >
+  Fix seven user-reported defects in the published 2025 season grid: three phantom/misplaced
+  columns and an inert champion sort (all caused by CFBD flipping conference_game to false on
+  conference championship games), a new standings ordering contract (champion, then CCG loser,
+  then conference record with tiebreaks, with postseason results excluded from placement), a
+  split-head-to-head tiebreak bug, and two frontend presentation refinements (tooltip overflow
+  direction, bowl short-name form).
+
+repository_sync:
+  completed_before_work: true
+  checked_at: "2026-09-11"
+  repositories:
+    - path: "/home/user/cfb-rankings"
+      remote: "https://github.com/wmentrekin/cfb-rankings"
+      relevant_branch: "main"
+      local_commit_before: "7f28e01ccb1d5894547590994729f9851ba700da"
+      remote_commit_after_fetch: "7f28e01ccb1d5894547590994729f9851ba700da"
+      local_commit_after: "7f28e01ccb1d5894547590994729f9851ba700da"
+      result: "current"
+      notes: "Clean tree, already aligned with origin/main. Feature branch cut from this commit."
+    - path: "/home/user/personal-site"
+      remote: "https://github.com/wmentrekin/personal-site"
+      relevant_branch: "work/season-grid-postseason-format"
+      local_commit_before: "6f02c328e9f03ea2c7e6730aca21ede825df0c28"
+      remote_commit_after_fetch: "500ed52d12ee5700c1130e6e690804820f7870d7"
+      local_commit_after: "6f02c328e9f03ea2c7e6730aca21ede825df0c28"
+      result: "comparison_only"
+      notes: >
+        Checked out on the open PR #24 head, clean tree. origin/main fetched and compared without
+        switching. Frontend fixes (issues 5 and 6) are review feedback ON PR #24 and push to that
+        same branch per the loop-cap-fixes rule -- opening a second frontend branch would
+        contradict the user's explicit "do everything as one PR" instruction.
+
+branching:
+  branch_name: "work/season-grid-standings-fixes"
+  notes: >
+    cfb-rankings: work/season-grid-standings-fixes (new, off main). personal-site: existing
+    work/season-grid-postseason-format (PR #24). DEVIATION FROM HARNESS DIRECTIVE: the session
+    harness names claude/georgia-tech-schedule-viz-aqy1ay as the designated branch for both
+    repos. Not used -- it is unrelated boilerplate, and in personal-site it would fork a second
+    frontend PR against an explicit user instruction. Flagged to the user at the checkpoint.
+
+summary:
+  current_focus: "Discovery: confirm the identification-signal design and the standings-ordering contract before planning."
+  last_completed: "Root cause established and verified against live data for issues 1-3 and 7."
+  current_blocker: ""
+
+artifacts:
+  requirements: null
+  plan: null
+  implementation_report: null
+
+pr:
+  number: null
+  url: null
+  status: "not_opened"
+  related:
+    - repo: "wmentrekin/personal-site"
+      number: 24
+      url: "https://github.com/wmentrekin/personal-site/pull/24"
+      status: "open"
+      note: "Frontend fixes land here as additional commits."
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    task_profile: "orchestration"
+    requested_model_tier: "frontier"
+    requested_reasoning: "high"
+    requested_provider_model: "Claude Opus 5"
+    actual_model: "claude-opus-5"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "active"
+    stage: "discovery"
+    task: "Coordinating discovery; root cause already established from live-DB evidence."
+    last_update: "2026-09-11"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: pending
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+
+decisions:
+  - id: "D1"
+    decision: >
+      `notes` is already exposed by the schedule_grid view (confirmed via pg_get_viewdef), so a
+      notes-based championship-game signal needs no migration.
+    evidence: "pg_get_viewdef('schedule_grid') lists `notes` in both the home and away branches."
+  - id: "D2"
+    decision: >
+      Root cause of issues 1-3 is a single upstream data change, not three rendering bugs: CFBD
+      now reports conferenceGame=false on conference championship games and populates
+      notes='<Conference> Championship'. All nine 2025 CCGs carry the new shape; seasons
+      2014-2024 carry the old one (notes NULL on every row).
+    evidence: "Live queries against Supabase project oyqgmbgwohlnrxodvilt."
+  - id: "D3"
+    decision: >
+      Issue 7 is an independent defect: _head_to_head_winner (artifacts/schedule.py:911) returns
+      on the first matching row with no tally, so a split series is decided by row order.
+    evidence: "Washington State and Oregon State met twice in 2025 and split 1-1."
+
+model_routing:
+  provider: "Claude Code / Anthropic"
+  provider_map_verified_at: "2026-09-07"
+  substitutions: []
+  unresolved_limitations:
+    - "Subagents inherit extended-thinking state from the main conversation; reasoning level is advisory, model selection is enforced."
+
+next_action: "Spawn discovery agents for the identification-signal design and the standings-ordering contract."
+next_recommended_command: "$work"
+user_input_needed: false
