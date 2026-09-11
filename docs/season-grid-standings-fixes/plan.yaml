@@ -1,0 +1,276 @@
+artifact: plan
+feature: "season-grid-standings-fixes"
+mode: "bounded-feature"
+status: ready
+owner_skill: work
+based_on: "docs/season-grid-standings-fixes/requirements.yaml"
+
+objective: >
+  Fix the seven 2025 Season Grid defects: restore championship-game identification under CFBD's
+  new data shape, introduce the champion/CCG-loser/record ordering contract with postseason
+  excluded from placement, make a split head-to-head a wash, shorten bowl names, and stop the last
+  column's tooltip from widening the grid.
+
+approach:
+  summary: >
+    Five bounded tasks. T1 and T2 both edit artifacts/schedule.py and are therefore STRICTLY
+    SEQUENTIAL on one branch -- T2 consumes the identification output T1 produces. T3 (bowl_names)
+    and T5 (personal-site CSS) touch disjoint files and run in parallel with them. T4 is the test
+    pass. No worktrees: only one task pair is parallelizable and they are single-file each, so the
+    coordination cost exceeds the benefit.
+  key_decisions:
+    - id: "K1"
+      decision: >
+        Notes matching is an ADDITIONAL higher-priority signal, not a replacement. A row matches
+        when season_type=='regular', notes ends with 'Championship', and the stripped prefix
+        resolves (via an alias map) to that row's OWN conference. On a match the conference_game
+        gate, the member-count gate and the bucket-isolation rule are all bypassed, because the
+        label is authoritative where those structural heuristics are only inferential. The
+        Army-Navy carve-out and qualifying-conference gate still apply.
+    - id: "K2"
+      decision: >
+        A notes value ending in 'Championship' whose prefix does NOT resolve to the row's
+        conference logs a warning and is ignored, falling through to the structural rule. This is
+        how a future CFBD naming change (e.g. the Pac-12, whose CCG string nobody has seen)
+        becomes a visible log line instead of a silent miss.
+    - id: "K3"
+      decision: >
+        Alias map lives in schedule.py beside the function that uses it -- it is an identification
+        concern, not a standings-format one. Contents: {'American': 'American Athletic',
+        'MAC': 'Mid-American'}. The other seven 2025 conferences match by plain equality.
+    - id: "K4"
+      decision: >
+        Add _resolve_conference_championship_outcomes returning (champions, losers); keep
+        _resolve_conference_champions as a thin wrapper over it. This avoids breaking
+        test_resolve_conference_champions_warns_on_a_shared_game_id_collision, which calls it
+        directly and asserts a plain dict.
+    - id: "K5"
+      decision: >
+        Keep _is_champion and add _is_ccg_loser as separate entry flags; derive an internal _tier
+        (2/1/0) from both with .get(..., False) defaults. Hand-built entries in existing tests set
+        only _is_champion and keep sorting exactly as before. The grouping/equality predicate for
+        the head-to-head swap keys on _tier instead of _is_champion -- both tiers are singleton per
+        conference by construction, so the swap can never touch them.
+    - id: "K6"
+      decision: >
+        _placement_pct excludes BOTH season_type=='postseason' rows AND rows whose game_id is in
+        champ_game_ids. Displayed `record` is untouched. Does not modify compute_team_records.
+    - id: "K7"
+      decision: >
+        Final tiebreak is the team's own model rank (already on every entry as `rank`), ascending,
+        with a large sentinel for null so unranked teams fall last, then team name. USER-CHOSEN.
+        Valid because 2025 ratings stop at week 15 -- no postseason weeks exist -- so the rank
+        excludes bowls and playoffs. Assumption A2 documents the fragility.
+    - id: "K8"
+      decision: >
+        _head_to_head_winner filters to team_a's OWN perspective rows before tallying, so a single
+        meeting counts once rather than twice. Returns None on any tie including 0-0.
+    - id: "K9"
+      decision: >
+        The 'Bowl' strip applies only to a resolved _ROOT_NAMES match, never to an unmatched
+        pass-through and never to an _OVERRIDES result. _ROOT_NAMES is expanded to cover the 19
+        uncurated 2025 bowls in the same pass, because a rule applied to under half a season is
+        worse than no rule. A guard rejects any strip that would produce an empty string.
+    - id: "K10"
+      decision: >
+        Issue 5 is one CSS rule keyed on td:last-child, not a render-time modifier class. This is
+        the only change in the feature that does NOT need hand-mirroring into index.astro, because
+        the tooltip CSS is is:global and defined once.
+
+contracts:
+  interfaces:
+    - "identify_conference_championship_games(rows, season, qualifying_conferences=None) -> Dict[conference, game_id]  # signature unchanged"
+    - "_resolve_conference_championship_outcomes(champ_games_by_conf, rows, season) -> Tuple[Dict[conf, team], Dict[conf, team]]  # new"
+    - "_resolve_conference_champions(...) -> Dict[conf, team]  # unchanged, now a wrapper"
+    - "_head_to_head_winner(rows, season, team_a, team_b) -> Optional[str]  # signature unchanged, semantics fixed"
+    - "short_bowl_name(name: Optional[str]) -> Optional[str]  # signature unchanged, output shortened"
+  schemas:
+    - "No DB migration. schedule_grid already exposes notes."
+    - "Published payload: entry gains no new public field. _is_ccg_loser/_tier/_placement_pct are scratch keys stripped before publish, exactly like _is_champion."
+  config_changes: []
+
+branching:
+  strategy: "single-branch"
+  branch_name: "work/season-grid-standings-fixes"
+  worktrees: []
+  secondary_repo:
+    path: "/home/user/personal-site"
+    branch: "work/season-grid-postseason-format"
+    note: "Existing open PR #24. T5 lands as a commit there, not a new branch."
+
+execution_batches:
+  - id: "B1"
+    goal: "Backend correctness and presentation data, plus the one frontend CSS fix."
+    tasks:
+      - id: "T1"
+        title: "Restore championship-game identification under CFBD's new data shape"
+        objective: "Add the notes-based signal per K1/K2/K3, keeping the structural rule as the fallback. Fixes issues 1, 2 and 3 together."
+        assigned_domain: "data-engineer"
+        model_routing:
+          task_profile: "implementation"
+          uncertainty: "medium"
+          consequence: "high"
+          scope_size: "bounded"
+          determinism: "interpretive"
+          requested_tier: "balanced"
+          requested_reasoning: "medium"
+          provider_model: "Claude Sonnet 5"
+          routing_enforced: true
+          escalation_tier: "frontier"
+          escalation_condition: "If the notes path cannot be added without changing behaviour for a notes=NULL season."
+        owned_scope: ["artifacts/schedule.py (identify_conference_championship_games and its module comment only)"]
+        forbidden_scope: ["artifacts/bowl_names.py", "artifacts/schedule_standings.py", "_sort_conference_teams", "_head_to_head_winner", "any personal-site file", "any live DB or R2 access"]
+        dependencies: []
+        parallelizable: true
+        expected_validation:
+          - "AC1, AC2, AC9"
+          - "Existing structural-rule tests pass unmodified."
+          - "Mutation test: revert the notes branch, confirm the new 2025 test fails."
+      - id: "T2"
+        title: "Standings ordering contract and split head-to-head fix"
+        objective: "CCG-loser tier, placement pct excluding postseason and the CCG, rank tiebreak, and the tallying head-to-head fix. Fixes issues 4 and 7."
+        assigned_domain: "data-engineer"
+        model_routing:
+          task_profile: "implementation"
+          uncertainty: "medium"
+          consequence: "high"
+          scope_size: "bounded"
+          determinism: "interpretive"
+          requested_tier: "balanced"
+          requested_reasoning: "medium"
+          provider_model: "Claude Sonnet 5"
+          routing_enforced: true
+          escalation_tier: "frontier"
+          escalation_condition: "If the tier change cannot preserve existing hand-built-entry tests."
+        owned_scope: ["artifacts/schedule.py (_sort_conference_teams, _head_to_head_winner, _resolve_conference_champions and its new sibling, and the entry construction in build_schedule_payload)"]
+        forbidden_scope: ["identify_conference_championship_games", "artifacts/bowl_names.py", "compute_team_records", "the published record/conf_record values", "any personal-site file", "any live DB or R2 access"]
+        dependencies: ["T1"]
+        parallelizable: false
+        expected_validation:
+          - "AC3, AC4, AC5"
+          - "Mutation tests: (a) revert the h2h tally, confirm the split test fails; (b) revert the _tier grouping predicate, confirm the loser-tier test fails."
+      - id: "T3"
+        title: "Bowl short names: strip 'Bowl' and curate the 19 missing roots"
+        objective: "Per K9. Fixes issue 6's data half."
+        assigned_domain: "data-engineer"
+        model_routing:
+          task_profile: "implementation"
+          uncertainty: "low"
+          consequence: "medium"
+          scope_size: "narrow"
+          determinism: "deterministic"
+          requested_tier: "balanced"
+          requested_reasoning: "medium"
+          provider_model: "Claude Sonnet 5"
+          routing_enforced: true
+          escalation_tier: "frontier"
+          escalation_condition: "If any 2025 name cannot be shortened without guessing its canonical root."
+        owned_scope: ["artifacts/bowl_names.py", "tests/test_postseason_slots.py (short_bowl_name assertions only)"]
+        forbidden_scope: ["artifacts/schedule.py", "any personal-site file", "any live DB or R2 access"]
+        dependencies: []
+        parallelizable: true
+        expected_validation:
+          - "AC6"
+          - "A test asserting the full 43-name table input -> output."
+      - id: "T5"
+        title: "Flip the last column's tooltip to open left"
+        objective: "Per K10. Fixes issue 5."
+        assigned_domain: "frontend-engineer"
+        model_routing:
+          task_profile: "implementation"
+          uncertainty: "low"
+          consequence: "low"
+          scope_size: "narrow"
+          determinism: "deterministic"
+          requested_tier: "balanced"
+          requested_reasoning: "medium"
+          provider_model: "Claude Sonnet 5"
+          routing_enforced: true
+          escalation_tier: "frontier"
+          escalation_condition: "If a CSS-only fix cannot avoid reflow and a JS approach becomes necessary."
+        owned_scope: ["personal-site: src/components/ScheduleGrid.astro (style block only)"]
+        forbidden_scope: ["any cfb-rankings file", "the index.astro client script unless proven necessary", "any live DB or R2 access"]
+        dependencies: []
+        parallelizable: true
+        expected_validation:
+          - "AC7, AC8"
+          - "Measured scrollWidth before and after hover/focus on the last column via Playwright -- not eyeballed."
+  - id: "B2"
+    goal: "Verification and cleanup."
+    tasks:
+      - id: "T4"
+        title: "Full test pass, mutation testing, and end-to-end payload verification"
+        objective: "Run the suite; build a 2025 payload from a JSON fixture (never the live DB) and assert every AC against it."
+        assigned_domain: "generalist-developer"
+        model_routing:
+          task_profile: "test_design"
+          uncertainty: "medium"
+          consequence: "high"
+          scope_size: "bounded"
+          determinism: "interpretive"
+          requested_tier: "balanced"
+          requested_reasoning: "medium"
+          provider_model: "Claude Sonnet 5"
+          routing_enforced: true
+          escalation_tier: "frontier"
+          escalation_condition: "If any AC cannot be verified without live data access."
+        owned_scope: ["tests/"]
+        forbidden_scope: ["any live DB or R2 access", "weakening or skipping an assertion to get green"]
+        dependencies: ["T1", "T2", "T3"]
+        parallelizable: false
+        expected_validation: ["All ACs"]
+      - id: "T6"
+        title: "Delete the two stale docs scratch directories"
+        objective: "Remove docs/season-grid-2025-postseason/ and docs/season-grid-postseason-format/, left behind by earlier features."
+        assigned_domain: "generalist-developer"
+        model_routing:
+          task_profile: "documentation"
+          uncertainty: "low"
+          consequence: "low"
+          scope_size: "narrow"
+          determinism: "deterministic"
+          requested_tier: "fast"
+          requested_reasoning: "low"
+          provider_model: "Claude Haiku 4.5"
+          routing_enforced: true
+          escalation_tier: "balanced"
+          escalation_condition: "If any source file references a path inside either directory."
+        owned_scope: ["docs/season-grid-2025-postseason/", "docs/season-grid-postseason-format/"]
+        forbidden_scope: ["docs/season-grid-standings-fixes/", "every other docs/ subdirectory", "any source file"]
+        dependencies: []
+        parallelizable: true
+        expected_validation: ["grep confirms no remaining source reference to either path"]
+
+ordering_notes:
+  - "T1 -> T2 is a hard sequence: both edit artifacts/schedule.py and T2 consumes T1's output."
+  - "T3, T5 and T6 touch disjoint files and run concurrently with T1."
+  - "T4 runs last."
+
+risks:
+  - id: "R1"
+    risk: "Bypassing the member-count and bucket-isolation gates on a notes match removes the safeguards that stopped the 2025 two-team Pac-12 from being crowned."
+    mitigation: "Those gates guard an INFERENTIAL rule. A notes label is authoritative. The 2025 Pac-12 has no notes row at all, so it is unaffected -- pin that with a test."
+  - id: "R2"
+    risk: "The rank tiebreak would silently start including playoff results if a future run ever rates postseason weeks."
+    mitigation: "Documented as assumption A2 in code. Not guarded -- guarding needs a season_type the ratings table does not carry."
+  - id: "R3"
+    risk: "Curating 19 bowl roots is the largest single surface here and is exactly the shape of error made twice already this session."
+    mitigation: "T3 must emit the complete 43-name input->output table and a test pinning it, before the change is accepted."
+  - id: "R4"
+    risk: "Stripped names like 'Sun', 'Cure', 'Rate' and 'Texas' read oddly out of context."
+    mitigation: "Explicitly what the user asked for; the full name stays in the hover. Surfaced at the checkpoint."
+
+model_routing_notes:
+  - "Orchestration frontier/high (Opus 5). All implementation balanced/medium (Sonnet 5). T6 fast/low (Haiku 4.5)."
+  - "Reasoning level is inherited from the main conversation and is advisory; model selection is enforced."
+
+open_questions: []
+
+review:
+  status: draft
+  loop_count: 0
+  notes: []
+
+checkpoint:
+  required_before_execution: true
+  status: pending
