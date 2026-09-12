@@ -38,7 +38,7 @@ MIN_CONFERENCE_GAMES HAS NO SILENT DEFAULT (K6)
 -------------------------------------------------
 `external_ranking` substitutes this project's own continuous rating for every conference step
 that cites an outside ranking service (SportSource Analytics Team Success Ranking / Rating
-Score, CFP ranking, etc. -- see docs/conference-tiebreakers/source-rules/README.md). Because
+Score, CFP ranking, etc. -- see docs/conference-tiebreaker-rules/README.md). Because
 this project's rating effectively never ties, an ungated `external_ranking` would resolve every
 tie it reaches and pre-empt the overall-record fallback the product owner asked for (K6, AC5) --
 most visibly in the thin-information early season, e.g. a 2-0 team and a 1-0 team with no

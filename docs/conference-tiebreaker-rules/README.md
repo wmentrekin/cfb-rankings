@@ -1,5 +1,11 @@
 # Primary-source tiebreaker text
 
+**This directory is a project deliverable, not working state.** It deliberately sits OUTSIDE
+`docs/conference-tiebreakers/`, which is the `$work` skill's coordination scratch directory and
+is deleted wholesale at merge. Every entry in `artifacts/conference_tiebreakers.json` cites a
+file here in its `source_file` field, and the per-step `cites` quote these documents by line, so
+deleting them would orphan the provenance of every configured rule in the engine.
+
 Supplied by the repo owner on 2026-09-11, pasted from the conferences' own published
 policies. **This directory is the authoritative input for `conference_tiebreakers.yaml`.**
 

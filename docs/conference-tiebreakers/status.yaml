@@ -44,7 +44,7 @@ summary:
     Verifying the 2025 payload end to end still needs a reingest and republish against real rows.
   last_completed: >
     The user supplied primary-source rule text for all four Power 4 conferences, committed at
-    docs/conference-tiebreakers/source-rules/. Cross-conference step comparison showed heavy
+    docs/conference-tiebreaker-rules/. Cross-conference step comparison showed heavy
     overlap -- three of four run essentially the same chain in slightly different order, and the
     amended ACC is the stripped-down outlier -- which is what makes the shared-primitive design
     correct rather than merely tidy.
@@ -221,7 +221,7 @@ blockers:
     outstanding_for: []
     resolution: >
       The repo owner supplied primary-source text for all ten conferences, committed under
-      docs/conference-tiebreakers/source-rules/. Every conference is configured.
+      docs/conference-tiebreaker-rules/. Every conference is configured.
     blocker: >
       Primary rule documents cannot be read from this environment. Verified at the network
       layer, not just the tool layer: curl to theamerican.org and en.wikipedia.org both get

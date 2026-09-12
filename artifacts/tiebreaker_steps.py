@@ -8,7 +8,7 @@ that sequencing is the recursive peel-off driver (T3, a separate module, separat
 touched here). Different conferences call the same operations in different orders; this module
 is the operations.
 
-SOURCE OF TRUTH: docs/conference-tiebreakers/source-rules/{sec,big12,bigten,acc}.txt, supplied
+SOURCE OF TRUTH: docs/conference-tiebreaker-rules/{sec,big12,bigten,acc}.txt, supplied
 directly by the repo owner. They are authoritative over both the original task brief AND a
 mid-task correction message from the orchestrator -- both were checked against the actual text
 below, and every place they turned out to disagree with the source files is called out inline
