@@ -36,9 +36,10 @@ branching:
 
 summary:
   current_focus: >
-    T1, T2 and T3 are complete: the engine exists and is tested end to end against the real
-    Power 4 chains. 382 tests pass. Next is T4, wiring order_tied_group into
-    _sort_conference_teams, dropping _conf_net and surfacing resolved_by.
+    B1 is complete: T1 through T4 are done and the engine is live in the standings sort for the
+    four configured conferences, with the six unconfigured ones explicitly unchanged. 398 tests
+    pass. What remains is T5 (the Group of 5 configs, blocked on the user) and T6 (acceptance
+    fixtures from the real 2025 ties), plus an independent code review before handoff.
   last_completed: >
     The user supplied primary-source rule text for all four Power 4 conferences, committed at
     docs/conference-tiebreakers/source-rules/. Cross-conference step comparison showed heavy
@@ -192,6 +193,25 @@ blockers:
     owner: "user"
 
 decisions:
+  - id: "D9"
+    decision: >
+      A conference with no configured rules keeps the PRE-ENGINE ordering, rather than falling
+      through to the engine's own fallback.
+    rationale: >
+      The engine's fallback is overall record then rating then name, which has no head-to-head
+      step -- so routing an unconfigured conference through it would LOSE the two-team
+      head-to-head swap those six conferences have today. AC7 asks for an explicit fallback to
+      current behaviour, and this is it: merging T4 changes nothing for the American, Mountain
+      West, MAC, Sun Belt, Conference USA or Pac-12 until their rules arrive. A test asserts
+      that an unconfigured conference does NOT resolve a three-way tie by intra-group record,
+      so the guess this feature exists to avoid cannot creep back in through the default.
+  - id: "D10"
+    decision: "_conf_net needed no deletion; it never landed on main."
+    rationale: >
+      Plan K9 called for removing it, but it existed only on the closed PR #18's branch. The
+      surviving half of that work, ordering a larger record above an equal-percentage smaller
+      one, is implemented instead inside the engine's fallback, where it now applies to every
+      conference rather than to one sort key.
   - id: "D7"
     decision: >
       A step's partition is read as an ORDERING between groups, not as a selection event -- the

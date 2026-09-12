@@ -67,6 +67,13 @@ class TiebreakContext:
                                                    # in-progress order (K4, circular otherwise).
     conf_records: Dict[str, Tuple[int, int]]       # team -> (conf wins, conf losses)
     team_ranks: Dict[str, Optional[int]]           # our own model rank; 1 = best; may be missing
+    placement_excluded_game_ids: frozenset = frozenset()
+                                                   # game_ids that must not count toward STANDINGS
+                                                   # PLACEMENT -- in practice the conference
+                                                   # championship games. Postseason rows are
+                                                   # excluded by season_type and need no entry
+                                                   # here. Read by the driver's overall-record
+                                                   # fallback; see tiebreaker_engine.
     non_fbs_teams: Optional[frozenset] = None      # school names in the `non_fbs_teams` table for
                                                    # this season -- the FCS/lower-division roster.
                                                    # None means NOT SUPPLIED (the caller did not

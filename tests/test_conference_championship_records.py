@@ -50,6 +50,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from artifacts import schedule_standings  # noqa: E402
 from artifacts.schedule import (  # noqa: E402
     CONF_CHAMPIONSHIP_SLOT_ID,
+    _build_tiebreak_inputs,
     _exclude_championship_games_from_conf_records,
     _head_to_head_winner,
     _placement_pct,
@@ -290,13 +291,30 @@ def test_identified_but_unplayed_championship_game_does_not_change_status():
         _cell(entries["TeamD"], CONF_CHAMPIONSHIP_SLOT_ID)
 
     # K3: an identified-but-unplayed game crowns no champion, so the conference sorts exactly as
-    # a plain re-sort that has never heard of championships would.
+    # a re-sort that has never heard of championships would.
+    #
+    # T4: the baseline must be re-sorted through the SAME tiebreaker inputs the payload path
+    # uses, so that championship status is the only variable between the two. Calling
+    # _sort_conference_teams bare here would compare the ACC's configured procedure against the
+    # pre-engine ordering and fail on that difference instead -- which is a real difference, and
+    # the right one: all four of TeamC (4-0), TeamD (4-0), Duke (3-0) and Virginia (3-0) are at
+    # conference 1.000, so they form ONE tied group of four. The pre-engine path had no
+    # multi-team procedure, fell through to team name, and put Duke first; the engine's fallback
+    # applies the larger-record-wins rule and puts the two 4-0 teams ahead of the two 3-0 ones.
     baseline_entries = [
-        {"team": e["team"], "record": e["record"], "conf_record": e["conf_record"]}
+        {"team": e["team"], "record": e["record"], "conf_record": e["conf_record"],
+         "rank": e.get("rank")}
         for e in entries.values()
     ]
-    baseline_order = [e["team"] for e in _sort_conference_teams(baseline_entries, rows, SEASON)]
+    baseline_tiebreak = _build_tiebreak_inputs(ACC, baseline_entries, SEASON, None)
+    baseline_order = [
+        e["team"]
+        for e in _sort_conference_teams(baseline_entries, rows, SEASON, None, baseline_tiebreak)
+    ]
     assert _conf_names(payload, "ACC") == baseline_order
+    # And pin the consequence above, so a regression to name-ordering inside one tied group
+    # cannot pass this test by making both sides equally wrong.
+    assert baseline_order[:4] == ["TeamC", "TeamD", "Duke", "Virginia"], baseline_order[:4]
 
 
 def test_exclude_championship_games_ignores_a_non_conference_game_row():

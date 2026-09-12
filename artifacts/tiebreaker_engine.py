@@ -130,7 +130,21 @@ class TiebreakOutcome:
 # Fallback ordering (K7)
 # ---------------------------------------------------------------------------
 def _overall_record(ctx: TiebreakContext, team: str) -> Tuple[int, int]:
-    """(wins, losses) across ALL of this team's played games this season, conference or not.
+    """(wins, losses) across this team's played games this season, conference or not, EXCLUDING
+    anything that must not affect standings placement.
+
+    Two exclusions, both required by the repo owner's rule that bowl and playoff results must not
+    affect where a team is placed in its conference standings:
+
+      - any row with season_type == 'postseason';
+      - any row whose game_id is in `ctx.placement_excluded_game_ids`, which the caller populates
+        with the season's conference championship games. Those are season_type 'regular' in
+        CFBD's data, so season_type alone does not catch them.
+
+    This mirrors `artifacts/schedule.py::_placement_pct`, which applies the same two exclusions
+    to the primary standings key. Without it the fallback would quietly reintroduce postseason
+    results at exactly the point where the conference's own procedure ran out of opinions --
+    the least visible place for that rule to break.
 
     Counts only the team's own-perspective rows. Every schedule_grid game appears twice, once
     from each side, so filtering on `team` is what keeps a single game from being counted for
@@ -139,6 +153,10 @@ def _overall_record(ctx: TiebreakContext, team: str) -> Tuple[int, int]:
     wins = losses = 0
     for row in ctx.rows:
         if row.get("season") != ctx.season or row.get("team") != team:
+            continue
+        if row.get("season_type") == "postseason":
+            continue
+        if row.get("game_id") in ctx.placement_excluded_game_ids:
             continue
         status = row.get("status")
         if status == "win":

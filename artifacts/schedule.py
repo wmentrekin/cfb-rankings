@@ -26,6 +26,7 @@ import logging
 import os
 import re
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -37,6 +38,9 @@ from artifacts import schedule_standings
 from artifacts.bowl_names import short_bowl_name
 from artifacts.r2 import get_r2_client, upload_json
 from artifacts.rankings import CONFERENCE_DISPLAY_NAMES, _resolve_logo, compute_rank_and_delta
+from artifacts.tiebreaker_engine import order_tied_group
+from artifacts.tiebreaker_rules import RuleSet, TiebreakerConfigError, load_conference_rules, rules_for
+from artifacts.tiebreaker_steps import TiebreakContext
 from utils import football_day, get_cfb_week
 
 # Reuse the same logger name main.py configures via utils.setup_logging, so warnings from this
@@ -1207,20 +1211,174 @@ def _placement_pct(entry: Dict[str, Any], rows: List[Dict[str, Any]], season: in
     return (w / (w + l)) if (w + l) > 0 else 0.5
 
 
+def _non_fbs_roster(non_fbs_logos: Optional[Dict[str, Any]]) -> Optional[frozenset]:
+    """The FCS/lower-division roster the Big 12's total-wins step needs, derived from the table
+    already read for logos. database/get_non_fbs_teams.py filters on CFBD's own `classification`
+    field, so membership here is a positive assertion that a school is not FBS -- which is why it
+    is sound where "this name is absent from teams.school" is not (see
+    database/migrations/0003_schedule_grid_view.sql, which investigated and rejected that proxy).
+
+    An EMPTY mapping returns None, not frozenset(), and the difference is load-bearing:
+    total_wins_capped reads None as "roster unavailable, decline the step" and an empty set as
+    "roster loaded, nobody qualifies". An empty mapping at this point is far more likely to mean
+    the non_fbs_teams read failed -- _fetch_non_fbs_logos handles that non-fatally by substituting
+    {} -- than to mean that no FBS team played a non-FBS opponent all season, which essentially
+    never happens. Declining is the safe reading of that ambiguity: it costs one step in one
+    conference's chain, where the alternative silently reports uncapped win totals as capped.
+    """
+    return frozenset(non_fbs_logos) if non_fbs_logos else None
+
+
+@dataclass(frozen=True)
+class _TiebreakInputs:
+    """Everything the tiebreaker engine needs that is scoped to the WHOLE conference, built once
+    per conference and passed down into each divisional `_sort_conference_teams` call.
+
+    Why whole-conference rather than per-group: two primitives reach outside the tied group.
+    `opponents_cumulative_conf_pct` looks up each tied team's OPPONENTS' conference records, and
+    `vs_placed_opponents` walks the conference's order of finish. Handing either only the tied
+    teams' own records would silently score every outside opponent as having no record at all.
+
+    `frozen_order` is the conference ordered by conference win percentage ALONE, computed before
+    any tiebreaker step runs and never updated mid-resolution (plan K4). "Record against the
+    next-highest-placed team" is circular otherwise.
+
+    `rules` is None for a conference with no supplied procedure, which is the honest state for
+    six of the ten FBS conferences today; the caller keeps its pre-engine ordering in that case
+    rather than having a procedure invented for it.
+    """
+
+    conference: str
+    rules: Optional[RuleSet]
+    conf_records: Dict[str, Tuple[int, int]]
+    frozen_order: List[str]
+    non_fbs_teams: Optional[frozenset]
+
+
+_TIEBREAKER_CONFIG = None
+_TIEBREAKER_CONFIG_FAILED = False
+
+
+def _tiebreaker_config():
+    """The parsed rule config, loaded once per process.
+
+    A config that fails to load is reported once and then treated as "no rules for any
+    conference", which degrades every conference to its pre-engine ordering. That is deliberate:
+    a malformed rule file must not take down the artifact publish, and the pre-engine ordering is
+    a known-good behaviour rather than a guess.
+    """
+    global _TIEBREAKER_CONFIG, _TIEBREAKER_CONFIG_FAILED
+    if _TIEBREAKER_CONFIG is not None or _TIEBREAKER_CONFIG_FAILED:
+        return _TIEBREAKER_CONFIG
+    try:
+        _TIEBREAKER_CONFIG = load_conference_rules()
+    except (TiebreakerConfigError, OSError) as exc:
+        _TIEBREAKER_CONFIG_FAILED = True
+        logger.error(
+            "schedule.py: could not load the conference tiebreaker config (%s); every "
+            "conference will fall back to the pre-engine standings ordering.", exc,
+        )
+    return _TIEBREAKER_CONFIG
+
+
+def _build_tiebreak_inputs(
+    raw_conference: str,
+    entries: List[Dict[str, Any]],
+    season: int,
+    non_fbs_teams: Optional[frozenset],
+) -> _TiebreakInputs:
+    """Assemble the whole-conference inputs from this conference's full member list."""
+    conf_records: Dict[str, Tuple[int, int]] = {}
+    for entry in entries:
+        record = entry.get("conf_record")
+        if record is not None:
+            conf_records[entry["team"]] = (record["wins"], record["losses"])
+
+    def _pct(team: str) -> float:
+        wins, losses = conf_records.get(team, (0, 0))
+        played = wins + losses
+        return (wins / played) if played else 0.5
+
+    # Name is the secondary term purely for determinism -- frozen_order must not vary between
+    # runs over identical data, or `vs_placed_opponents` becomes non-reproducible.
+    frozen_order = sorted(
+        (entry["team"] for entry in entries), key=lambda t: (-_pct(t), t)
+    )
+
+    config = _tiebreaker_config()
+    rules = rules_for(config, raw_conference, season) if config is not None else None
+    if rules is None:
+        logger.info(
+            "schedule.py: no tiebreaker rule set for conference=%r season=%s; using the "
+            "pre-engine standings ordering for it.", raw_conference, season,
+        )
+    return _TiebreakInputs(
+        conference=raw_conference,
+        rules=rules,
+        conf_records=conf_records,
+        frozen_order=frozen_order,
+        non_fbs_teams=non_fbs_teams,
+    )
+
+
+def _engine_order_group(
+    group: List[Dict[str, Any]],
+    rows: List[Dict[str, Any]],
+    season: int,
+    champ_game_ids: set,
+    tiebreak: _TiebreakInputs,
+) -> List[Dict[str, Any]]:
+    """Order one tied group through the conference's configured procedure.
+
+    Records the deciding step on each entry as `resolved_by`, so the published payload can say
+    WHY a team sits where it does -- and so a test can assert that the right step decided rather
+    than only that the order came out right.
+    """
+    by_team = {entry["team"]: entry for entry in group}
+    ctx = TiebreakContext(
+        rows=rows,
+        season=season,
+        conference=tiebreak.conference,
+        frozen_order=tiebreak.frozen_order,
+        conf_records=tiebreak.conf_records,
+        team_ranks={entry["team"]: entry.get("rank") for entry in group},
+        placement_excluded_game_ids=frozenset(champ_game_ids),
+        non_fbs_teams=tiebreak.non_fbs_teams,
+    )
+    outcome = order_tied_group([entry["team"] for entry in group], ctx, tiebreak.rules)
+    for team, step in outcome.resolved_by.items():
+        if team in by_team:
+            by_team[team]["resolved_by"] = step
+    return [by_team[team] for team in outcome.flat]
+
+
 def _sort_conference_teams(
     entries: List[Dict[str, Any]],
     rows: List[Dict[str, Any]],
     season: int,
     champ_game_ids: Optional[set] = None,
+    tiebreak: Optional[_TiebreakInputs] = None,
 ) -> List[Dict[str, Any]]:
     """
     champ_game_ids (T2/K6): the season's identified conference-championship game_ids, used only
     by _placement_pct's exclusion. Defaults to "exclude nothing" so every hand-built entry in
     tests/test_conference_sort_and_pac12.py -- which calls this function positionally with just
     (entries, rows, season) -- keeps sorting exactly as before.
+
+    tiebreak (T4): the conference's configured tiebreaker procedure plus the whole-conference
+    inputs it needs. Defaults to None, which keeps the PRE-ENGINE ordering exactly: placement
+    percentage, then model rank, then name, with a head-to-head swap for a group of exactly two.
+    That default is what every existing hand-built-entry test exercises, and it is also the live
+    path for the six conferences whose published rules nobody has supplied yet -- so merging the
+    engine changes nothing for them until their rules arrive (plan R4/AC7).
     """
     champ_game_ids = champ_game_ids or set()
     for e in entries:
+        # T4: which step of the conference's procedure fixed this team's position. Stays None for
+        # a team the conference win percentage separated on its own -- the common case -- and for
+        # every team in a conference with no configured rules. Unlike the underscore-prefixed
+        # scratch fields below, this one is NOT stripped: it is published.
+        e.setdefault("resolved_by", None)
         e["_placement_pct"] = _placement_pct(e, rows, season, champ_game_ids)
         # Whether any conference game has been played, used only as a sort tiebreak below.
         e["_conf_played"] = bool(e["conf_record"] and (e["conf_record"]["wins"] + e["conf_record"]["losses"]) > 0)
@@ -1326,11 +1484,30 @@ def _sort_conference_teams(
                     and entries[j + 1]["_tier"] == entries[i]["_tier"]:
                 j += 1
             group = entries[i:j + 1]
-            if len(group) == 2 and group[0]["_conf_pct"] is not None and group[0]["_conf_played"]:
+            # A group is a genuine tie only if its members have actually played conference games:
+            # an unplayed 0-0 record scores the 0.5 sentinel, which ties it with every 1-1 and
+            # 2-2 team without either having any bearing on the other.
+            is_real_tie = (
+                len(group) >= 2
+                and group[0]["_conf_pct"] is not None
+                and group[0]["_conf_played"]
+            )
+            if is_real_tie and tiebreak is not None and tiebreak.rules is not None:
+                # The conference's own published procedure, of any group size. This supersedes
+                # the two-team head-to-head swap below, which was only ever the first step of
+                # every one of those procedures applied to the one group size it could handle.
+                entries[i:j + 1] = _engine_order_group(
+                    group, rows, season, champ_game_ids, tiebreak
+                )
+            elif is_real_tie and len(group) == 2:
+                # Pre-engine behaviour, retained verbatim for a conference with no configured
+                # rules. Deliberately NOT extended to larger groups here: guessing at a
+                # multi-team procedure is what this whole feature exists to stop doing.
                 t1, t2 = group[0]["team"], group[1]["team"]
                 winner = _head_to_head_winner(rows, season, t1, t2)
                 if winner == t2:
                     entries[i], entries[i + 1] = entries[i + 1], entries[i]
+                    group[0]["resolved_by"] = group[1]["resolved_by"] = "head_to_head"
             i = j + 1
     else:
         entries.sort(key=lambda e: (-e["_placement_pct"], _rank_sort_key(e), e["team"]))
@@ -1536,6 +1713,7 @@ def build_schedule_payload(
     """
     team_ranks = team_ranks or {}
     non_fbs_logos = non_fbs_logos or {}
+    non_fbs_team_names = _non_fbs_roster(non_fbs_logos)
     # Division is injected into the standings computation rather than looked up there:
     # schedule_standings does no DB I/O and schedule_grid carries no division column, so the
     # `teams`-sourced map has to come from here. It is what lets a divisional conference (the
@@ -1665,10 +1843,16 @@ def build_schedule_payload(
         # a single _sort_conference_teams call over the full member list -- byte-identical to
         # the pre-existing behavior.
         divisions_present = sorted({e["division"] for e in entries}, key=lambda d: (d is None, d))
+        # Built from the FULL member list, before the division split: the engine's
+        # opponent-facing primitives need every member's conference record and the conference's
+        # whole order of finish, not one division's slice of them.
+        tiebreak = _build_tiebreak_inputs(raw_conf, entries, season, non_fbs_team_names)
         sorted_entries: List[Dict[str, Any]] = []
         for division in divisions_present:
             group = [e for e in entries if e["division"] == division]
-            sorted_entries.extend(_sort_conference_teams(group, rows, season, champ_game_ids))
+            sorted_entries.extend(
+                _sort_conference_teams(group, rows, season, champ_game_ids, tiebreak)
+            )
         conferences_out.append({"name": _display_conference_name(raw_conf), "teams": sorted_entries})
 
     return {

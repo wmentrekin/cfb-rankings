@@ -44,26 +44,28 @@ SEASON = 2025
 # Fixtures
 # ---------------------------------------------------------------------------
 def _row(team, opponent, status, team_score=None, opp_score=None, conference_game=True,
-         season=SEASON):
+         season=SEASON, season_type="regular", game_id=None):
     return {
         "season": season, "team": team, "opponent": opponent, "status": status,
         "team_score": team_score, "opp_score": opp_score, "conference_game": conference_game,
+        "season_type": season_type, "game_id": game_id,
     }
 
 
-def _game(team_a, score_a, team_b, score_b, conference_game=True, season=SEASON):
+def _game(team_a, score_a, team_b, score_b, conference_game=True, season=SEASON,
+          season_type="regular", game_id=None):
     """Both team-oriented rows of one game, as schedule_grid actually produces them."""
     a_won = score_a > score_b
     return [
         _row(team_a, team_b, "win" if a_won else "loss", score_a, score_b, conference_game,
-             season),
+             season, season_type, game_id),
         _row(team_b, team_a, "loss" if a_won else "win", score_b, score_a, conference_game,
-             season),
+             season, season_type, game_id),
     ]
 
 
 def _ctx(rows=None, conf_records=None, team_ranks=None, frozen_order=None, conference="TEST",
-         non_fbs_teams=None):
+         non_fbs_teams=None, placement_excluded_game_ids=frozenset()):
     return TiebreakContext(
         rows=rows or [],
         season=SEASON,
@@ -71,6 +73,7 @@ def _ctx(rows=None, conf_records=None, team_ranks=None, frozen_order=None, confe
         frozen_order=frozen_order or [],
         conf_records=conf_records or {},
         team_ranks=team_ranks or {},
+        placement_excluded_game_ids=placement_excluded_game_ids,
         non_fbs_teams=non_fbs_teams,
     )
 
@@ -278,6 +281,45 @@ def test_fallback_prefers_a_perfect_short_record_over_a_longer_winning_one():
         rows += _game("Longer", 0, f"Q{i}", 20, conference_game=False)
     ctx = _ctx(rows)
     assert order_tied_group(["Longer", "Perfect"], ctx, _rules()).flat == ["Perfect", "Longer"]
+
+
+def test_fallback_ignores_postseason_results():
+    """Bowl and playoff results must not affect standings placement. A goes 1-2 in the regular
+    season and then wins three postseason games; B goes 2-1 and loses one. On regular-season
+    record alone B is ahead, and the postseason must not overturn that.
+
+    This is the rule the fallback is most likely to break quietly, because it only applies once
+    the conference's own procedure has run out of opinions."""
+    rows = (
+        _game("A", 20, "W", 0, conference_game=False)
+        + _game("A", 0, "X", 20, conference_game=False)
+        + _game("A", 0, "Y", 20, conference_game=False)
+        + _game("A", 40, "P1", 0, conference_game=False, season_type="postseason")
+        + _game("A", 40, "P2", 0, conference_game=False, season_type="postseason")
+        + _game("A", 40, "P3", 0, conference_game=False, season_type="postseason")
+        + _game("B", 20, "M", 0, conference_game=False)
+        + _game("B", 20, "N", 0, conference_game=False)
+        + _game("B", 0, "O", 20, conference_game=False)
+        + _game("B", 0, "P4", 40, conference_game=False, season_type="postseason")
+    )
+    ctx = _ctx(rows)
+    assert order_tied_group(["A", "B"], ctx, _rules()).flat == ["B", "A"]
+
+
+def test_fallback_ignores_conference_championship_games():
+    """A championship game is season_type 'regular' in CFBD's data, so season_type alone does not
+    exclude it -- the caller passes its game_id. Here A's only win is the title game and B's only
+    win is a regular one, so excluding it must put B ahead."""
+    rows = (
+        _game("A", 20, "B", 10, conference_game=False, game_id=999)      # the championship game
+        + _game("B", 20, "Z", 0, conference_game=False, game_id=1)
+    )
+    ctx = _ctx(rows, placement_excluded_game_ids=frozenset({999}))
+    assert order_tied_group(["A", "B"], ctx, _rules(two_team=[])).flat == ["B", "A"]
+    # Without the exclusion the same data orders them the other way, which is what makes the
+    # assertion above about the exclusion rather than about anything else in the fixture.
+    bare = _ctx(rows)
+    assert order_tied_group(["A", "B"], bare, _rules(two_team=[])).flat == ["A", "B"]
 
 
 def test_fallback_uses_rating_before_name_and_puts_unranked_last():
