@@ -1,5 +1,22 @@
 name: Manual Test - Weekly Rankings Run
 
+# A TEST RUN, and `--staging` below is what makes that true rather than aspirational.
+#
+# Without it this workflow was indistinguishable from the production pipeline except by
+# accident: it carries the same database credentials and ran main.py with none of its
+# write-protecting flags, so a "test" wrote real ratings over the live table. It only avoided
+# touching R2 because it happens not to hold those secrets.
+#
+# WHAT --staging PROTECTS: model results go to `rankings_test` instead of the production ratings
+# table, and both artifact publishes (rankings and schedule) are skipped outright.
+#
+# WHAT IT DOES NOT: the CFBD ingest still writes `games` and `teams` for real. That is by design
+# -- those are idempotent upserts of upstream truth, they are what the model reads, and main.py
+# re-asserts every manual result override immediately afterwards, so a re-ingest cannot quietly
+# revert one. If you need a run that touches nothing at all, this is not that workflow.
+#
+# To produce a REAL run, use weekly-update.yml, which is the only workflow holding R2 secrets.
+
 on:
   workflow_dispatch:
     inputs:
@@ -39,8 +56,8 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_PORT: ${{ secrets.DB_PORT }}
         run: |
-          echo "Running main.py with year=${{ github.event.inputs.year }}, week=${{ github.event.inputs.week }}"
-          uv run python main.py --year ${{ github.event.inputs.year }} --week ${{ github.event.inputs.week }} > output.log 2>&1 || true
+          echo "Running main.py with year=${{ github.event.inputs.year }}, week=${{ github.event.inputs.week }} (staging)"
+          uv run python main.py --year ${{ github.event.inputs.year }} --week ${{ github.event.inputs.week }} --staging > output.log 2>&1 || true
       - name: Upload output log
         uses: actions/upload-artifact@v4
         with:
@@ -48,10 +65,12 @@ jobs:
           path: output.log
 
       - name: Fail job on manual result override failure
-        # Deliberately the LAST step, matching weekly-update.yml: a failed override never
-        # halts publishing (K5), it only needs to raise the alarm. This run also writes to
-        # the production database without --staging and also ends in `> output.log 2>&1 ||
-        # true`, so without this step a manual-run override failure would go green here too.
+        # Deliberately the LAST step, matching weekly-update.yml: a failed override never halts
+        # the run, it only needs to raise the alarm. This run ends in `> output.log 2>&1 || true`,
+        # so without this step an override failure would go green. Still worth checking under
+        # --staging: overrides are applied during ingest, which writes for real either way, and a
+        # malformed override entry is exactly the kind of thing a test run exists to catch before
+        # the production run hits it.
         run: |
           if grep -q "OVERRIDE_FAILURE" output.log; then
             echo "::error::Manual result override failure(s) found in output.log:"

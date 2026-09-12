@@ -63,7 +63,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# See scripts/backfill_2025_postseason.py for why this bootstrap is needed -- running this
+# Running this file directly only puts scripts/ on sys.path, not the repo root, so
 # file directly only puts scripts/ on sys.path, not the repo root, so `artifacts` isn't
 # importable without it.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))

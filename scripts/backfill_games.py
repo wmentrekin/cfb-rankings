@@ -21,9 +21,9 @@ already in `games`, prints every row it found and classifies each as NEW or EXIS
 only writes when `--apply` is passed. After writing it re-reads the affected ids back out of
 the database and fails loudly if any row it claimed to upsert is not actually there.
 
-`scripts/backfill_2025_postseason.py` is the one-off ancestor of this script: same
-load_games_to_db() upsert path, but hardcoded to one season/season_type and with no dry run,
-no diff, and no read-back. Prefer this script for anything new.
+This supersedes a one-off 2025-postseason backfill script that used the same
+load_games_to_db() upsert path but was hardcoded to one season/season_type, with no dry run,
+no diff and no read-back. That script has been deleted; use this one.
 
 WHY A DRY RUN MATTERS HERE
 --------------------------
@@ -67,7 +67,7 @@ import sys
 from pathlib import Path
 
 # Running this file directly only puts scripts/ on sys.path, not the repo root, so
-# `database` isn't importable -- same bootstrap as scripts/backfill_2025_postseason.py.
+# `database` isn't importable without this.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy import create_engine, text  # type: ignore  # noqa: E402
