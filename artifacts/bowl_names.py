@@ -36,7 +36,7 @@ simply not yet added -- passes through WHOLE, never guessed at by truncation. Th
 direction: the personal-site CSS clamp is what actually guarantees a single line for that case,
 not this module. Extending coverage later means adding a verified root name, never inventing one.
 
-K9 (docs/season-grid-standings-fixes/plan.yaml): the user wants the displayed short name to carry
+The displayed short name carries
 neither the sponsor NOR the word "Bowl" itself -- "Gasparilla", "Music City", "Sugar", not
 "Gasparilla Bowl". So once a curated root is resolved (never for an unmatched pass-through, and
 never for an _OVERRIDES result -- those are already exactly the short form the user wants, e.g.
@@ -106,8 +106,8 @@ _ROOT_NAMES = [
     "Orange Bowl",
     "Fiesta Bowl",
     "Peach Bowl",
-    # K9: the 19 ordinary 2025 bowls that were verified against the live DB but not yet curated
-    # -- see docs/season-grid-standings-fixes/plan.yaml K9. Each right-hand root below is the
+    # The 19 ordinary 2025 bowls that were verified against the live DB but not yet curated.
+    # Each right-hand root below is the
     # canonical part of the CFBD `notes` string on the left (kept here only as a comment, never
     # matched against):
     #   68 Ventures Bowl                  -> 68 Ventures Bowl   (sponsor IS the name)

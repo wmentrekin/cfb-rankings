@@ -1,9 +1,38 @@
 """Apply checked-in, operator-declared game-result overrides.
 
-Overrides live in database/game_result_overrides.json (K1 in
-docs/manual-result-overrides/plan.yaml) rather than in the database, so they
-are reviewable in the PR and re-assert themselves on every pipeline run --
-a re-ingest of the CFBD result can never win.
+CFBD's result for a game is not always the one the rankings should use -- a disputed officiating
+decision, for example. Overrides live in database/game_result_overrides.json rather than in the
+database, so they are reviewable in the PR and re-assert themselves on every pipeline run: a
+re-ingest of the CFBD result can never win, whereas a manual database edit would simply be
+overwritten. main.py applies them immediately after ingest and before the model runs.
+
+WRITING AN OVERRIDE
+-------------------
+Append an entry to the `overrides` array in database/game_result_overrides.json:
+
+    {
+      "game_id": 401858428,
+      "season": 2026,
+      "week": 1,
+      "season_type": "regular",
+      "home_team": "Michigan",
+      "away_team": "Western Michigan",
+      "home_score": 7,
+      "away_score": 12,
+      "reason": "Why this correction was made.",
+      "declared_on": "2026-09-09"
+    }
+
+`game_id` is the CFBD game id (find it via `games.id`); `home_score` and `away_score` are the
+CORRECTED final score. An entry must match the game it names on season, week, season_type,
+home_team AND away_team -- a mismatch is skipped and logged rather than silently corrupting a
+different game, surfaced as OVERRIDE_FAILURE in the run log and failed in CI by
+.github/workflows/weekly-update.yml.
+
+`neutral_site` is deliberately NOT part of an entry: it is read from the stored `games` row,
+since it is not something the operator is declaring. `winner`, `margin` and `alpha` are
+re-derived from the declared scores by database/game_derivations.py -- the same helpers ingest
+itself uses -- so the two can never drift apart.
 
 This module never raises for a per-entry problem, nor for a whole-file
 problem (a missing or malformed override file). Every failure mode is

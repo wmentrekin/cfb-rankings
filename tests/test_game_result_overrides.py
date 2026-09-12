@@ -6,9 +6,8 @@ No live database and no network: `apply_game_result_overrides` accepts an inject
 in-memory SQLite database rather than mocking the SQL layer -- the same statements run
 against Postgres in production run here unmodified.
 
-See docs/manual-result-overrides/plan.yaml for the design (K1-K7) and
-docs/manual-result-overrides/requirements.yaml for the acceptance criteria (AC1-AC9)
-this file covers.
+The design and acceptance criteria this file covers are described in
+database/game_overrides.py's own docstring, which also documents the override entry format.
 
 Run: python -m pytest tests/ -q   (or: python tests/test_game_result_overrides.py)
 """

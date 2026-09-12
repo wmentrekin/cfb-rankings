@@ -2,15 +2,15 @@ name: Weekly Rankings - Auto Update
 
 on:
   schedule:
-    # Every Sunday at 07:00 UTC = 03:00 ET
+    # Every Sunday at 07:00 UTC = 03:00 ET.
+    #
+    # If a future season opens with Week 1 games on the Sunday or Monday, this run would fire
+    # before Week 1 is complete. The 2026 season needed exactly that treatment and was handled
+    # with a one-off extra cron plus a gate job that suppressed the regular Sunday firing; both
+    # were removed once the delayed run had shipped. Prefer that shape again -- a dated one-off
+    # plus a gate that self-disarms -- over moving this line, and delete both afterwards, since
+    # a bare `cron: '0 7 8 9 *'` recurs every year.
     - cron: '0 7 * * 0'
-    # ONE-OFF for 2026 Week 1: Sun/Mon Week 1 games mean the normal Sunday run
-    # would fire before Week 1 is complete, so Week 1 is pushed to Tue 2026-09-08
-    # 07:00 UTC = 03:00 ET instead. The `gate` job below suppresses the regular
-    # Sunday 2026-09-06 firing so it doesn't double-run. This cron entry recurs
-    # every Sept 8, so delete this line (and the gate job/step, restoring the
-    # single Sunday-only schedule) once the 2026 Week 1 run has shipped.
-    - cron: '0 7 8 9 *'
   workflow_dispatch:
     inputs:
       week:
@@ -22,30 +22,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  gate:
-    runs-on: ubuntu-latest
-    outputs:
-      should_run: ${{ steps.check.outputs.should_run }}
-    steps:
-      - name: Check 2026 Week 1 delay window
-        id: check
-        run: |
-          # Only scheduled (cron) triggers are gated; manual workflow_dispatch always runs.
-          # Suppresses the regular Sunday cron until Week 1 is deliberately kicked off on
-          # 2026-09-08 (see the schedule comment above). Self-disarms after that date.
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            today="$(date -u +%Y-%m-%d)"
-            if [[ "$today" < "2026-09-08" ]]; then
-              echo "Skipping: before 2026-09-08 Week 1 delay cutoff (today=$today)."
-              echo "should_run=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-          echo "should_run=true" >> "$GITHUB_OUTPUT"
-
   weekly_update:
-    needs: gate
-    if: needs.gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -79,25 +56,21 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           WEEK_INPUT: ${{ github.event.inputs.week }}
         run: |
-          # Week override, in priority order:
-          #   1. An explicit `week` input on a manual workflow_dispatch run.
-          #   2. ONE-OFF for 2026 Week 1. main.py derives its week from today's
-          #      date, but this run is deliberately delayed to Tue 2026-09-08 so
-          #      Monday's Week 1 games are final (see the schedule comment at the
-          #      top of this file). By then the date has crossed into Week 2's
-          #      window, so an un-overridden run would rate Week 1's slate but
-          #      publish it as week-02.json, and 2026 would never get a Week 1
-          #      snapshot. CFBD's own week 1 for 2026 spans 2026-08-29 through
-          #      2026-09-07 -- Week 0's Saturday through Monday night -- which is
-          #      exactly the slate this run should rate. Delete this branch (with
-          #      the one-off cron entry and the gate job) once it has shipped.
-          # Note this only labels/selects the week; the rating model itself reads
-          # CFBD's own `games.week` column, not the date-derived week.
+          # An explicit `week` input on a manual workflow_dispatch run overrides the week;
+          # otherwise main.py derives it from today's date.
+          #
+          # A delayed run needs that override. When the 2026 opener was pushed to a Tuesday so
+          # Monday's Week 1 games would be final, the date had already crossed into Week 2's
+          # window, so an un-overridden run would have rated Week 1's slate and published it as
+          # week-02.json -- leaving that season with no Week 1 snapshot at all. That was handled
+          # with a dated branch here, removed once it had shipped. Any future delayed opener
+          # needs the same treatment.
+          #
+          # Note this only labels/selects the week; the rating model itself reads CFBD's own
+          # `games.week` column, not the date-derived week.
           EXTRA_ARGS=""
           if [ -n "$WEEK_INPUT" ]; then
             EXTRA_ARGS="--week $WEEK_INPUT"
-          elif [ "$(date -u +%Y-%m-%d)" = "2026-09-08" ]; then
-            EXTRA_ARGS="--week 1"
           fi
           echo "Running: main.py $EXTRA_ARGS"
           uv run python main.py $EXTRA_ARGS > output.log 2>&1 || true
