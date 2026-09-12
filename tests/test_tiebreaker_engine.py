@@ -85,7 +85,7 @@ def _rules(two_team=None, multi_team=None, restart_at="size_appropriate_restart"
     multi = tuple(multi_team if multi_team is not None else [Step(step="head_to_head")])
     return RuleSet(
         season_min=None, season_max=None, provenance="search_derived",
-        source_file="synthetic", notes="test fixture",
+        source="synthetic", notes="test fixture",
         two_team=two,
         multi_team=MultiTeamRules(
             restart_at=restart_at, steps=multi,

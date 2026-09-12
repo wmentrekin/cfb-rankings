@@ -1,6 +1,6 @@
 """
 Schema, loader and load-time validator for the per-conference tiebreaker configuration
-(see docs/conference-tiebreaker-rules/ for the primary-source text every rule set cites).
+validated at load.
 
 WHY JSON, NOT YAML (deviation from plan K1)
 --------------------------------------------
@@ -38,7 +38,7 @@ MIN_CONFERENCE_GAMES HAS NO SILENT DEFAULT (K6)
 -------------------------------------------------
 `external_ranking` substitutes this project's own continuous rating for every conference step
 that cites an outside ranking service (SportSource Analytics Team Success Ranking / Rating
-Score, CFP ranking, etc. -- see docs/conference-tiebreaker-rules/README.md). Because
+Score, CFP ranking, etc.). Because
 this project's rating effectively never ties, an ungated `external_ranking` would resolve every
 tie it reaches and pre-empt the overall-record fallback the product owner asked for (K6, AC5) --
 most visibly in the thin-information early season, e.g. a 2-0 team and a 1-0 team with no
@@ -204,9 +204,18 @@ KNOWN_STEPS: FrozenSet[str] = frozenset(STEP_PARAMS)
 
 # Allowed keys at each level of the schema -- unknown keys are rejected (strict), not ignored.
 TOP_LEVEL_KEYS: FrozenSet[str] = frozenset({"schema_version", "conferences"})
+# PROVENANCE, now that the source documents are not committed
+# ----------------------------------------------------------
+# Each rule set carries three things instead of a file: `provenance` (how strong the evidence
+# is), `source` (which document it came from and when it was supplied), and -- the part that
+# actually matters for review -- a per-step `cites` quoting the decisive wording verbatim, plus
+# `notes` recording every place the transcription interpreted rather than copied. A reviewer can
+# therefore check a step against its own quotation without the document, and re-sourcing a
+# conference's full text is only needed to audit a quotation itself.
+
 RULESET_KEYS: FrozenSet[str] = frozenset(
     {
-        "season_min", "season_max", "provenance", "source_file", "notes",
+        "season_min", "season_max", "provenance", "source", "notes",
         "two_team", "multi_team", "tie_definition",
     }
 )
@@ -274,7 +283,11 @@ class RuleSet:
         season_max: Last season this rule set governs, inclusive. None = open-ended (still in
             effect).
         provenance: One of PROVENANCE_LEVELS.
-        source_file: Repo-relative path to the source-rules file this was transcribed from.
+        source: Citation for the document this was transcribed from. A free-text
+            reference, NOT a repo path -- the primary-source documents are deliberately
+            not committed, so the decisive text lives inline in each step's `cites` and
+            the reasoning in `notes`, which is what makes a rule set reviewable on its
+            own. See the module docstring's PROVENANCE section.
         notes: Free-text human context -- what this era is, any caveat a reviewer needs. This is
             JSON's substitute for a YAML comment (see module docstring).
         two_team: The two-team tiebreaker procedure, applied top to bottom, no restart.
@@ -289,7 +302,7 @@ class RuleSet:
     season_min: Optional[int]
     season_max: Optional[int]
     provenance: str
-    source_file: str
+    source: str
     notes: str
     two_team: Tuple[Step, ...]
     multi_team: MultiTeamRules
@@ -484,7 +497,7 @@ def _build_rule_set(
             f"{path}.provenance: {provenance!r} is not one of {sorted(PROVENANCE_LEVELS)}"
         )
 
-    source_file = _get_str(item, "source_file", path)
+    source = _get_str(item, "source", path)
     notes = _get_str(item, "notes", path)
 
     tie_definition = item.get("tie_definition", "win_pct")
@@ -524,7 +537,7 @@ def _build_rule_set(
         season_min=season_min,
         season_max=season_max,
         provenance=provenance,
-        source_file=source_file,
+        source=source,
         notes=notes,
         two_team=two_team,
         multi_team=multi_team,

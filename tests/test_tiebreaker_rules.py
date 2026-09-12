@@ -54,7 +54,7 @@ def _rule_set(**overrides):
         "season_min": 2024,
         "season_max": None,
         "provenance": "primary_source",
-        "source_file": "docs/conference-tiebreaker-rules/sec.txt",
+        "source": "SEC official football tiebreakers (test fixture)",
         "notes": "test fixture",
         "tie_definition": "win_pct",
         "two_team": [_step(cites="two-team step A")],

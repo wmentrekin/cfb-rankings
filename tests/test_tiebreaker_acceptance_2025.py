@@ -6,7 +6,7 @@ These are NOT replays of the 2025 schedules. This environment has no database cr
 the games cannot be read back. What each fixture reproduces instead is the DECISIVE STRUCTURE of
 a real tie -- how many teams, which of them actually played each other, how large the common
 opponent set was, and the aggregate that separated them -- using values recomputed from live data
-earlier in this feature's work and recorded in docs/conference-tiebreaker-rules/. Opponent
+earlier in this feature's work. Opponent
 identities outside each tied group are synthetic; the numbers that decide the tie are the real
 ones.
 

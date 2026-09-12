@@ -8,11 +8,12 @@ that sequencing is the recursive peel-off driver (T3, a separate module, separat
 touched here). Different conferences call the same operations in different orders; this module
 is the operations.
 
-SOURCE OF TRUTH: docs/conference-tiebreaker-rules/{sec,big12,bigten,acc}.txt, supplied
-directly by the repo owner. They are authoritative over both the original task brief AND a
-mid-task correction message from the orchestrator -- both were checked against the actual text
-below, and every place they turned out to disagree with the source files is called out inline
-and in the task report, not silently reconciled.
+SOURCE OF TRUTH: the conferences' own published tiebreaker policies, supplied directly by the
+repo owner. Those documents are not committed to this repository, so the decisive wording is
+quoted inline -- here in the docstrings and in each configured step's `cites` field -- and every
+place a transcription interpreted rather than copied is called out rather than silently
+reconciled. Filenames like `sec.txt` and `acc.txt` appear throughout as labels for those supplied
+documents, not as paths to files in the tree.
 
 CONTRACT
 --------
