@@ -217,7 +217,9 @@ def sub_group_record(
 # ---------------------------------------------------------------------------
 # 3. sweep_in_out
 # ---------------------------------------------------------------------------
-def sweep_in_out(tied: List[str], ctx: TiebreakContext, **params) -> StepResult:
+def sweep_in_out(
+    tied: List[str], ctx: TiebreakContext, sides: str = "both", **params
+) -> StepResult:
     """For an INCOMPLETE round robin among 3+ tied teams: a team that beat EVERY OTHER TIED TEAM
     is promoted into its own top group; a team that lost to EVERY OTHER TIED TEAM is demoted into
     its own bottom group; everyone else lands in one unseparated middle group. Returns None --
@@ -266,7 +268,29 @@ def sweep_in_out(tied: List[str], ctx: TiebreakContext, **params) -> StepResult:
     MULTIPLE SIMULTANEOUS SWEEPERS/TOTAL-LOSERS (e.g. A beat B, C beat D, A and C never played):
     not addressed by any source document. All qualifying sweepers are grouped together as one
     tied top group (not guessed at an order among them); likewise for total-losers at the bottom.
+
+    `sides` -- WHICH HALVES THE CONFERENCE ACTUALLY PUBLISHES. Across the ten supplied documents
+    there are three distinct readings of this step, so it cannot be one fixed behaviour:
+
+      "both"          the team that beat all others is promoted AND the team that lost to all
+                      others is demoted. Stated explicitly by only TWO conferences: sec.txt
+                      A.2(a)/(b) and acc.txt Sec 2.b[sic].ii.1.
+      "promote_only"  only the promote half is published. big12.txt multi-team a.1, bigten.txt
+                      B.1(a), mac.txt C.2, mountainwest.txt multi step 1 and american.txt 10.6.3
+                      all describe a lone sweeper advancing and say nothing whatsoever about a
+                      team that lost to everyone. Demoting one anyway would order a conference's
+                      standings by a rule it never wrote down, so a total-loser stays in the
+                      unseparated middle group.
+
+    The third reading needs no value here because it needs no step: pac12.txt's multi-team step 1
+    has NO sweep clause at all -- if the tied teams did not all play one another "the process
+    moves to the next criterion" -- so the Pac-12 config simply omits this step rather than
+    configuring it.
     """
+    if sides not in ("both", "promote_only"):
+        raise ValueError(
+            f"sweep_in_out: unknown sides={sides!r}; expected 'both' or 'promote_only'"
+        )
     if len(tied) < 3:
         return None
     if _is_complete_round_robin(ctx, tied):
@@ -288,7 +312,7 @@ def sweep_in_out(tied: List[str], ctx: TiebreakContext, **params) -> StepResult:
         # unplayed tied opponent can be neither a sweeper nor a total-loser. See the docstring.
         if beat == others:
             top.append(team)
-        elif lost == others:
+        elif lost == others and sides == "both":
             bottom.append(team)
         else:
             middle.append(team)
@@ -355,6 +379,7 @@ def vs_placed_opponents(
     ctx: TiebreakContext,
     tied_opponent_handling: str = "combine",
     exhaust_all_opponents: bool = True,
+    advance_on_unequal_games: bool = False,
     **params,
 ) -> StepResult:
     """Record against the best-placed common Conference opponent, proceeding down
@@ -397,6 +422,15 @@ def vs_placed_opponents(
     position/block and returns immediately (separated or not) -- provided for a conference config
     that wants to stop there instead; not exercised by any of the four supplied documents, all of
     which "proceed through the standings."
+
+    `advance_on_unequal_games` -- CUSA-specific, from cusa.txt section D: "If the tied teams have
+    the same record OR PLAYED AN UNEQUAL NUMBER OF GAMES against the teams within the tied group,
+    immediately advance to the team(s) with the next highest conference winning percentage." The
+    "same record" half is what every conference does and is already the default behaviour; the
+    unequal-games half is stated by CUSA alone. With it enabled, a position where the tied teams
+    played a DIFFERENT NUMBER of games against that position's opponent(s) is skipped outright
+    rather than compared -- a 1-0 record and a 2-1 record against the same block are not treated
+    as comparable percentages. Default False, so no other conference's chain changes.
 
     APPENDIX B NOTE: sec.txt itself says Appendix B "contains ~25 worked examples... and should
     be transcribed into the test suite" -- but the supplied sec.txt file does NOT include that
@@ -448,6 +482,7 @@ def vs_placed_opponents(
             opp_group = set(block)  # "combine", or 3+ under either mode
 
         pct: Dict[str, Optional[float]] = {}
+        played_counts: Dict[str, int] = {}
         for team in tied:
             wins = losses = 0
             for row in _conf_game_rows(ctx, team):
@@ -456,7 +491,16 @@ def vs_placed_opponents(
                         wins += 1
                     else:
                         losses += 1
+            played_counts[team] = wins + losses
             pct[team] = (wins / (wins + losses)) if (wins + losses) else None
+
+        if advance_on_unequal_games and len(set(played_counts.values())) > 1:
+            # CUSA section D: unequal games against this position means the comparison is not
+            # made at all, rather than made on percentages drawn from different sample sizes.
+            if not exhaust_all_opponents:
+                return None
+            idx = j
+            continue
 
         result = _partition_by_value(tied, pct)
         if result is not None and len(result) > 1:

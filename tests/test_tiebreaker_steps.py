@@ -187,6 +187,38 @@ def test_sweep_in_out_is_silent_on_the_real_2025_acc_five_way():
     assert sweep_in_out(five, ctx) is None
 
 
+def test_sweep_in_out_promote_only_leaves_the_total_loser_in_the_middle():
+    """`sides="promote_only"` is what five of the ten documents actually publish: a lone sweeper
+    advances and nothing whatsoever is said about a team that lost to everyone. Demoting one
+    anyway would order those conferences by a rule they never wrote down.
+
+    Same fixture as the both-sides test above, so the ONLY difference is the parameter: A still
+    goes top, but D must land in the middle group with B and C instead of alone at the bottom."""
+    rows = (
+        _game("A", 20, "B", 10) + _game("A", 20, "C", 10) + _game("A", 20, "D", 10)
+        + _game("B", 20, "D", 10) + _game("C", 20, "D", 10)
+    )
+    ctx = _ctx(rows)
+    assert sweep_in_out(["A", "B", "C", "D"], ctx, sides="both") == [["A"], ["B", "C"], ["D"]]
+    assert sweep_in_out(["A", "B", "C", "D"], ctx, sides="promote_only") == [["A"], ["B", "C", "D"]]
+
+
+def test_sweep_in_out_promote_only_still_declines_when_nobody_swept():
+    """Dropping the demote half must not turn "no opinion" into an opinion: with no sweeper, the
+    step returns None under either setting rather than partitioning on the demote side alone."""
+    rows = _game("A", 20, "B", 10) + _game("B", 20, "C", 10) + _game("C", 20, "A", 10)
+    ctx = _ctx(rows, )
+    assert sweep_in_out(["A", "B", "C", "D"], ctx, sides="promote_only") is None
+
+
+def test_sweep_in_out_rejects_an_unknown_sides_value():
+    """A typo in a config must not silently fall through to the more aggressive both-sides
+    behaviour, which would demote a team on a rule its conference never published."""
+    ctx = _ctx(_game("A", 20, "B", 10))
+    with pytest.raises(ValueError, match="sides"):
+        sweep_in_out(["A", "B", "C"], ctx, sides="promote-only")     # hyphen, not underscore
+
+
 def test_sweep_in_out_no_separation_returns_none():
     # A 4-cycle, each team plays exactly 2 of 3 possible tied opponents (incomplete), and every
     # team both won and lost once -- nobody swept, nobody was swept.
@@ -351,6 +383,28 @@ def test_vs_placed_opponents_direction_descending_is_harmless_noop():
 def test_vs_placed_opponents_unsupported_direction_raises():
     with pytest.raises(ValueError):
         vs_placed_opponents(["X", "Y"], _ctx([]), direction="ascending")
+
+
+def test_vs_placed_opponents_advance_on_unequal_games_skips_a_mismatched_position():
+    """cusa.txt section D, which CUSA alone states: if the tied teams "PLAYED AN UNEQUAL NUMBER OF
+    GAMES against the teams within the tied group, immediately advance to the team(s) with the
+    next highest conference winning percentage."
+
+    Best-placed common opponent is Top. A played it twice (1-1, .500); B played it once and won
+    (1.000). Default behaviour compares those percentages and hands the position to B. With the
+    CUSA rule the position is SKIPPED as incomparable, and the next position down -- Mid, which
+    both played once -- decides it, where A won and B lost. So the two settings give opposite
+    answers on the same data, which is what makes this discriminating."""
+    rows = (
+        _game("A", 20, "Top", 10) + _game("Top", 20, "A", 10)     # A: 1-1 vs Top
+        + _game("B", 20, "Top", 10)                                # B: 1-0 vs Top
+        + _game("A", 20, "Mid", 10)                                # A: 1-0 vs Mid
+        + _game("Mid", 20, "B", 10)                                # B: 0-1 vs Mid
+    )
+    # Top outranks Mid in the frozen order, and both are common opponents of A and B.
+    ctx = _ctx(rows, frozen_order=["Top", "Mid", "A", "B"])
+    assert vs_placed_opponents(["A", "B"], ctx) == [["B"], ["A"]]
+    assert vs_placed_opponents(["A", "B"], ctx, advance_on_unequal_games=True) == [["A"], ["B"]]
 
 
 # ===========================================================================

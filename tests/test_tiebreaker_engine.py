@@ -435,17 +435,30 @@ def test_output_is_always_a_permutation_for_randomised_groups():
 # ---------------------------------------------------------------------------
 # Against the real shipped config
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize("conference", ["SEC", "Big 12", "Big Ten", "ACC"])
-def test_real_power4_chains_run_end_to_end(conference):
+# (conference, season) pairs covering every shipped rule set, including both ACC eras and the
+# Pac-12's 2026-only entry -- a season outside a conference's configured era resolves to None and
+# would make the test vacuous.
+SHIPPED_RULE_SETS = [
+    ("SEC", 2025), ("Big 12", 2025), ("Big Ten", 2025),
+    ("ACC", 2025), ("ACC", 2026),
+    ("Mid-American", 2025), ("Pac-12", 2026), ("Conference USA", 2025),
+]
+
+
+@pytest.mark.parametrize("conference,season", SHIPPED_RULE_SETS,
+                         ids=[f"{c}-{s}" for c, s in SHIPPED_RULE_SETS])
+def test_every_shipped_chain_runs_end_to_end(conference, season):
     """Every shipped chain must be driveable with the parameters the config actually sets. This
-    is the seam test between T1's config and T2's primitives: a param the config passes that a
+    is the seam test between the config and the primitives: a param the config passes that a
     primitive does not accept, or a value it rejects, fails here and nowhere else."""
     cfg = load_conference_rules(known_step_names=KNOWN_STEPS)
-    rules = rules_for(cfg, conference, SEASON if conference != "ACC" else 2026)
-    assert rules is not None, conference
+    rules = rules_for(cfg, conference, season)
+    assert rules is not None, f"{conference} has no rule set for {season}"
     teams = ["A", "B", "C", "D"]
     rows = []
     for a, b in itertools.combinations(teams, 2):
+        # _game defaults to SEASON; the fixture rows and the context must agree, so this test
+        # drives every chain on SEASON's rows regardless of which era selected the rule set.
         rows += _game(a, 21, b, 14)                 # a complete round robin, decisive scores
     ctx = _ctx(
         rows,

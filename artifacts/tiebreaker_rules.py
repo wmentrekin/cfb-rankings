@@ -157,7 +157,9 @@ PROVENANCE_LEVELS: FrozenSet[str] = frozenset(
 RESTART_POLICIES: FrozenSet[str] = frozenset(
     {"size_appropriate_restart", "redefine_tied_teams"}
 )
-TIE_DEFINITIONS: FrozenSet[str] = frozenset({"win_pct", "acc_alternate_games"})
+TIE_DEFINITIONS: FrozenSet[str] = frozenset(
+    {"win_pct", "acc_alternate_games", "cusa_within_one_win"}
+)
 WHEN_PREDICATES: FrozenSet[str] = frozenset(
     {"round_robin_among_tied", "not_round_robin_among_tied"}
 )
@@ -172,10 +174,11 @@ TIED_OPPONENT_HANDLINGS: FrozenSet[str] = frozenset(
 STEP_PARAMS: Dict[str, FrozenSet[str]] = {
     "head_to_head": frozenset(),
     "sub_group_record": frozenset(),
-    "sweep_in_out": frozenset(),
+    "sweep_in_out": frozenset({"sides"}),
     "common_opponents_record": frozenset({"min_sample"}),
     "vs_placed_opponents": frozenset(
-        {"direction", "tied_opponent_handling", "exhaust_all_opponents"}
+        {"direction", "tied_opponent_handling", "exhaust_all_opponents",
+         "advance_on_unequal_games"}
     ),
     "opponents_cumulative_conf_pct": frozenset({"ignore_opponent_count_mismatch"}),
     "capped_relative_scoring_margin": frozenset({"offense_cap", "defense_floor"}),

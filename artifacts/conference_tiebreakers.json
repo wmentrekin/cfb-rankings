@@ -178,9 +178,11 @@
             },
             {
               "step": "sweep_in_out",
-              "params": {},
+              "params": {
+                "sides": "promote_only"
+              },
               "when": "not_round_robin_among_tied",
-              "cites": "Multi-team a.1/a.2: 'one team defeated all other teams involved in the tie, that team is removed...' / '...no team defeated all other teams..., move to the next step'. NOTE: unlike the SEC and Big Ten, big12.txt states only the 'defeated all' (swept in) half and no 'lost to all' elimination clause; the shared primitive covers both, and the Big 12's silence on the swept-out half is recorded here rather than encoded as a narrower step (big12.txt:39-43)."
+              "cites": "Multi-team a.1/a.2: 'one team defeated all other teams involved in the tie, that team is removed...' / '...no team defeated all other teams..., move to the next step'. NOTE: unlike the SEC and Big Ten, big12.txt states only the 'defeated all' (swept in) half and no 'lost to all' elimination clause; the shared primitive covers both, and the Big 12's silence on the swept-out half is recorded here rather than encoded as a narrower step (big12.txt:39-43). SIDES: promote_only -- big12.txt multi-team a.1 describes only a lone sweeper advancing; a.2 says 'no team defeated all other teams... move to the next step' with no demote branch."
             },
             {
               "step": "common_opponents_record",
@@ -291,9 +293,11 @@
             },
             {
               "step": "sweep_in_out",
-              "params": {},
+              "params": {
+                "sides": "promote_only"
+              },
               "when": "not_round_robin_among_tied",
-              "cites": "B.1(a)/(b): 'If all teams involved did not play each other, but one team defeated all other teams in the tie, that team is removed...' / '...and no team defeated all others, move to the next step' (bigten.txt:44-48)."
+              "cites": "B.1(a)/(b): 'If all teams involved did not play each other, but one team defeated all other teams in the tie, that team is removed...' / '...and no team defeated all others, move to the next step' (bigten.txt:44-48). SIDES: promote_only -- bigten.txt B.1(a) describes only a lone sweeper being removed; B.1(b) moves on with no demote branch."
             },
             {
               "step": "common_opponents_record",
@@ -493,6 +497,306 @@
               "cites": "Section 2.b(3+).i.3 / ii.3: both branches converge here -- 'The participant shall be chosen by a draw as administered by the Commissioner or Commissioner's designee.'"
             }
           ]
+        }
+      }
+    ],
+    "Mid-American": [
+      {
+        "season_min": 2024,
+        "season_max": null,
+        "provenance": "primary_source",
+        "source_file": "docs/conference-tiebreakers/source-rules/mac.txt",
+        "notes": "Transcribed from mac.txt, which is undated. SEASON FLOOR 2024 is a judgement call, not a statement in the source: the document describes a single divisionless pool ('participating teams shall be decided by conference winning percentage'), and 2024 is the realignment season after which that is safely true of the MAC. Earlier seasons deliberately resolve to no rules and fall back, rather than applying a divisionless chain to a possibly divisional era we have no document for. Raise or lower this floor if the MAC's divisional history is confirmed. FULLY EXPRESSIBLE with no new primitive -- the MAC's only peculiarity is step ORDER, with the external ranking at step 3. ORDER-OF-FINISH DEVIATION: step 4 asks for the order of finish 'with ties broken', i.e. the fully resolved standings. This project freezes the order of finish by conference win percentage ALONE (decision K4) because resolving it first is circular -- the standings are what the tiebreaker is computing. The deviation is deliberate and affects only which opponent occupies which position when opponents are themselves tied; tied_opponent_handling 'combine' then treats such a block as one position, which is close to what the MAC's own wording asks for.",
+        "tie_definition": "win_pct",
+        "two_team": [
+          {
+            "step": "head_to_head",
+            "params": {},
+            "cites": "B.1: Head-to-head competition between the two tied teams."
+          },
+          {
+            "step": "common_opponents_record",
+            "params": {
+              "min_sample": 2
+            },
+            "cites": "B.2: Win percentage versus all common opponents."
+          },
+          {
+            "step": "external_ranking",
+            "params": {
+              "min_conference_games": 4
+            },
+            "cites": "B.3: higher ranking by the Team Rating Score metric provided by SportSource Analytics. NOTE THE POSITION -- step 3 is the earliest any of the ten conferences consults an outside ranking, ahead of both placed-opponents and opponents' cumulative win percentage."
+          },
+          {
+            "step": "vs_placed_opponents",
+            "params": {
+              "direction": "descending",
+              "tied_opponent_handling": "combine",
+              "exhaust_all_opponents": true
+            },
+            "cites": "B.4: Win percentage versus common opponents based upon their order of finish (overall conference win percentage, WITH TIES BROKEN) and proceeding through other common opponents. The parenthetical conflicts with K4, which freezes the order of finish by win percentage alone and does not tie-break it; see notes."
+          },
+          {
+            "step": "opponents_cumulative_conf_pct",
+            "params": {
+              "ignore_opponent_count_mismatch": false
+            },
+            "cites": "B.5: Combined conference win percentage of conference opponents."
+          },
+          {
+            "step": "random_draw",
+            "params": {},
+            "cites": "B.6: draw administered by the Commissioner or designee."
+          }
+        ],
+        "multi_team": {
+          "restart_at": "size_appropriate_restart",
+          "steps": [
+            {
+              "step": "sub_group_record",
+              "params": {},
+              "when": "round_robin_among_tied",
+              "cites": "C.1: Combined head-to-head win percentage among the tied teams IF ALL TIED TEAMS ARE COMMON OPPONENTS -- i.e. gated on a complete round robin."
+            },
+            {
+              "step": "sweep_in_out",
+              "params": {
+                "sides": "promote_only"
+              },
+              "when": "not_round_robin_among_tied",
+              "cites": "C.2: 'If all the tied teams are not common opponents, the tied team that DEFEATED EACH OF THE OTHER TIED TEAMS advances.' Promote half only -- no demote clause appears anywhere in mac.txt."
+            },
+            {
+              "step": "common_opponents_record",
+              "params": {
+                "min_sample": 2
+              },
+              "cites": "B.2: Win percentage versus all common opponents."
+            },
+            {
+              "step": "external_ranking",
+              "params": {
+                "min_conference_games": 4
+              },
+              "cites": "B.3: higher ranking by the Team Rating Score metric provided by SportSource Analytics. NOTE THE POSITION -- step 3 is the earliest any of the ten conferences consults an outside ranking, ahead of both placed-opponents and opponents' cumulative win percentage."
+            },
+            {
+              "step": "vs_placed_opponents",
+              "params": {
+                "direction": "descending",
+                "tied_opponent_handling": "combine",
+                "exhaust_all_opponents": true
+              },
+              "cites": "B.4: Win percentage versus common opponents based upon their order of finish (overall conference win percentage, WITH TIES BROKEN) and proceeding through other common opponents. The parenthetical conflicts with K4, which freezes the order of finish by win percentage alone and does not tie-break it; see notes."
+            },
+            {
+              "step": "opponents_cumulative_conf_pct",
+              "params": {
+                "ignore_opponent_count_mismatch": false
+              },
+              "cites": "B.5: Combined conference win percentage of conference opponents."
+            },
+            {
+              "step": "random_draw",
+              "params": {},
+              "cites": "B.6: draw administered by the Commissioner or designee."
+            }
+          ],
+          "eliminated_teams_locked": true
+        }
+      }
+    ],
+    "Pac-12": [
+      {
+        "season_min": 2026,
+        "season_max": null,
+        "provenance": "primary_source",
+        "source_file": "docs/conference-tiebreakers/source-rules/pac12.txt",
+        "notes": "SEASON FLOOR 2026 IS LOAD-BEARING, NOT A GUESS. pac12.txt is explicitly the 2026 policy for the rebuilt eight-team conference playing a seven-game schedule. In 2024 and 2025 the Pac-12 consisted of Oregon State and Washington State ALONE -- two members, no championship game -- so this chain must never be applied to those seasons, which fall back instead. FULLY EXPRESSIBLE with no new primitive, and the single clearest vindication of keeping step order as data: its two-team chain runs vs_placed_opponents at step 2 BEFORE common_opponents_record at step 3, the reverse of the SEC, Big 12, Big Ten, MAC and CUSA, while its own multi-team chain reverts to the common order. TWO EXTERNAL RANKINGS COLLAPSE TO ONE: the two-team chain has the CFP ranking at step 4 and SportSource at step 5. Both become this project's own rating under the K6 substitution, so step 5 would be an exact duplicate of step 4 and is therefore OMITTED rather than configured as a step that can never change an outcome. The draw remains as the terminal step, so the chain is still a faithful transcription of everything that can differ. TIMING NOT MODELLED: step 4 specifies the CFP ranking 'on the Tuesday prior to week 13', and step 5 SportSource 'following the last weekend'. Our team_ranks is a single current snapshot with no as-of date, so the distinction is not represented. This is the same gap the Mountain West, Sun Belt and American chains hit far harder, where the ranking is conditioned on a final-weekend result. FLEX-WEEK RISK: the source states week 13's home-and-home flex games DO NOT COUNT toward conference standings. artifacts/schedule.py's FLEX_WEEK_TBD_CONFIG already covers that week and ASSUMES those games arrive as conference_game=false. That assumption is unverified (week 13 is unpopulated); if CFBD marks them true they would contaminate conference records and every step in this chain.",
+        "tie_definition": "win_pct",
+        "two_team": [
+          {
+            "step": "head_to_head",
+            "params": {},
+            "cites": "Two-team 1: 'the winner of the head-to-head will be the No. 1 seed'; for a second-place tie the two-team policy decides the No. 2 seed."
+          },
+          {
+            "step": "vs_placed_opponents",
+            "params": {
+              "direction": "descending",
+              "tied_opponent_handling": "combine",
+              "exhaust_all_opponents": true
+            },
+            "cites": "Two-team 2: 'Win percentage against the next-highest-placed common opponent in the standings... proceeding through the standings', with the collective-tied-group sub-rule. THIS IS STEP 2, BEFORE all-common-opponents at step 3 -- the reverse of the SEC, Big 12, Big Ten, MAC and CUSA."
+          },
+          {
+            "step": "common_opponents_record",
+            "params": {
+              "min_sample": 2
+            },
+            "cites": "Two-team 3: Win percentage against all common conference opponents."
+          },
+          {
+            "step": "external_ranking",
+            "params": {
+              "min_conference_games": 4
+            },
+            "cites": "Two-team 4: 'Highest CFP ranking(s) on the Tuesday prior to week 13 contests.' Substituted by this project's own rating per K6. The as-of-Tuesday timing is NOT modelled -- see this rule set's notes."
+          },
+          {
+            "step": "random_draw",
+            "params": {},
+            "cites": "Two-team 6: Coin toss."
+          }
+        ],
+        "multi_team": {
+          "restart_at": "size_appropriate_restart",
+          "steps": [
+            {
+              "step": "sub_group_record",
+              "params": {},
+              "when": "round_robin_among_tied",
+              "cites": "Multi 1: 'Head-to-head results, based on the best cumulative winning percentage among the tied teams. IF EVERY TIED TEAM HAS NOT PLAYED ONE ANOTHER, THE PROCESS MOVES TO THE NEXT CRITERION.' No sweep clause of any kind, which is why no sweep_in_out step follows -- unlike every other multi-team chain here."
+            },
+            {
+              "step": "common_opponents_record",
+              "params": {
+                "min_sample": 2
+              },
+              "cites": "Multi 2: Winning percentage against all common Conference opponents."
+            },
+            {
+              "step": "vs_placed_opponents",
+              "params": {
+                "direction": "descending",
+                "tied_opponent_handling": "combine",
+                "exhaust_all_opponents": true
+              },
+              "cites": "Multi 3: Record against the next-highest placed common opponent, proceeding through the standings, with the collective-tied-group sub-rule."
+            },
+            {
+              "step": "opponents_cumulative_conf_pct",
+              "params": {
+                "ignore_opponent_count_mismatch": false
+              },
+              "cites": "Multi 4: Combined Conference winning percentage of Conference opponents."
+            },
+            {
+              "step": "external_ranking",
+              "params": {
+                "min_conference_games": 4
+              },
+              "cites": "Multi 5: Highest ranking in the SportSource Analytics Team Rating Score."
+            },
+            {
+              "step": "random_draw",
+              "params": {},
+              "cites": "Multi 6: Coin toss."
+            }
+          ],
+          "eliminated_teams_locked": true
+        }
+      }
+    ],
+    "Conference USA": [
+      {
+        "season_min": 2024,
+        "season_max": null,
+        "provenance": "primary_source",
+        "source_file": "docs/conference-tiebreakers/source-rules/cusa.txt",
+        "notes": "Transcribed from cusa.txt, which is undated. SEASON FLOOR 2024 is a judgement call, not a statement in the source: schedule_standings.QUALIFYING_CHAMPIONSHIP_CONFERENCES records CUSA as a single-division top-2 conference, and 2024 is the realignment season after which that is safely true. Earlier seasons resolve to no rules and fall back. TIE DEFINITION: section C is not a step but a definition of who counts as tied, and it is CUSA's own -- 'within one conference win from the team(s) with the highest conference winning percentage AND has an equal number of losses', for teams that played an unequal number of conference games. That is a THIRD distinct rule, different from the ACC's 'same wins OR same losses' and from plain win-percentage equality. Recorded as tie_definition 'cusa_within_one_win'; like the ACC's, the GROUPING it implies is the caller's to build (see artifacts/tiebreaker_engine.py LIMITS), not the engine's. Section B's whole procedure is also prefaced 'provided all teams played an equal number of conference games', which section C is the escape hatch for. MULTI-TEAM STEP 1 IS AN INTERPRETATION: cusa.txt states one chain for both group sizes and never says what 'head-to-head' means for three or more teams. See that step's cites.",
+        "tie_definition": "cusa_within_one_win",
+        "two_team": [
+          {
+            "step": "head_to_head",
+            "params": {},
+            "cites": "B.1: Head-to-Head Competition -- winner of the head-to-head is selected."
+          },
+          {
+            "step": "common_opponents_record",
+            "params": {
+              "min_sample": 2
+            },
+            "cites": "B.2: Winning Percentage Against Common Conference Opponents."
+          },
+          {
+            "step": "vs_placed_opponents",
+            "params": {
+              "direction": "descending",
+              "tied_opponent_handling": "combine",
+              "exhaust_all_opponents": true,
+              "advance_on_unequal_games": true
+            },
+            "cites": "B.3: Record Against the Team(s) with the Best Conference Record, 'proceeding downward through the standings until the tie is broken'. Section D supplies both sub-rules: records are evaluated COLLECTIVELY against a tied group, and 'if the tied teams have the same record OR PLAYED AN UNEQUAL NUMBER OF GAMES against the teams within the tied group, immediately advance to the team(s) with the next highest conference winning percentage' -- the latter is advance_on_unequal_games, which CUSA alone states."
+          },
+          {
+            "step": "external_ranking",
+            "params": {
+              "min_conference_games": 4
+            },
+            "cites": "B.4: 'Average Computer Ranking: Higher average ranking across Connelly SP+, SportSource Analytics, ESPN SOR, and KPI Rankings.' Substituted by this project's own rating per K6; the AVERAGING of four services collapses to our single rating. NOTE THE POSITION -- step 4, BEFORE opponents' cumulative win percentage at step 5, which is the reverse of every Power 4 conference."
+          },
+          {
+            "step": "opponents_cumulative_conf_pct",
+            "params": {
+              "ignore_opponent_count_mismatch": false
+            },
+            "cites": "B.5: Cumulative Conference Winning Percentage of All Conference Opponents."
+          },
+          {
+            "step": "random_draw",
+            "params": {},
+            "cites": "B.6: Coin Toss conducted by the Commissioner or designee."
+          }
+        ],
+        "multi_team": {
+          "restart_at": "size_appropriate_restart",
+          "steps": [
+            {
+              "step": "sub_group_record",
+              "params": {},
+              "when": "round_robin_among_tied",
+              "cites": "B.1 applied to a group. cusa.txt gives ONE six-step chain for both group sizes (section D only governs how a tied GROUP encountered in the standings is compared, and says a broken multi-team tie restarts 'again at step #1'), so 'Head-to-Head Competition' must be read for a group of 3+. INTERPRETATION, not transcription: read as intra-group record gated on a complete round robin, the reading five other conferences state explicitly. No sweep clause appears in cusa.txt, so none is configured -- the same shape as the Pac-12."
+            },
+            {
+              "step": "common_opponents_record",
+              "params": {
+                "min_sample": 2
+              },
+              "cites": "B.2: Winning Percentage Against Common Conference Opponents."
+            },
+            {
+              "step": "vs_placed_opponents",
+              "params": {
+                "direction": "descending",
+                "tied_opponent_handling": "combine",
+                "exhaust_all_opponents": true,
+                "advance_on_unequal_games": true
+              },
+              "cites": "B.3: Record Against the Team(s) with the Best Conference Record, 'proceeding downward through the standings until the tie is broken'. Section D supplies both sub-rules: records are evaluated COLLECTIVELY against a tied group, and 'if the tied teams have the same record OR PLAYED AN UNEQUAL NUMBER OF GAMES against the teams within the tied group, immediately advance to the team(s) with the next highest conference winning percentage' -- the latter is advance_on_unequal_games, which CUSA alone states."
+            },
+            {
+              "step": "external_ranking",
+              "params": {
+                "min_conference_games": 4
+              },
+              "cites": "B.4: 'Average Computer Ranking: Higher average ranking across Connelly SP+, SportSource Analytics, ESPN SOR, and KPI Rankings.' Substituted by this project's own rating per K6; the AVERAGING of four services collapses to our single rating. NOTE THE POSITION -- step 4, BEFORE opponents' cumulative win percentage at step 5, which is the reverse of every Power 4 conference."
+            },
+            {
+              "step": "opponents_cumulative_conf_pct",
+              "params": {
+                "ignore_opponent_count_mismatch": false
+              },
+              "cites": "B.5: Cumulative Conference Winning Percentage of All Conference Opponents."
+            },
+            {
+              "step": "random_draw",
+              "params": {},
+              "cites": "B.6: Coin Toss conducted by the Commissioner or designee."
+            }
+          ],
+          "eliminated_teams_locked": true
         }
       }
     ]

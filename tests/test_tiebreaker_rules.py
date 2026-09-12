@@ -92,9 +92,16 @@ def test_all_config_conference_keys_are_raw_conference_values():
         )
 
 
-def test_real_config_loads_and_covers_all_four_power_four_conferences():
+def test_real_config_covers_the_power_four_and_never_the_independents():
+    """Written to stay true as Group of 6 conferences are transcribed, rather than pinning an
+    exact set that every addition would have to edit. Two things must hold permanently: the four
+    Power 4 conferences are configured, and FBS Independents never is -- it is not a conference,
+    has no championship game, and compute_team_records sets its conf_wins to None, so a rule set
+    for it could never be reached."""
     cfg = load_conference_rules(known_step_names=KNOWN_STEPS)
-    assert set(cfg.conferences) == {"SEC", "Big 12", "Big Ten", "ACC"}
+    configured = set(cfg.conferences)
+    assert {"SEC", "Big 12", "Big Ten", "ACC"} <= configured
+    assert "FBS Independents" not in configured
 
 
 # --- rules_for / ACC era lookup (AC9) ----------------------------------------------------------
@@ -344,19 +351,46 @@ def test_invalid_tie_definition_is_rejected():
         _validate(cfg)
 
 
-def test_acc_entries_carry_the_non_default_tie_definition():
-    """K9 correction: the ACC's 2026-onward tie definition is NOT plain win_pct equality --
-    this must be recorded, and the real config must actually carry it."""
+# A non-default tie definition is a claim that the conference's own text defines "tied" as
+# something other than equal conference win percentage. Three conferences do, and they disagree
+# with each other, so each is listed explicitly here: adding a row is a deliberate act, and
+# anything NOT listed must stay at the K9-compatible default.
+EXPECTED_NON_DEFAULT_TIE_DEFINITIONS = {
+    # acc.txt section 1: best win percentage, PLUS any team on an alternate number of conference
+    # games with the same number of wins OR the same number of losses. 2026 entry only.
+    ("ACC", 2026): "acc_alternate_games",
+    # cusa.txt section C: unequal conference games played, WITHIN ONE conference win of the
+    # leader, AND an equal number of losses.
+    ("Conference USA", 2024): "cusa_within_one_win",
+}
+
+
+def test_non_default_tie_definitions_appear_only_where_the_source_states_one():
+    """K9 correction, generalised. Plan K9 assumed the engine is only ever handed teams equal on
+    conference win percentage; three conferences define "tied" differently, and each definition
+    is its own rule. This pins the non-default values to exactly the eras whose text supports
+    them, so one cannot spread to a conference by copy-paste."""
     cfg = load_conference_rules(known_step_names=KNOWN_STEPS)
-    acc_2026 = rules_for(cfg, "ACC", 2026)
-    assert acc_2026.tie_definition == "acc_alternate_games"
-    # Every non-ACC conference (and the ACC's own pre-2026 entry) stays at the K9-compatible
-    # default, so the correction is scoped to exactly where the source text supports it.
     for conference, rule_sets in cfg.conferences.items():
         for rs in rule_sets:
-            if conference == "ACC" and rs.season_min == 2026:
-                continue
-            assert rs.tie_definition == "win_pct"
+            expected = EXPECTED_NON_DEFAULT_TIE_DEFINITIONS.get(
+                (conference, rs.season_min), "win_pct"
+            )
+            assert rs.tie_definition == expected, (
+                f"{conference} {rs.season_min}-{rs.season_max}: expected {expected!r}, "
+                f"got {rs.tie_definition!r}"
+            )
+
+
+def test_the_acc_and_cusa_definitions_are_actually_distinct_values():
+    """They are different rules and must not collapse to one value -- the ACC's is wins-or-losses,
+    CUSA's is within-one-win-and-equal-losses."""
+    cfg = load_conference_rules(known_step_names=KNOWN_STEPS)
+    acc = rules_for(cfg, "ACC", 2026).tie_definition
+    cusa = rules_for(cfg, "Conference USA", 2025).tie_definition
+    assert acc == "acc_alternate_games"
+    assert cusa == "cusa_within_one_win"
+    assert acc != cusa
 
 
 def test_tie_definition_defaults_to_win_pct_when_absent():
@@ -508,9 +542,9 @@ def test_known_steps_matches_step_registry_if_present():
 
 # --- The round-robin / sweep pair, per source text ---------------------------------------------
 
-def test_every_multi_team_chain_opens_with_the_round_robin_sweep_pair():
-    """Each conference's multi-team chain opens with an intra-group record measure, and all four
-    source texts split it into two conditional branches rather than one step.
+def test_every_multi_team_chain_opens_with_a_round_robin_gated_intra_group_record():
+    """Universal across all ten documents: the first multi-team step is an intra-group record
+    measure, and it applies only when the tied teams all played one another.
 
     This exists because the first transcription collapsed the Big Ten's and Big 12's opening step
     to `sweep_in_out` alone. Both texts head that step "Winning percentage in games among the
@@ -518,6 +552,10 @@ def test_every_multi_team_chain_opens_with_the_round_robin_sweep_pair():
     other" (bigten.txt:43-48, big12.txt:38-43). Encoding only the sub-clauses silently deletes the
     complete-round-robin case, where the rule is to rank by record within the group -- a tie
     resolving differently from what the conference published, with nothing to show it happened.
+
+    The gate matters independently: mountainwest.txt's multi step 1 says a partially-played group
+    "SHALL REMAIN TIED", which is why the real 2025 four-way tie was not decided on UNLV's 0-2
+    intra-group record. An ungated intra-group ranking would have placed UNLV last.
     """
     cfg = load_conference_rules(known_step_names=KNOWN_STEPS)
     for conference, rule_sets in cfg.conferences.items():
@@ -526,8 +564,118 @@ def test_every_multi_team_chain_opens_with_the_round_robin_sweep_pair():
             era = f"{conference} {rs.season_min}-{rs.season_max}"
             assert steps[0].step == "sub_group_record", era
             assert steps[0].when == "round_robin_among_tied", era
-            assert steps[1].step == "sweep_in_out", era
+
+
+# Whether a conference publishes a sweep clause at all is a claim about its source text, so the
+# answer is listed rather than inferred from the config it is meant to check. Five documents
+# describe a lone sweeper advancing; sec.txt and acc.txt also demote a total-loser; pac12.txt and
+# cusa.txt state no sweep clause of any kind.
+CONFERENCES_WITH_A_SWEEP_STEP = {
+    "SEC", "ACC", "Big 12", "Big Ten", "Mid-American",
+}
+CONFERENCES_WITHOUT_A_SWEEP_STEP = {
+    "Pac-12",            # pac12.txt multi 1: "the process moves to the next criterion"
+    "Conference USA",    # cusa.txt states one chain and no sweep clause anywhere
+}
+
+
+def test_a_sweep_step_is_present_exactly_where_the_source_publishes_one():
+    """Guards both directions. Omitting a sweep a conference does publish silently deletes a rule;
+    ADDING one a conference does not publish invents a rule that can eliminate a real team from a
+    tie. The shape assertions in the next test cannot catch the second case, because an invented
+    step would sit in exactly the right position."""
+    cfg = load_conference_rules(known_step_names=KNOWN_STEPS)
+    for conference, rule_sets in cfg.conferences.items():
+        for rs in rule_sets:
+            era = f"{conference} {rs.season_min}-{rs.season_max}"
+            has_sweep = any(st.step == "sweep_in_out" for st in rs.multi_team.steps)
+            if conference in CONFERENCES_WITH_A_SWEEP_STEP:
+                assert has_sweep, f"{era}: source publishes a sweep clause but the config omits it"
+            elif conference in CONFERENCES_WITHOUT_A_SWEEP_STEP:
+                assert not has_sweep, (
+                    f"{era}: source states NO sweep clause, but the config has one -- that "
+                    f"invents a rule which can eliminate a team from a tie"
+                )
+            else:
+                raise AssertionError(
+                    f"{conference} is in neither sweep list; add it to one after reading its "
+                    f"source file, rather than leaving the question unasked"
+                )
+
+
+def test_a_sweep_step_when_present_is_second_and_gated_to_the_other_branch():
+    """Whether a sweep step exists at all is per-conference, because the texts give THREE
+    readings: the SEC and ACC promote a sweeper and demote a total-loser; the Big 12, Big Ten and
+    MAC publish only the promote half; the Pac-12 and CUSA state no sweep clause whatsoever, so
+    their configs correctly omit the step rather than inventing it.
+
+    What is invariant is the SHAPE when one is present: immediately after the round-robin step,
+    gated to the complementary branch. Otherwise the two steps could both fire, or neither."""
+    cfg = load_conference_rules(known_step_names=KNOWN_STEPS)
+    seen_with, seen_without = [], []
+    for conference, rule_sets in cfg.conferences.items():
+        for rs in rule_sets:
+            steps = rs.multi_team.steps
+            era = f"{conference} {rs.season_min}-{rs.season_max}"
+            sweeps = [i for i, st in enumerate(steps) if st.step == "sweep_in_out"]
+            if not sweeps:
+                seen_without.append(era)
+                continue
+            assert len(sweeps) == 1, f"{era}: more than one sweep step"
+            assert sweeps[0] == 1, f"{era}: sweep step is at index {sweeps[0]}, expected 1"
             assert steps[1].when == "not_round_robin_among_tied", era
+            seen_with.append(era)
+    # Both readings must actually be represented, or this test is vacuous in one direction.
+    assert seen_with, "no conference configures a sweep step; the assertions above never ran"
+    assert seen_without, "no conference omits the sweep step; the omission path is untested"
+
+
+def test_sweep_sides_is_promote_only_wherever_the_text_omits_the_demote_half():
+    """Only sec.txt and acc.txt state both halves. Five other documents describe a lone sweeper
+    advancing and say nothing about a team that lost to everyone, so demoting one would order
+    those conferences by a rule they never wrote down."""
+    both_sides_conferences = {"SEC", "ACC"}
+    cfg = load_conference_rules(known_step_names=KNOWN_STEPS)
+    for conference, rule_sets in cfg.conferences.items():
+        for rs in rule_sets:
+            for st in rs.multi_team.steps:
+                if st.step != "sweep_in_out":
+                    continue
+                sides = st.params.get("sides", "both")
+                era = f"{conference} {rs.season_min}-{rs.season_max}"
+                if conference in both_sides_conferences:
+                    assert sides == "both", era
+                else:
+                    assert sides == "promote_only", era
+
+
+def test_pac12_rules_do_not_reach_the_two_team_pac12_seasons():
+    """SEASON FLOOR 2026, and it is load-bearing rather than cosmetic. pac12.txt is explicitly the
+    2026 policy for a rebuilt eight-team conference on a seven-game schedule. In 2024 and 2025 the
+    Pac-12 was Oregon State and Washington State ALONE -- two members, no championship game -- so
+    applying this chain to those seasons would run a conference procedure against a conference
+    that did not exist in that form."""
+    cfg = load_conference_rules(known_step_names=KNOWN_STEPS)
+    assert rules_for(cfg, "Pac-12", 2026) is not None
+    assert rules_for(cfg, "Pac-12", 2025) is None
+    assert rules_for(cfg, "Pac-12", 2024) is None
+
+
+def test_no_rule_set_is_open_ended_backwards():
+    """Every conference needs a defensible earliest season. Seven of the ten source documents are
+    undated, and the grid renders seasons back to 2014, when most of these conferences had
+    divisions and different procedures that nobody has supplied. An open-ended floor would apply
+    today's chain to an era we have not read; resolving to no rules and falling back is the
+    honest alternative."""
+    cfg = load_conference_rules(known_step_names=KNOWN_STEPS)
+    for conference, rule_sets in cfg.conferences.items():
+        earliest = min(
+            (rs.season_min if rs.season_min is not None else -1) for rs in rule_sets
+        )
+        assert earliest > 0, (
+            f"{conference} has a rule set with no season_min; give it a floor and record the "
+            f"reasoning in that entry's notes"
+        )
 
 
 def test_acc_pre_amendment_era_starts_at_the_first_divisionless_season():
