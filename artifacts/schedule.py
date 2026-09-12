@@ -12,9 +12,9 @@ canonical column, and publishes the resulting JSON to R2 under a
 season-scoped key layout (schedule/{season}/latest.json + schedule/index.json
 -- NOT rankings' per-week snapshot scheme).
 
-See docs/schedule-grid/plan.yaml (contracts.interfaces, T4b task block) and
-docs/schedule-grid/handoffs/T4b-handoff.yaml for the full spec this module
-implements.
+The coordination artifacts this module was specified from have been removed with
+their feature's scratch directory; the contract they described is the public
+surface below plus tests/test_season_schedule_publish.py, which pins it.
 
 EXCEPTION DISCIPLINE: every public function here follows artifacts/r2.py's
 exact never-raise, log-and-continue contract -- a schedule-artifact publish
@@ -149,7 +149,8 @@ _CFP_SLOT_IDS = {slot_id for slot_id, _ in CFP_SLOTS}
 # the cfp-r1-bowls branch of _build_team_weeks. Previously this slot NEVER fell through to a bye
 # at all (it unconditionally emitted the bowl-eligibility placeholder, reading as merely
 # "Eligible" -- indistinguishable from, and arguably worse than, a team that missed the playoff
-# entirely). See docs/schedule-grid/implementation-report.yaml:119 for where this was deferred.
+# entirely). Deliberately deferred when the grid first shipped and added later; the behaviour
+# it replaced is described above so the reason survives without the planning note.
 CFP_BYE_STATUS = "cfp_bye"
 
 

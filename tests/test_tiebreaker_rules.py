@@ -1,5 +1,5 @@
 """Tests for artifacts/tiebreaker_rules.py: the conference-tiebreaker config schema, loader and
-load-time validator (docs/conference-tiebreakers/plan.yaml task T1).
+load-time validator.
 
 Every validation failure the loader is meant to catch gets its own test asserting the error
 message names the offending thing -- a key, a step, a conference, a season range -- not just

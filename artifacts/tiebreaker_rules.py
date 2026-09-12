@@ -1,6 +1,6 @@
 """
 Schema, loader and load-time validator for the per-conference tiebreaker configuration
-(docs/conference-tiebreakers/, task T1).
+(see docs/conference-tiebreaker-rules/ for the primary-source text every rule set cites).
 
 WHY JSON, NOT YAML (deviation from plan K1)
 --------------------------------------------

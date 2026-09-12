@@ -1,4 +1,4 @@
-"""Tests for artifacts/tiebreaker_steps.py (T2 of docs/conference-tiebreakers/plan.yaml): the
+"""Tests for artifacts/tiebreaker_steps.py: the
 shared operation library for conference championship tiebreakers.
 
 Every primitive is tested in isolation with synthetic rows -- no live DB, no real 2025 games

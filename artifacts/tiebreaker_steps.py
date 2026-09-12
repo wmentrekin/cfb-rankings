@@ -1,5 +1,5 @@
 """
-tiebreaker_steps.py -- T2 of docs/conference-tiebreakers/plan.yaml: the shared, generic
+tiebreaker_steps.py -- the shared, generic
 operation library for conference championship tiebreakers.
 
 SCOPE (hard, per the T2 handoff): this module implements the ten step PRIMITIVES only. It knows

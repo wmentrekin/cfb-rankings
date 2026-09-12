@@ -1,5 +1,5 @@
 """
-tiebreaker_engine.py -- T3 of docs/conference-tiebreakers/plan.yaml: the recursive peel-off
+tiebreaker_engine.py -- the recursive peel-off
 driver that turns a conference's configured step chain into an ordered partition of a tied group.
 
 WHAT THIS MODULE IS FOR

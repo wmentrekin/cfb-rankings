@@ -3,7 +3,7 @@ schedule_standings.py -- pure-function "brains" module for the Season Grid
 feature's computed columns (conference-championship and bowl-eligibility
 status), plus the record/conf_record tallies both depend on.
 
-SCOPE / BOUNDARY (hard, per docs/schedule-grid/plan.yaml T4a task block):
+SCOPE / BOUNDARY (hard):
   - This module does NO DB or HTTP I/O of its own. Every public function
     here takes `schedule_grid` rows (already fetched by the caller -- T4b)
     as plain dicts, plus a `season`, and returns plain Python data
@@ -279,8 +279,7 @@ def compute_conference_championship_status(
     """
     Compute conference-championship status (possible/eliminated/clinched)
     per team, for qualifying conferences only. Implements the exact
-    conservative-by-construction algorithm specified in
-    docs/schedule-grid/plan.yaml's key_decisions -- this is NOT a
+    conservative-by-construction algorithm described below -- this is NOT a
     simulation/brute-force search, and deliberately does not attempt
     joint-feasibility reasoning across teams' remaining games against each
     other. Both tests are O(N log N) per pool (a sort).

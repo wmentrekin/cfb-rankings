@@ -95,7 +95,7 @@ Current bias:
 - ~~what exact artifact shape should be published for the site~~ -- **resolved**: `{season, week, generated_at_utc, rankings:[{rank, team, conference, record, rating, delta}]}`, see `artifacts/r2.py`
 - ~~where should artifacts live long-term~~ -- **resolved**: Cloudflare R2
 - should the pipeline still write to database tables once the site no longer depends on them -- still yes for now: Supabase remains the operational DB the pipeline/model run against; only the public read path moved off it
-- how much historical season/week browsing should the public site support at launch -- open, see `docs/cfb-site-migration/requirements.yaml`
+- how much historical season/week browsing should the public site support at launch -- open
 - ~~whether GitHub Actions should publish directly into `personal-site`, to shared storage, or to both~~ -- **resolved**: shared storage (R2), not committed into `personal-site`
 
 ## Guidance For Future Agents
