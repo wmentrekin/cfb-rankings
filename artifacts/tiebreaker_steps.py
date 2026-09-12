@@ -950,6 +950,15 @@ def overall_win_pct(
     Both `fcs_win_cap` and `fbs_only` need ctx.non_fbs_teams. When it was not supplied (None, as
     opposed to an empty set) the step returns None and warns, rather than reporting an unadjusted
     percentage as if it had been adjusted -- the same contract as total_wins_capped.
+
+    WHAT THE ROSTER COVERS, PRECISELY. ctx.non_fbs_teams comes from the `non_fbs_teams` table,
+    which database/get_non_fbs_teams.py fills from CFBD's plain /teams endpoint keeping every
+    classification EXCEPT fbs -- so fcs, ii, ii/iii and iii are all in it. What is NOT in it is a
+    school CFBD does not return for the season at all, an NAIA opponent being the realistic case.
+    Such a team is absent from the roster and therefore counts as FBS here: its win would survive
+    `fbs_only` and would not be capped by `fcs_win_cap`. There is no data available to this module
+    that would distinguish it, so the gap is recorded rather than papered over. It is narrow --
+    FBS teams schedule outside Division I rarely, and CFBD usually lists those opponents anyway.
     """
     if (fcs_win_cap is not None or fbs_only) and ctx.non_fbs_teams is None:
         logger.warning(

@@ -1302,15 +1302,21 @@ def _build_tiebreak_inputs(
         if record is not None:
             conf_records[entry["team"]] = (record["wins"], record["losses"])
 
-    def _pct(team: str) -> float:
+    def _pct_and_played(team: str) -> Tuple[float, int]:
         wins, losses = conf_records.get(team, (0, 0))
         played = wins + losses
-        return (wins / played) if played else 0.5
+        # The 0.5 sentinel for an unplayed record matches _sort_conference_teams, but on its own
+        # it would seat a team that has played NO conference games in mid-table -- ahead of every
+        # sub-.500 team -- in the order vs_placed_opponents walks. The main sort key guards that
+        # with a `-_conf_played` term and this must too, or "the next highest-placed team in the
+        # standings" means something different here than it does in the standings themselves.
+        return ((wins / played) if played else 0.5, 1 if played else 0)
 
-    # Name is the secondary term purely for determinism -- frozen_order must not vary between
-    # runs over identical data, or `vs_placed_opponents` becomes non-reproducible.
+    # Name is the final term purely for determinism -- frozen_order must not vary between runs
+    # over identical data, or `vs_placed_opponents` becomes non-reproducible.
     frozen_order = sorted(
-        (entry["team"] for entry in entries), key=lambda t: (-_pct(t), t)
+        (entry["team"] for entry in entries),
+        key=lambda t: (-_pct_and_played(t)[0], -_pct_and_played(t)[1], t),
     )
 
     # Present for every member, including a None division for a conference that plays none, so
@@ -1435,7 +1441,11 @@ def _sort_conference_teams(
         # a team the conference win percentage separated on its own -- the common case -- and for
         # every team in a conference with no configured rules. Unlike the underscore-prefixed
         # scratch fields below, this one is NOT stripped: it is published.
-        e.setdefault("resolved_by", None)
+        #
+        # Assigned, not setdefault: this function is idempotent over the same entry dicts, and a
+        # setdefault would carry a label from a previous call into a sort that no longer reaches
+        # that step -- publishing a reason the current standings were not decided by.
+        e["resolved_by"] = None
         e["_placement_pct"] = _placement_pct(e, rows, season, champ_game_ids)
         # Whether any conference game has been played, used only as a sort tiebreak below.
         e["_conf_played"] = bool(e["conf_record"] and (e["conf_record"]["wins"] + e["conf_record"]["losses"]) > 0)

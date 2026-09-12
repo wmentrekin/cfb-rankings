@@ -288,6 +288,54 @@ def test_opponent_records_from_outside_the_tied_group_can_decide_a_tie():
     assert by_team["Alpha"]["resolved_by"] == "opponents_cumulative_conf_pct"
 
 
+def test_frozen_order_seats_a_team_with_no_conference_games_last():
+    """vs_placed_opponents walks frozen_order as "the standings", so frozen_order has to agree
+    with the standings about where an unplayed team sits. An unplayed 0-0 record scores the 0.5
+    sentinel, which on percentage alone would seat it ahead of every sub-.500 team -- mid-table
+    in the order the step traverses. The main sort key guards that with a played/unplayed term
+    and this must too."""
+    # The unplayed team is named so it sorts FIRST alphabetically. That matters: with the
+    # played/unplayed term removed, it ties the .500 team on percentage and the name tiebreak
+    # puts it ahead -- so a fixture whose unplayed team sorted late alphabetically would pass
+    # either way and prove nothing.
+    entries = [
+        _entry("Strong", (9, 0), (5, 1)),         # .833
+        _entry("Weak", (2, 7), (1, 4)),           # .200
+        _entry("Middling", (5, 4), (2, 2)),       # .500, genuinely played
+        _entry("Aaa Unplayed", (3, 0), (0, 0)),   # sentinel .500, has played nobody
+    ]
+    order = _build_tiebreak_inputs(CONFIGURED, entries, SEASON, None).frozen_order
+    assert order[0] == "Strong", order
+    assert order.index("Middling") < order.index("Aaa Unplayed"), order
+    assert order.index("Aaa Unplayed") < order.index("Weak"), order
+
+
+def test_resolved_by_does_not_survive_a_second_sort_of_the_same_entries():
+    """The function is idempotent over the same entry dicts. A label left from an earlier call
+    would publish a reason the current standings were not decided by -- so the field is assigned,
+    not setdefault-ed.
+
+    First pass: a real tie that head-to-head settles. Second pass: the SAME dicts after one
+    team's conference record changes so they are no longer tied at all -- no tie means no step
+    runs and nothing assigns the field, so only the reset can clear it. Re-running with an empty
+    row list would not discriminate, because a tie with no games still reaches the engine and its
+    fallback overwrites the label anyway."""
+    entries = [_entry("A", (8, 1), (3, 1)), _entry("B", (7, 2), (3, 1))]
+    rows = _game("B", 27, "A", 20)
+    tiebreak = _build_tiebreak_inputs(CONFIGURED, entries, SEASON, None)
+    first = _sort_conference_teams(entries, rows, SEASON, None, tiebreak)
+    assert {e["resolved_by"] for e in first} == {"head_to_head"}
+
+    for entry in entries:
+        if entry["team"] == "A":
+            entry["conf_record"] = {"wins": 1, "losses": 3}      # no longer tied with B
+    second = _sort_conference_teams(entries, rows, SEASON, None, tiebreak)
+    assert all(e["resolved_by"] is None for e in second), (
+        f"a label from the previous sort survived into one where no step ran: "
+        f"{[(e['team'], e['resolved_by']) for e in second]}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Divisions -- the Sun Belt is the only conference of the ten that still has them
 # ---------------------------------------------------------------------------
