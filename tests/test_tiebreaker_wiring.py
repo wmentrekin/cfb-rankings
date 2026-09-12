@@ -35,17 +35,17 @@ from artifacts.schedule import (  # noqa: E402
 
 SEASON = 2025
 
-# A conference with primary-source rules, and one with none supplied yet. If the second ever
-# gains a rule set, this constant is the one thing to change -- and the test that asserts it has
-# no rules will fail first and say so. It has already done that job once: this was
-# "Mountain West" until that conference was transcribed.
+# A conference with primary-source rules, and one without. ALL TEN FBS CONFERENCES ARE NOW
+# CONFIGURED, so the unconfigured case can no longer borrow a real conference -- it did twice
+# (Mountain West, then Sun Belt) and each transcription broke these tests, which is what the
+# assertion below exists to make obvious rather than mysterious.
 #
-# The Sun Belt is the last one left, and it needs three measures nothing else asks for
-# (divisional record, non-divisional common opponents, overall percentage against FBS teams
-# only). When it lands, every conference will be configured and these tests must instead build
-# an unconfigured conference by name rather than borrowing a real one.
+# The pre-engine path is NOT dead code, which is why it is still tested: it is the live path for
+# any season outside a conference's configured era -- every season before 2023 for most of them,
+# and the whole 2014-2022 divisional era -- and for FBS Independents, which have no conference
+# championship and whose conf_record is None.
 CONFIGURED = "SEC"
-UNCONFIGURED = "Sun Belt"
+UNCONFIGURED = "Not A Real Conference"
 
 
 def _entry(team, overall, conf, rank=None):
@@ -93,6 +93,15 @@ def test_the_two_conferences_this_module_assumes_are_as_assumed():
     assert unconfigured.rules is None, (
         f"{UNCONFIGURED} now has rules; update this module's UNCONFIGURED constant"
     )
+
+
+def test_a_configured_conference_still_falls_back_outside_its_era():
+    """The realistic unconfigured case now that all ten conferences have rules: a real conference
+    asked about a season before its rule set begins. 2014-2022 is the divisional era for most of
+    them and no document covers it, so those seasons must still take the pre-engine path."""
+    entries = [_entry("A", (1, 0), (1, 0))]
+    assert _build_tiebreak_inputs(CONFIGURED, entries, 2015, None).rules is None
+    assert _build_tiebreak_inputs(CONFIGURED, entries, SEASON, None).rules is not None
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +286,57 @@ def test_opponent_records_from_outside_the_tied_group_can_decide_a_tie():
     by_team = {e["team"]: e for e in out}
     assert by_team["Zeta"]["resolved_by"] == "opponents_cumulative_conf_pct"
     assert by_team["Alpha"]["resolved_by"] == "opponents_cumulative_conf_pct"
+
+
+# ---------------------------------------------------------------------------
+# Divisions -- the Sun Belt is the only conference of the ten that still has them
+# ---------------------------------------------------------------------------
+def _div_entry(team, overall, conf, division, rank=None):
+    entry = _entry(team, overall, conf, rank)
+    entry["division"] = division
+    return entry
+
+
+def test_divisions_are_built_for_every_member_including_a_none():
+    """Three of the Sun Belt's steps are division-scoped and all of them decline without a map,
+    so the map has to reach the context. A conference that plays no divisions still gets an entry
+    per team with value None, so a scoped step can tell "no divisions here" from "this team is
+    missing from the map"."""
+    entries = [
+        _div_entry("East1", (5, 4), (3, 2), "East"),
+        _div_entry("West1", (5, 4), (3, 2), "West"),
+        _entry("NoDivision", (5, 4), (3, 2)),          # no "division" key at all
+    ]
+    tiebreak = _build_tiebreak_inputs("Sun Belt", entries, SEASON, None)
+    assert tiebreak.divisions == {"East1": "East", "West1": "West", "NoDivision": None}
+
+
+def test_sun_belt_divisional_record_decides_a_tie_through_the_wiring():
+    """End-to-end for the one conference with divisions: two East teams level on ALL conference
+    games -- which is how the Sun Belt defines a division champion -- separated by their
+    DIVISIONAL records at step 2. If the division map failed to reach the context, that step
+    would decline and the chain would fall through to a different answer."""
+    entries = [
+        _div_entry("Ateam", (7, 2), (2, 1), "East"),
+        _div_entry("Bteam", (7, 2), (2, 1), "East"),
+        _div_entry("EastFoe1", (4, 5), (1, 2), "East"),
+        _div_entry("EastFoe2", (4, 5), (1, 2), "East"),
+        _div_entry("WestFoe", (6, 3), (3, 0), "West"),
+    ]
+    rows = (
+        _game("Ateam", 21, "EastFoe1", 14) + _game("Ateam", 21, "EastFoe2", 14)
+        + _game("WestFoe", 21, "Ateam", 14)                 # Ateam: 2-0 East, 0-1 cross
+        + _game("Bteam", 21, "EastFoe1", 14) + _game("EastFoe2", 21, "Bteam", 14)
+        + _game("Bteam", 21, "WestFoe", 14)                 # Bteam: 1-1 East, 1-0 cross
+    )
+    tiebreak = _build_tiebreak_inputs("Sun Belt", entries, SEASON, None)
+    # The Sun Belt sorts each division separately in the real pipeline; mirror that here.
+    east = [e for e in entries if e["division"] == "East"]
+    out = _sort_conference_teams(east, rows, SEASON, None, tiebreak)
+    order = [e["team"] for e in out]
+    assert order.index("Ateam") < order.index("Bteam"), order
+    by_team = {e["team"]: e for e in out}
+    assert by_team["Ateam"]["resolved_by"] == "divisional_record"
 
 
 # ---------------------------------------------------------------------------

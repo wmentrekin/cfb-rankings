@@ -49,7 +49,7 @@ sufficient (matching the existing _head_to_head_winner convention, which does th
 
 import itertools
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("cfb_lp")
@@ -74,6 +74,14 @@ class TiebreakContext:
                                                    # excluded by season_type and need no entry
                                                    # here. Read by the driver's overall-record
                                                    # fallback; see tiebreaker_engine.
+    divisions: Dict[str, Optional[str]] = field(default_factory=dict)
+                                                   # team -> its division name, or None for a
+                                                   # conference that plays none. Only the Sun Belt
+                                                   # still has divisions among the ten, and only
+                                                   # its chain reads this; an empty mapping means
+                                                   # "no division information", which the
+                                                   # division-scoped steps treat as no opinion
+                                                   # rather than as "everyone shares a division".
     non_fbs_teams: Optional[frozenset] = None      # school names in the `non_fbs_teams` table for
                                                    # this season -- the FCS/lower-division roster.
                                                    # None means NOT SUPPLIED (the caller did not
@@ -97,6 +105,25 @@ def _conf_game_rows(ctx: TiebreakContext, team: str) -> List[Dict[str, Any]]:
         and r.get("conference_game")
         and r.get("status") in ("win", "loss")
     ]
+
+
+def _division_of(ctx: TiebreakContext, team: str) -> Optional[str]:
+    return ctx.divisions.get(team)
+
+
+def _shared_division(ctx: TiebreakContext, tied: List[str]) -> Optional[str]:
+    """The division every tied team belongs to, or None if they differ or it is unknown.
+
+    The division-scoped steps only ever run on a group inside one division -- artifacts/schedule.py
+    sorts each division in its own call -- so a group spanning two divisions means the division
+    map is wrong or absent, and returning None makes the step decline instead of inventing a
+    comparison across divisions that no rule asks for.
+    """
+    divisions = {_division_of(ctx, team) for team in tied}
+    if len(divisions) != 1:
+        return None
+    only = divisions.pop()
+    return only if only is not None else None
 
 
 def _two_team_h2h(ctx: TiebreakContext, team_a: str, team_b: str) -> Optional[str]:
@@ -332,7 +359,7 @@ def sweep_in_out(
 # 4. common_opponents_record
 # ---------------------------------------------------------------------------
 def common_opponents_record(
-    tied: List[str], ctx: TiebreakContext, min_sample: int = 2, **params
+    tied: List[str], ctx: TiebreakContext, min_sample: int = 2, scope: str = "all", **params
 ) -> StepResult:
     """Win percentage against opponents faced by ALL tied teams (excluding the tied teams
     themselves). Returns None if the common set is smaller than `min_sample` (default 2).
@@ -340,13 +367,46 @@ def common_opponents_record(
     This gate is load-bearing and empirically justified (per task brief): the real 2025 ACC
     five-way tie had a common set of exactly one team (Syracuse, beaten by all five) -- a gate
     of 2 correctly skips this step and lets the NEXT step (opponents_cumulative_conf_pct)
-    decide, which is what actually happened. See test_common_opponents_record_acc_gate."""
+    decide, which is what actually happened. See test_common_opponents_record_acc_gate.
+
+    `scope` -- nine of the ten conferences say "all common conference opponents" and take the
+    default "all". The Sun Belt is the exception, because it is the only one that still plays
+    divisions: sunbelt.txt two-team step 4 asks for "combined highest winning percentage against
+    all COMMON NON-DIVISIONAL Conference opponents", a deliberately narrower set that exists
+    because its step 2 has already compared divisional records. `scope="non_divisional"` keeps
+    only common opponents OUTSIDE the tied teams' own division; `scope="divisional"` is the
+    complement, provided for symmetry.
+
+    Both scoped modes need ctx.divisions and a group that sits inside ONE division. Without
+    either the step returns None rather than silently falling back to "all", which would answer a
+    different question from the one the conference asked.
+    """
+    if scope not in ("all", "divisional", "non_divisional"):
+        raise ValueError(
+            f"common_opponents_record: unknown scope={scope!r}; expected 'all', 'divisional' "
+            "or 'non_divisional'"
+        )
     tied_set = set(tied)
     opp_sets = [
         {r.get("opponent") for r in _conf_game_rows(ctx, team) if r.get("opponent") not in tied_set}
         for team in tied
     ]
     common = set.intersection(*opp_sets) if opp_sets else set()
+
+    if scope != "all":
+        division = _shared_division(ctx, tied)
+        if division is None:
+            logger.warning(
+                "common_opponents_record: scope=%r needs a division for every tied team, but "
+                "season=%s conference=%s group=%s does not share one; skipping the step.",
+                scope, ctx.season, ctx.conference, tied,
+            )
+            return None
+        if scope == "divisional":
+            common = {o for o in common if _division_of(ctx, o) == division}
+        else:
+            common = {o for o in common if _division_of(ctx, o) != division}
+
     if len(common) < min_sample:
         return None
     pct: Dict[str, Optional[float]] = {}
@@ -380,6 +440,7 @@ def vs_placed_opponents(
     tied_opponent_handling: str = "combine",
     exhaust_all_opponents: bool = True,
     advance_on_unequal_games: bool = False,
+    standings_scope: str = "conference",
     **params,
 ) -> StepResult:
     """Record against the best-placed common Conference opponent, proceeding down
@@ -432,6 +493,13 @@ def vs_placed_opponents(
     rather than compared -- a 1-0 record and a 2-1 record against the same block are not treated
     as comparable percentages. Default False, so no other conference's chain changes.
 
+    `standings_scope` -- which standings the traversal walks. Nine conferences walk the conference
+    standings and take the default "conference". The Sun Belt walks its DIVISIONAL standings:
+    sunbelt.txt two-team step 3 is "each team's winning percentage vs the team occupying the next
+    highest position in the final DIVISIONAL standings". `standings_scope="divisional"` filters
+    ctx.frozen_order to the tied teams' own division before traversing it, and returns None when
+    they do not share one.
+
     APPENDIX B NOTE: sec.txt itself says Appendix B "contains ~25 worked examples... and should
     be transcribed into the test suite" -- but the supplied sec.txt file does NOT include that
     appendix's actual text, only a reference to its existence. No fixtures could be transcribed
@@ -442,6 +510,11 @@ def vs_placed_opponents(
     """
     if tied_opponent_handling not in ("head_to_head_then_combine", "combine"):
         raise ValueError(f"unknown tied_opponent_handling: {tied_opponent_handling!r}")
+    if standings_scope not in ("conference", "divisional"):
+        raise ValueError(
+            f"vs_placed_opponents: unknown standings_scope={standings_scope!r}; expected "
+            "'conference' or 'divisional'"
+        )
     direction = params.get("direction")
     if direction is not None and direction != "descending":
         # T1's loader (artifacts/tiebreaker_rules.py) allows an explicit `direction` param on
@@ -459,6 +532,19 @@ def vs_placed_opponents(
     common = set.intersection(*opp_sets) if opp_sets else set()
     if not common:
         return None
+
+    if standings_scope == "divisional":
+        division = _shared_division(ctx, tied)
+        if division is None:
+            logger.warning(
+                "vs_placed_opponents: standings_scope='divisional' needs a division for every "
+                "tied team, but season=%s conference=%s group=%s does not share one; skipping.",
+                ctx.season, ctx.conference, tied,
+            )
+            return None
+        common = {o for o in common if _division_of(ctx, o) == division}
+        if not common:
+            return None
 
     order = [t for t in ctx.frozen_order if t in common]
     order += sorted(common - set(order))  # defensive: a common opponent frozen_order omits
@@ -749,7 +835,50 @@ def random_draw(tied: List[str], ctx: TiebreakContext, **params) -> StepResult:
 
 
 # ---------------------------------------------------------------------------
-# 11. overall_win_pct
+# 11. divisional_record
+# ---------------------------------------------------------------------------
+def divisional_record(tied: List[str], ctx: TiebreakContext, **params) -> StepResult:
+    """Conference win percentage counting ONLY games against teams in the same division.
+
+    sunbelt.txt two-team step 2 and multi step 2: "the team with the highest overall DIVISIONAL
+    winning percentage shall be the division champion". The Sun Belt is the only one of the ten
+    conferences that still plays divisions, so this is the only chain that uses it.
+
+    IT IS NOT THE PRIMARY KEY, AND THAT IS THE WHOLE POINT. The same document defines a division
+    champion as "the team with the highest winning percentage in ALL CONFERENCE GAMES, BOTH
+    DIVISIONAL AND NON-DIVISIONAL" -- which is the conference record this project already sorts
+    by. So the divisional-only record is a genuinely separate, narrower measure used to break a
+    tie in the broader one, not a restatement of it.
+
+    Returns None when the tied teams do not share one division or the division map is absent,
+    for the same reason the scoped modes of common_opponents_record do: a cross-division
+    comparison answers a question no rule asked.
+    """
+    division = _shared_division(ctx, tied)
+    if division is None:
+        logger.warning(
+            "divisional_record: needs a division for every tied team, but season=%s "
+            "conference=%s group=%s does not share one; skipping the step.",
+            ctx.season, ctx.conference, tied,
+        )
+        return None
+
+    pct: Dict[str, Optional[float]] = {}
+    for team in tied:
+        wins = losses = 0
+        for row in _conf_game_rows(ctx, team):
+            if _division_of(ctx, row.get("opponent")) != division:
+                continue
+            if row["status"] == "win":
+                wins += 1
+            else:
+                losses += 1
+        pct[team] = (wins / (wins + losses)) if (wins + losses) else None
+    return _partition_by_value(tied, pct)
+
+
+# ---------------------------------------------------------------------------
+# 12. overall_win_pct
 # ---------------------------------------------------------------------------
 def overall_win_pct(
     tied: List[str],
@@ -837,7 +966,7 @@ def overall_win_pct(
 
 
 # ---------------------------------------------------------------------------
-# 12. conditional_external_ranking
+# 13. conditional_external_ranking
 # ---------------------------------------------------------------------------
 def _final_conference_week(ctx: TiebreakContext) -> Optional[int]:
     """The conference's last REGULAR-SEASON conference week this season, or None if it has none.
@@ -1021,4 +1150,5 @@ STEP_REGISTRY: Dict[str, Callable] = {
     "random_draw": random_draw,
     "conditional_external_ranking": conditional_external_ranking,
     "overall_win_pct": overall_win_pct,
+    "divisional_record": divisional_record,
 }

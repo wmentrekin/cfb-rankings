@@ -1001,6 +1001,123 @@
           "eliminated_teams_locked": true
         }
       }
+    ],
+    "Sun Belt": [
+      {
+        "season_min": 2023,
+        "season_max": null,
+        "provenance": "primary_source",
+        "source_file": "docs/conference-tiebreakers/source-rules/sunbelt.txt",
+        "notes": "THE ONLY CONFERENCE OF THE TEN THAT STILL PLAYS DIVISIONS, and the most demanding to express: it needs three measures nobody else asks for -- divisional record, common opponents restricted to NON-divisional opponents, and overall percentage against FBS teams only. All three are now shared primitives with parameters rather than Sun Belt-specific code, but only this chain uses them. THE PRIMARY KEY IS UNCHANGED. A division champion is 'the team with the highest winning percentage in ALL CONFERENCE GAMES, BOTH DIVISIONAL AND NON-DIVISIONAL', which is exactly the conference record this project already sorts by -- so the divisional-only record at step 2 is a narrower tiebreak within that, not a replacement for it. artifacts/schedule.py already sorts each division in its own call, so a tied group always sits inside one division, which is the precondition the division-scoped steps check. SEASON FLOOR 2023 is a judgement call, not a statement in the source, which is undated: 2023 is the season after the Sun Belt's most recent expansion settled at the fourteen members the document's own division lists name. Earlier seasons fall back. If the division membership in sunbelt.txt is confirmed for an earlier season, lower the floor. MULTI-TEAM STEP 1 IS GATED ON A ROUND ROBIN AND THE SOURCE DOES NOT SAY SO. sunbelt.txt multi 1 is simply 'the team with the highest winning percentage in games played among the tied teams', with none of the 'shall remain tied unless' qualification the Mountain West and American attach to the same step. The gate is applied anyway, for two reasons stated rather than assumed: it is the safe direction -- an ungated intra-group ranking on a partially-played group is precisely what would have wrongly placed UNLV last in the real 2025 Mountain West tie -- and with seven-team divisions whose members all play one another it should be a no-op in practice, firing only if a divisional game were cancelled. Remove the gate if the Sun Belt confirms it ranks partial groups. TIED GAMES: the source counts a tie as half a win and half a loss. No FBS tie since 1996 and our data model has no tie status; recorded, not implemented. OUT OF SCOPE: the separate HOST chain, which is a different ordered chain from the participant chain, and the ineligible-division-champion rules.",
+        "tie_definition": "win_pct",
+        "two_team": [
+          {
+            "step": "head_to_head",
+            "params": {},
+            "cites": "Two-team 1: 'Head-to-head result between tied teams.'"
+          },
+          {
+            "step": "divisional_record",
+            "params": {},
+            "cites": "Two-team 2 / multi 2: 'the team with the highest overall DIVISIONAL winning percentage shall be the division champion'. Distinct from the primary key, which the same document defines as 'highest winning percentage in ALL CONFERENCE GAMES, BOTH DIVISIONAL AND NON-DIVISIONAL' -- so this is a narrower measure used to break a tie in the broader one."
+          },
+          {
+            "step": "vs_placed_opponents",
+            "params": {
+              "direction": "descending",
+              "tied_opponent_handling": "combine",
+              "exhaust_all_opponents": true,
+              "standings_scope": "divisional"
+            },
+            "cites": "Two-team 3 / multi 3: 'each team's winning percentage vs the team occupying the next highest position in the final DIVISIONAL standings, and then continuing down through the standings until one team prevails. When arriving at another group of tied teams..., use each team's record against the collective tied teams AS A GROUP' -> tied_opponent_handling 'combine', standings_scope 'divisional'. The Sun Belt is the only conference of the ten that walks divisional rather than conference standings here."
+          },
+          {
+            "step": "common_opponents_record",
+            "params": {
+              "min_sample": 2,
+              "scope": "non_divisional"
+            },
+            "cites": "Two-team 4 (and the second half of multi 3): 'combined highest winning percentage against all COMMON NON-DIVISIONAL Conference opponents'. The narrower set is deliberate -- divisional records were already compared at step 2 -- and no other conference asks for it."
+          },
+          {
+            "step": "conditional_external_ranking",
+            "params": {
+              "min_conference_games": 4,
+              "ranked_cutoff": 25,
+              "condition": "wins"
+            },
+            "cites": "Two-team 5-8 / multi 4-8: four clauses enumerating one operation -- a CFP-ranked team that WINS on the final weekend is declared division champion, otherwise a composite average of Anderson & Hester, Massey, Colley and Wolfe decides. condition='wins' because every clause says 'wins' rather than 'doesn't lose', unlike american.txt."
+          },
+          {
+            "step": "overall_win_pct",
+            "params": {
+              "fbs_only": true
+            },
+            "cites": "Two-team 9 / multi 9: 'the team with the highest overall (Conference and non-Conference) winning percentage AGAINST FBS TEAMS'. A third distinct adjustment to overall record: the Big 12 caps a 12-game win COUNT, the Mountain West caps FCS wins inside a percentage, and the Sun Belt drops non-FBS games entirely, win or loss."
+          },
+          {
+            "step": "random_draw",
+            "params": {},
+            "cites": "Two-team 10: 'coin toss will be conducted by the Commissioner'. Multi 10: 'the division champion will be determined by lot'."
+          }
+        ],
+        "multi_team": {
+          "restart_at": "size_appropriate_restart",
+          "steps": [
+            {
+              "step": "sub_group_record",
+              "params": {},
+              "when": "round_robin_among_tied",
+              "cites": "Multi 1: 'The team with the highest winning percentage in GAMES PLAYED AMONG THE TIED TEAMS shall be declared the division champion.' The round-robin gate is NOT in the source text -- see this rule set's notes for why it is applied anyway and what would change it."
+            },
+            {
+              "step": "divisional_record",
+              "params": {},
+              "cites": "Two-team 2 / multi 2: 'the team with the highest overall DIVISIONAL winning percentage shall be the division champion'. Distinct from the primary key, which the same document defines as 'highest winning percentage in ALL CONFERENCE GAMES, BOTH DIVISIONAL AND NON-DIVISIONAL' -- so this is a narrower measure used to break a tie in the broader one."
+            },
+            {
+              "step": "vs_placed_opponents",
+              "params": {
+                "direction": "descending",
+                "tied_opponent_handling": "combine",
+                "exhaust_all_opponents": true,
+                "standings_scope": "divisional"
+              },
+              "cites": "Two-team 3 / multi 3: 'each team's winning percentage vs the team occupying the next highest position in the final DIVISIONAL standings, and then continuing down through the standings until one team prevails. When arriving at another group of tied teams..., use each team's record against the collective tied teams AS A GROUP' -> tied_opponent_handling 'combine', standings_scope 'divisional'. The Sun Belt is the only conference of the ten that walks divisional rather than conference standings here."
+            },
+            {
+              "step": "common_opponents_record",
+              "params": {
+                "min_sample": 2,
+                "scope": "non_divisional"
+              },
+              "cites": "Two-team 4 (and the second half of multi 3): 'combined highest winning percentage against all COMMON NON-DIVISIONAL Conference opponents'. The narrower set is deliberate -- divisional records were already compared at step 2 -- and no other conference asks for it."
+            },
+            {
+              "step": "conditional_external_ranking",
+              "params": {
+                "min_conference_games": 4,
+                "ranked_cutoff": 25,
+                "condition": "wins"
+              },
+              "cites": "Two-team 5-8 / multi 4-8: four clauses enumerating one operation -- a CFP-ranked team that WINS on the final weekend is declared division champion, otherwise a composite average of Anderson & Hester, Massey, Colley and Wolfe decides. condition='wins' because every clause says 'wins' rather than 'doesn't lose', unlike american.txt."
+            },
+            {
+              "step": "overall_win_pct",
+              "params": {
+                "fbs_only": true
+              },
+              "cites": "Two-team 9 / multi 9: 'the team with the highest overall (Conference and non-Conference) winning percentage AGAINST FBS TEAMS'. A third distinct adjustment to overall record: the Big 12 caps a 12-game win COUNT, the Mountain West caps FCS wins inside a percentage, and the Sun Belt drops non-FBS games entirely, win or loss."
+            },
+            {
+              "step": "random_draw",
+              "params": {},
+              "cites": "Two-team 10: 'coin toss will be conducted by the Commissioner'. Multi 10: 'the division champion will be determined by lot'."
+            }
+          ],
+          "eliminated_teams_locked": true
+        }
+      }
     ]
   }
 }

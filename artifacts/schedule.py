@@ -1243,15 +1243,23 @@ class _TiebreakInputs:
     any tiebreaker step runs and never updated mid-resolution (plan K4). "Record against the
     next-highest-placed team" is circular otherwise.
 
-    `rules` is None for a conference with no supplied procedure, which is the honest state for
-    six of the ten FBS conferences today; the caller keeps its pre-engine ordering in that case
-    rather than having a procedure invented for it.
+    `rules` is None for a conference with no configured procedure. All ten FBS conferences now
+    have one, so in practice this means a season outside a conference's configured era -- the
+    2014-2022 divisional era for most of them -- or FBS Independents. The caller keeps its
+    pre-engine ordering in that case rather than having a procedure invented for it.
+
+    `divisions` maps every member to its division, and matters for exactly one conference: the
+    Sun Belt is the only one of the ten that still plays them, and three of its steps are
+    division-scoped (divisional record, common NON-divisional opponents, and a traversal of the
+    DIVISIONAL rather than conference standings). Built from the whole conference for the same
+    reason as the other two fields -- those steps ask about opponents outside the tied group.
     """
 
     conference: str
     rules: Optional[RuleSet]
     conf_records: Dict[str, Tuple[int, int]]
     frozen_order: List[str]
+    divisions: Dict[str, Optional[str]]
     non_fbs_teams: Optional[frozenset]
 
 
@@ -1305,6 +1313,12 @@ def _build_tiebreak_inputs(
         (entry["team"] for entry in entries), key=lambda t: (-_pct(t), t)
     )
 
+    # Present for every member, including a None division for a conference that plays none, so
+    # the division-scoped steps can tell "no divisions here" from "this team is missing".
+    divisions: Dict[str, Optional[str]] = {
+        entry["team"]: entry.get("division") for entry in entries
+    }
+
     config = _tiebreaker_config()
     rules = rules_for(config, raw_conference, season) if config is not None else None
     if rules is None:
@@ -1317,6 +1331,7 @@ def _build_tiebreak_inputs(
         rules=rules,
         conf_records=conf_records,
         frozen_order=frozen_order,
+        divisions=divisions,
         non_fbs_teams=non_fbs_teams,
     )
 
@@ -1343,6 +1358,7 @@ def _engine_order_group(
         conf_records=tiebreak.conf_records,
         team_ranks={entry["team"]: entry.get("rank") for entry in group},
         placement_excluded_game_ids=frozenset(champ_game_ids),
+        divisions=tiebreak.divisions,
         non_fbs_teams=tiebreak.non_fbs_teams,
     )
     outcome = order_tied_group([entry["team"] for entry in group], ctx, tiebreak.rules)

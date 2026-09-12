@@ -175,10 +175,10 @@ STEP_PARAMS: Dict[str, FrozenSet[str]] = {
     "head_to_head": frozenset(),
     "sub_group_record": frozenset(),
     "sweep_in_out": frozenset({"sides"}),
-    "common_opponents_record": frozenset({"min_sample"}),
+    "common_opponents_record": frozenset({"min_sample", "scope"}),
     "vs_placed_opponents": frozenset(
         {"direction", "tied_opponent_handling", "exhaust_all_opponents",
-         "advance_on_unequal_games"}
+         "advance_on_unequal_games", "standings_scope"}
     ),
     "opponents_cumulative_conf_pct": frozenset({"ignore_opponent_count_mismatch"}),
     "capped_relative_scoring_margin": frozenset({"offense_cap", "defense_floor"}),
@@ -194,6 +194,8 @@ STEP_PARAMS: Dict[str, FrozenSet[str]] = {
     # Overall winning percentage in the three variants the American, Mountain West and Sun Belt
     # each ask for. Distinct from total_wins_capped, which is the Big 12's 12-game win COUNT.
     "overall_win_pct": frozenset({"fcs_win_cap", "fbs_only"}),
+    # Sun Belt only -- the one conference of the ten that still plays divisions.
+    "divisional_record": frozenset(),
 }
 
 # The set of step NAMES, used both for validation fallback and for the drift-detection test

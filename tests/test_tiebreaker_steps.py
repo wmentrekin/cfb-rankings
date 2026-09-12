@@ -37,6 +37,7 @@ from artifacts.tiebreaker_steps import (  # noqa: E402
     random_draw,
     sub_group_record,
     conditional_external_ranking,
+    divisional_record,
     overall_win_pct,
     sweep_in_out,
     total_wins_capped,
@@ -73,7 +74,7 @@ def _game(team_a, score_a, team_b, score_b, conference_game=True, season=SEASON)
 
 
 def _ctx(rows, frozen_order=None, conf_records=None, team_ranks=None, conference="TEST",
-         non_fbs_teams=None, placement_excluded_game_ids=frozenset()):
+         non_fbs_teams=None, placement_excluded_game_ids=frozenset(), divisions=None):
     """`non_fbs_teams` defaults to None, meaning NOT SUPPLIED -- deliberately distinct from an
     empty frozenset, which means supplied-and-nobody-is-non-FBS. total_wins_capped branches on
     exactly that difference, so the default must stay None rather than frozenset()."""
@@ -85,6 +86,7 @@ def _ctx(rows, frozen_order=None, conf_records=None, team_ranks=None, conference
         conf_records=conf_records or {},
         team_ranks=team_ranks or {},
         placement_excluded_game_ids=placement_excluded_game_ids,
+        divisions=divisions or {},
         non_fbs_teams=non_fbs_teams,
     )
 
@@ -736,6 +738,100 @@ def test_overall_win_pct_declines_without_the_roster_when_an_adjustment_is_reque
 
 
 # ===========================================================================
+# divisional_record, and the division-scoped modes of the shared primitives
+# ===========================================================================
+# A Sun Belt-shaped conference: two divisions, and the tied pair sits inside one of them.
+DIVISIONS = {
+    "A": "East", "B": "East", "InEast1": "East", "InEast2": "East",
+    "W1": "West", "W2": "West", "W3": "West",
+}
+
+
+def test_divisional_record_counts_only_same_division_games():
+    """sunbelt.txt step 2, "highest overall DIVISIONAL winning percentage". A and B are level on
+    all conference games (2-1 each), but A went 2-0 inside the East while B went 1-1 there, so
+    the divisional-only measure separates them where the primary key cannot.
+
+    That is the whole reason the step exists: the Sun Belt decides a division champion on ALL
+    conference games, divisional and not, so this narrower record breaks a tie in the broader one.
+    """
+    rows = (
+        _game("A", 21, "InEast1", 14) + _game("A", 21, "InEast2", 14)   # A: 2-0 divisional
+        + _game("W1", 21, "A", 14)                                       # A: 0-1 cross
+        + _game("B", 21, "InEast1", 14) + _game("InEast2", 21, "B", 14)  # B: 1-1 divisional
+        + _game("B", 21, "W1", 14)                                       # B: 1-0 cross
+    )
+    ctx = _ctx(rows, divisions=DIVISIONS)
+    assert divisional_record(["A", "B"], ctx) == [["A"], ["B"]]          # 1.000 vs .500
+
+
+def test_divisional_record_declines_across_divisions_or_without_a_map():
+    """A cross-division comparison answers a question no rule asks, and an absent map must not be
+    read as "everyone shares a division"."""
+    rows = _game("A", 21, "InEast1", 14) + _game("W1", 21, "W2", 14)
+    assert divisional_record(["A", "W1"], _ctx(rows, divisions=DIVISIONS)) is None
+    assert divisional_record(["A", "B"], _ctx(rows)) is None             # no divisions supplied
+
+
+def test_common_opponents_scope_non_divisional_is_the_sun_belt_variant():
+    """sunbelt.txt step 4 asks for common NON-DIVISIONAL opponents only, because step 2 has
+    already compared divisional records. Here the two common opponents sit in different
+    divisions and give OPPOSITE answers, so the scope decides the result.
+
+    A beat the East common opponent and lost to the West one; B did the reverse. Unscoped, the
+    two cancel and nobody is separated; scoped to non-divisional, only the West game counts and B
+    wins; scoped to divisional, only the East game counts and A wins."""
+    rows = (
+        _game("A", 21, "InEast1", 14) + _game("W1", 21, "A", 14)
+        + _game("InEast1", 21, "B", 14) + _game("B", 21, "W1", 14)
+    )
+    ctx = _ctx(rows, divisions=DIVISIONS)
+    assert common_opponents_record(["A", "B"], ctx, min_sample=2) == [["A", "B"]]   # .500 each
+    assert common_opponents_record(
+        ["A", "B"], ctx, min_sample=1, scope="non_divisional") == [["B"], ["A"]]
+    assert common_opponents_record(
+        ["A", "B"], ctx, min_sample=1, scope="divisional") == [["A"], ["B"]]
+
+
+def test_common_opponents_scope_declines_rather_than_widening_to_all():
+    """Without a usable division map a scoped call must return None, never quietly answer the
+    unscoped question -- which is a different question from the one the conference asked."""
+    rows = _game("A", 21, "X", 14) + _game("B", 21, "X", 14)
+    assert common_opponents_record(
+        ["A", "B"], _ctx(rows), min_sample=1, scope="non_divisional") is None
+
+
+def test_common_opponents_rejects_an_unknown_scope():
+    with pytest.raises(ValueError, match="scope"):
+        common_opponents_record(["A", "B"], _ctx([]), scope="nondivisional")
+
+
+def test_vs_placed_opponents_divisional_scope_walks_only_the_division():
+    """sunbelt.txt step 3 walks the DIVISIONAL standings, not the conference standings. The
+    best-placed common opponent overall is W1 (out of division) and it separates the pair one
+    way; the best-placed DIVISIONAL common opponent is InEast1 and it separates them the other.
+    So the scope flips the answer."""
+    rows = (
+        _game("W1", 21, "A", 14) + _game("A", 21, "InEast1", 14)
+        + _game("B", 21, "W1", 14) + _game("InEast1", 21, "B", 14)
+    )
+    ctx = _ctx(
+        rows,
+        conf_records={"W1": (6, 0), "InEast1": (3, 3)},   # W1 places above InEast1
+        frozen_order=["W1", "InEast1", "A", "B"],
+        divisions=DIVISIONS,
+    )
+    assert vs_placed_opponents(["A", "B"], ctx) == [["B"], ["A"]]        # W1 decides: B won it
+    assert vs_placed_opponents(
+        ["A", "B"], ctx, standings_scope="divisional") == [["A"], ["B"]]  # InEast1: A won it
+
+
+def test_vs_placed_opponents_rejects_an_unknown_standings_scope():
+    with pytest.raises(ValueError, match="standings_scope"):
+        vs_placed_opponents(["A", "B"], _ctx([]), standings_scope="division")
+
+
+# ===========================================================================
 # 11. conditional_external_ranking
 # ===========================================================================
 def _cascade_rows(a_result, b_result, final_week=10):
@@ -870,6 +966,7 @@ def test_step_registry_exact_keys_and_mapping():
         "total_wins_capped",
         "conditional_external_ranking",
         "overall_win_pct",
+        "divisional_record",
         "external_ranking",
         "random_draw",
     }

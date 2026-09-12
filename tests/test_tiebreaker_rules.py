@@ -583,6 +583,7 @@ CONFERENCES_WITH_A_SWEEP_STEP = {
 CONFERENCES_WITHOUT_A_SWEEP_STEP = {
     "Pac-12",            # pac12.txt multi 1: "the process moves to the next criterion"
     "Conference USA",    # cusa.txt states one chain and no sweep clause anywhere
+    "Sun Belt",          # sunbelt.txt multi 1 states the measure with no sweep qualification
 }
 
 
@@ -646,6 +647,8 @@ EXPECTED_FINAL_WEEK_CONDITIONS = {
     "Mountain West": "wins",
     # american.txt 10.5.3 / 10.5.5 / 10.6.4: "and DOESN'T LOSE in the final weekend".
     "American Athletic": "does_not_lose",
+    # sunbelt.txt 5-8: "and WINS in the final weekend of the Conference regular season".
+    "Sun Belt": "wins",
 }
 
 
@@ -675,6 +678,46 @@ def test_final_week_condition_matches_each_conference_s_own_wording():
     # Both wordings must actually appear, or one of them is untested.
     conditions = {EXPECTED_FINAL_WEEK_CONDITIONS[c] for c in EXPECTED_FINAL_WEEK_CONDITIONS}
     assert conditions == {"wins", "does_not_lose"}
+
+
+# The Sun Belt is the only one of the ten conferences that still plays divisions, so it is the
+# only one whose steps may be division-scoped. Any other conference acquiring a division-scoped
+# parameter means a copy-paste, not a reading.
+DIVISIONAL_CONFERENCE = "Sun Belt"
+
+
+def test_division_scoped_parameters_appear_only_in_the_divisional_conference():
+    """Guards both directions. Dropping the Sun Belt's scopes silently answers a WIDER question
+    than sunbelt.txt asks -- step 4 is "common NON-DIVISIONAL opponents" precisely because step 2
+    already compared divisional records, so unscoping it double-counts divisional games. Adding a
+    scope anywhere else would restrict a conference that has no divisions to decline forever."""
+    cfg = load_conference_rules(known_step_names=KNOWN_STEPS)
+    found_in_divisional = []
+    for conference, rule_sets in cfg.conferences.items():
+        for rs in rule_sets:
+            era = f"{conference} {rs.season_min}-{rs.season_max}"
+            for st in list(rs.two_team) + list(rs.multi_team.steps):
+                scoped = (
+                    st.params.get("scope") in ("divisional", "non_divisional")
+                    or st.params.get("standings_scope") == "divisional"
+                    or st.step == "divisional_record"
+                )
+                if conference == DIVISIONAL_CONFERENCE:
+                    if scoped:
+                        found_in_divisional.append(st.step)
+                else:
+                    assert not scoped, (
+                        f"{era} step {st.step!r} is division-scoped, but only "
+                        f"{DIVISIONAL_CONFERENCE} plays divisions"
+                    )
+    # All three of the Sun Belt's division-scoped measures must actually be there.
+    assert "divisional_record" in found_in_divisional
+    assert "common_opponents_record" in found_in_divisional, (
+        "sunbelt.txt step 4 is 'common NON-DIVISIONAL opponents'; the scope is missing"
+    )
+    assert "vs_placed_opponents" in found_in_divisional, (
+        "sunbelt.txt step 3 walks the DIVISIONAL standings; standings_scope is missing"
+    )
 
 
 def test_sweep_sides_is_promote_only_wherever_the_text_omits_the_demote_half():

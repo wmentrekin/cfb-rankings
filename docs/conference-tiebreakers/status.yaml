@@ -36,10 +36,10 @@ branching:
 
 summary:
   current_focus: >
-    B1 is complete: T1 through T4 are done and the engine is live in the standings sort for the
-    four configured conferences, with the six unconfigured ones explicitly unchanged. 398 tests
-    pass. What remains is T5 (the Group of 5 configs, blocked on the user) and T6 (acceptance
-    fixtures from the real 2025 ties), plus an independent code review before handoff.
+    B1 and B2 are complete. ALL TEN FBS CONFERENCES now run their own published procedure, from
+    primary-source text, and the engine is live in the standings sort. 444 tests pass. What
+    remains is T6 (acceptance fixtures from the real 2025 ties) and an independent code review
+    before handoff.
   last_completed: >
     The user supplied primary-source rule text for all four Power 4 conferences, committed at
     docs/conference-tiebreakers/source-rules/. Cross-conference step comparison showed heavy
@@ -47,12 +47,12 @@ summary:
     amended ACC is the stripped-down outlier -- which is what makes the shared-primitive design
     correct rather than merely tidy.
   current_blocker: >
-    Six conferences still have no primary source: American, Mountain West, MAC, Sun Belt,
-    Conference USA, Pac-12. The user is sourcing them. This blocks T5 and part of T6 only;
-    the engine is done without them, and each is expected to be a config edit rather than new
-    code. Also outstanding: sec.txt references an Appendix B of ~25 conference-authored worked
-    examples whose text was not included in the paste. Those are the best available acceptance
-    fixtures for T6 and are worth asking for again.
+    None blocking. Two open asks, neither on the critical path: sec.txt references an Appendix B
+    of ~25 conference-authored worked examples whose text was not supplied, and those are the
+    best available acceptance fixtures for T6; and the Pac-12's week-13 flex games are assumed
+    by artifacts/schedule.py to arrive as conference_game=false, which is unverified because
+    week 13 is unpopulated. If CFBD marks them true they would contaminate conference records
+    and every tiebreaker step.
 
 artifacts:
   requirements: "docs/conference-tiebreakers/requirements.yaml"
@@ -127,6 +127,22 @@ agents:
     task: "The ten shared step primitives and STEP_REGISTRY."
     last_update: "2026-09-11"
     blocker: ""
+  - id: "T5-group-of-six-configs"
+    role: "data-engineer"
+    task_profile: "documentation"
+    requested_model_tier: "frontier"
+    requested_reasoning: "high"
+    requested_provider_model: "Claude Opus 5"
+    actual_model: "claude-opus-5"
+    routing_enforced: true
+    status: "complete"
+    stage: "execution"
+    task: >
+      Transcribe the remaining six conferences. Done by the orchestrator rather than delegated:
+      the work turned out to need four new shared measures and six new parameters, not just
+      config, and each was a judgement about what a source document does and does not say.
+    last_update: "2026-09-12"
+    blocker: ""
   - id: "T3-driver"
     role: "data-engineer"
     task_profile: "implementation"
@@ -178,9 +194,14 @@ checkpoint:
 
 blockers:
   - id: "B1"
-    status: "partially_resolved"
-    resolved_for: ["ACC", "SEC", "Big 12", "Big Ten"]
-    outstanding_for: ["American Athletic", "Mountain West", "Mid-American", "Sun Belt", "Conference USA", "Pac-12"]
+    status: "resolved"
+    resolved_at: "2026-09-12"
+    resolved_for: ["ACC", "SEC", "Big 12", "Big Ten", "American Athletic", "Mountain West",
+                   "Mid-American", "Sun Belt", "Conference USA", "Pac-12"]
+    outstanding_for: []
+    resolution: >
+      The repo owner supplied primary-source text for all ten conferences, committed under
+      docs/conference-tiebreakers/source-rules/. Every conference is configured.
     blocker: >
       Primary rule documents cannot be read from this environment. Verified at the network
       layer, not just the tool layer: curl to theamerican.org and en.wikipedia.org both get
@@ -193,6 +214,38 @@ blockers:
     owner: "user"
 
 decisions:
+  - id: "D11"
+    decision: >
+      Four measures were added for the Group of 6, each shared with parameters rather than
+      written per conference -- confirming the shared-primitive thesis rather than denting it.
+    rationale: >
+      conditional_external_ranking (the CFP cascade) serves three conferences; overall_win_pct
+      serves three in three different variants; divisional_record and the division-scoped modes
+      of two existing primitives serve one. The Group of 6 needed more new MEASURES than the
+      Power 4 did, but not one line of conference-specific logic: every difference landed as a
+      parameter, and the MAC and Pac-12 needed nothing new at all.
+  - id: "D12"
+    decision: >
+      The rating substitution costs more in the CFP cascade than anywhere else, and a top-25
+      cutoff is the proxy chosen to preserve it.
+    rationale: >
+      The CFP poll ranks 25 teams, so "was ranked going into the final weekend" is a real filter
+      in the Mountain West, Sun Belt and American procedures. Our rating ranks everyone, so
+      without a cutoff every tied team counts as ranked, the final-weekend condition never binds,
+      and the whole cascade silently degrades to a plain rating comparison. ranked_cutoff=25
+      mirrors the poll's size. It is a proxy and not the thing itself -- our top 25 is not the
+      committee's -- and it is the single largest interpretive liberty in the ten transcriptions.
+  - id: "D13"
+    decision: >
+      The Sun Belt's multi-team step 1 is gated on a complete round robin even though its own
+      text does not say so.
+    rationale: >
+      Nine documents either state the gate or state no multi-team intra-group step at all; the
+      Sun Belt states the measure bare. The gate is applied in the safe direction, because an
+      ungated intra-group ranking on a partially-played group is exactly what would have wrongly
+      placed UNLV last in the real 2025 Mountain West tie, and with seven-team divisions whose
+      members all play one another it should be a no-op in practice. Recorded in that rule set's
+      notes as an addition to the source, with the condition that would reverse it.
   - id: "D9"
     decision: >
       A conference with no configured rules keeps the PRE-ENGINE ordering, rather than falling
