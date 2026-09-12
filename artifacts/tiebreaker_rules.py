@@ -396,9 +396,10 @@ def _build_step(path: str, item: Any, known_step_names: FrozenSet[str]) -> Step:
 
     # K6: external_ranking's gate must be explicit, never silently defaulted (see module
     # docstring's MIN_CONFERENCE_GAMES section).
-    if step_name == "external_ranking" and "min_conference_games" not in params:
+    if step_name in ("external_ranking", "conditional_external_ranking") \
+            and "min_conference_games" not in params:
         raise TiebreakerConfigError(
-            f"{path}.params.min_conference_games: required for step 'external_ranking' -- "
+            f"{path}.params.min_conference_games: required for step {step_name!r} -- "
             "must be stated explicitly (K6), not left to a silent default"
         )
 

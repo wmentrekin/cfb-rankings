@@ -94,16 +94,37 @@ class TiebreakContext:
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+def _counts_for_placement(ctx: TiebreakContext, row: Dict[str, Any]) -> bool:
+    """Whether a row may contribute to STANDINGS PLACEMENT.
+
+    Two exclusions, applied in exactly one place so every measure inherits them: postseason rows,
+    and any row whose game_id the caller listed in `placement_excluded_game_ids` -- in practice
+    the conference championship games, which CFBD reports as season_type 'regular' (see
+    artifacts/schedule.py: "A championship game is always season_type=='regular'"), so
+    season_type alone does not catch them.
+
+    This exists because the exclusions were originally applied only in the engine's fallback and
+    in overall_win_pct, leaving every row-scanning primitive counting a title game toward the
+    head-to-head, common-opponent and intra-group measures that feed the standings it is supposed
+    not to affect.
+    """
+    if row.get("season_type") == "postseason":
+        return False
+    return row.get("game_id") not in ctx.placement_excluded_game_ids
+
+
 def _conf_game_rows(ctx: TiebreakContext, team: str) -> List[Dict[str, Any]]:
-    """`team`'s own-perspective, played (win/loss), conference-game rows this season. Every
-    helper below builds from this rather than scanning ctx.rows directly, so the
-    own-perspective/played/conference-game filter is applied exactly once, consistently."""
+    """`team`'s own-perspective, played (win/loss), placement-eligible conference-game rows this
+    season. Every helper below builds from this rather than scanning ctx.rows directly, so the
+    own-perspective/played/conference-game/placement filter is applied exactly once,
+    consistently."""
     return [
         r for r in ctx.rows
         if r.get("season") == ctx.season
         and r.get("team") == team
         and r.get("conference_game")
         and r.get("status") in ("win", "loss")
+        and _counts_for_placement(ctx, r)
     ]
 
 
@@ -651,15 +672,21 @@ def opponents_cumulative_conf_pct(
 # 7. capped_relative_scoring_margin
 # ---------------------------------------------------------------------------
 def _season_scoring_averages(ctx: TiebreakContext, team: str) -> Tuple[Optional[float], Optional[float]]:
-    """(avg points scored, avg points allowed) across ALL of `team`'s played games this season
-    (not conference-only -- Appendix A's own worked example describes plain "season" averages,
+    """(avg points scored, avg points allowed) across `team`'s played games this season -- not
+    conference-only, because Appendix A's own worked example describes plain "season" averages,
     with no conference restriction on the averaging input, only on which of the TIED team's own
-    games the margin itself is computed over)."""
+    games the margin itself is computed over.
+
+    Placement exclusions still apply: a bowl or the conference title game must not move the
+    averages that decide a standings position, for the same reason it must not move any other
+    measure here."""
     scored = allowed = games = 0
     for row in ctx.rows:
         if row.get("season") != ctx.season or row.get("team") != team:
             continue
         if row.get("status") not in ("win", "loss"):
+            continue
+        if not _counts_for_placement(ctx, row):
             continue
         ts, os_ = row.get("team_score"), row.get("opp_score")
         if ts is None or os_ is None:
@@ -784,7 +811,12 @@ def total_wins_capped(
     for team in tied:
         won = [
             r for r in ctx.rows
-            if r.get("season") == ctx.season and r.get("team") == team and r.get("status") == "win"
+            if r.get("season") == ctx.season and r.get("team") == team
+            and r.get("status") == "win"
+            # Same placement exclusions as overall_win_pct and the engine's fallback. Without
+            # them this step counts bowl wins and the conference title game toward a standings
+            # measure, which it is the one place in the chain that must not do.
+            and _counts_for_placement(ctx, r)
         ]
         if cap_fcs_wins:
             fcs_wins = sum(1 for r in won if r.get("opponent") in non_fbs)
@@ -969,19 +1001,38 @@ def overall_win_pct(
 # 13. conditional_external_ranking
 # ---------------------------------------------------------------------------
 def _final_conference_week(ctx: TiebreakContext) -> Optional[int]:
-    """The conference's last REGULAR-SEASON conference week this season, or None if it has none.
+    """THIS conference's last PLAYED regular-season conference week, or None if it has none.
 
     Derived from the rows rather than from a calendar, because the week number is not constant:
     get_cfb_week()'s anchor moves each year, so the final conference weekend is a different week
     number in different seasons (artifacts/schedule.py documents the same thing for the
-    championship-week label). Postseason rows are excluded -- a conference championship game or a
-    bowl is not "the final weekend of the conference regular season".
+    championship-week label).
+
+    THREE FILTERS, EACH LOAD-BEARING, and the first two were missing until an independent review
+    caught it. `ctx.rows` in production is the WHOLE LEAGUE's schedule grid for the season,
+    including unplayed rows:
+
+      - `team in ctx.conf_records` scopes to this conference. Without it, `max` returns the last
+        week any FBS conference is scheduled to play, which is routinely later than this
+        conference's own finale.
+      - `status in ("win", "loss")` excludes fixtures that have not happened. Without it, a week
+        that no game has yet been played in still counts as "the final weekend".
+      - `_counts_for_placement` drops postseason rows and the conference championship games,
+        which CFBD reports as season_type 'regular'.
+
+    Getting any of these wrong does not fail loudly. It moves the final week to one in which the
+    tied teams have no game, so every team reads as idle, and `conditional_external_ranking`
+    degrades silently into a plain rating comparison -- which never ties, and therefore pre-empts
+    every remaining step in three conferences' chains.
     """
+    members = set(ctx.conf_records)
     weeks = [
         r.get("week") for r in ctx.rows
         if r.get("season") == ctx.season
+        and r.get("team") in members
         and r.get("conference_game")
-        and r.get("season_type") != "postseason"
+        and r.get("status") in ("win", "loss")
+        and _counts_for_placement(ctx, r)
         and r.get("week") is not None
     ]
     return max(weeks) if weeks else None
@@ -1108,9 +1159,16 @@ def conditional_external_ranking(
         return _partition_by_value(tied, ranks, descending=False)
 
     rest = [t for t in tied if t not in survivors]
+    # Both halves go through _partition_by_value rather than being exploded into singletons, so
+    # teams this step cannot tell apart stay in one group and the chain continues on them. An
+    # earlier version returned one singleton per team, which separated UNRANKED teams from each
+    # other in whatever order they arrived in -- a non-deterministic ordering presented as a
+    # decision, and one that also recorded them as resolved and so skipped every later step.
+    survivor_ranks: Dict[str, Optional[float]] = {t: ctx.team_ranks.get(t) for t in survivors}
+    rest_ranks: Dict[str, Optional[float]] = {t: ctx.team_ranks.get(t) for t in rest}
     return (
-        [[t] for t in sorted(survivors, key=_rank_key)]
-        + [[t] for t in sorted(rest, key=_rank_key)]
+        (_partition_by_value(survivors, survivor_ranks, descending=False) or [list(survivors)])
+        + (_partition_by_value(rest, rest_ranks, descending=False) or [list(rest)])
     )
 
 

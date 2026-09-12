@@ -281,13 +281,16 @@ def _resolve(
                 resolved_by[sub[0]] = step.step
                 ordered.append(sub)
             else:
-                # Guaranteed by len(partition) >= 2: every sub-group is strictly smaller than
-                # `group`, so this recursion terminates. Asserted because it is the property the
-                # whole module's termination rests on.
-                assert len(sub) < len(group), (
-                    f"step {step.step!r} returned sub-group {sub} not smaller than its input "
-                    f"{group}; this breaks the termination guarantee"
-                )
+                if len(sub) >= len(group):
+                    # Guaranteed impossible by len(partition) >= 2, and the property the whole
+                    # module's termination rests on -- so a violation means a primitive broke the
+                    # partition contract. Checked with an explicit raise rather than a bare
+                    # `assert`, which `python -O` strips: under -O the bare form would leave this
+                    # recursing forever instead of failing.
+                    raise AssertionError(
+                        f"step {step.step!r} returned sub-group {sub} not smaller than its input "
+                        f"{group}; this breaks the termination guarantee"
+                    )
                 ordered.extend(_resolve(sub, ctx, rules, resolved_by, depth + 1))
         return ordered
 

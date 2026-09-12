@@ -535,7 +535,7 @@
               "tied_opponent_handling": "combine",
               "exhaust_all_opponents": true
             },
-            "cites": "B.4: Win percentage versus common opponents based upon their order of finish (overall conference win percentage, WITH TIES BROKEN) and proceeding through other common opponents. The parenthetical conflicts with K4, which freezes the order of finish by win percentage alone and does not tie-break it; see notes."
+            "cites": "B.4: Win percentage versus common opponents based upon their order of finish (overall conference win percentage, WITH TIES BROKEN) and proceeding through other common opponents. The parenthetical conflicts with K4, which freezes the order of finish by win percentage alone and does not tie-break it; see notes. DEVIATION, recorded here rather than only in mac.txt's notes because this is where a reviewer looks: 'with ties broken' asks for the FULLY RESOLVED standings as the order of finish, and this project freezes the order of finish by conference win percentage ALONE (K4) because resolving it first is circular -- the standings are what the tiebreaker is computing. tied_opponent_handling 'combine' treats a tied block as one position, which is the closest faithful reading available without that circularity."
           },
           {
             "step": "opponents_cumulative_conf_pct",
@@ -588,7 +588,7 @@
                 "tied_opponent_handling": "combine",
                 "exhaust_all_opponents": true
               },
-              "cites": "B.4: Win percentage versus common opponents based upon their order of finish (overall conference win percentage, WITH TIES BROKEN) and proceeding through other common opponents. The parenthetical conflicts with K4, which freezes the order of finish by win percentage alone and does not tie-break it; see notes."
+              "cites": "B.4: Win percentage versus common opponents based upon their order of finish (overall conference win percentage, WITH TIES BROKEN) and proceeding through other common opponents. The parenthetical conflicts with K4, which freezes the order of finish by win percentage alone and does not tie-break it; see notes. DEVIATION, recorded here rather than only in mac.txt's notes because this is where a reviewer looks: 'with ties broken' asks for the FULLY RESOLVED standings as the order of finish, and this project freezes the order of finish by conference win percentage ALONE (K4) because resolving it first is circular -- the standings are what the tiebreaker is computing. tied_opponent_handling 'combine' treats a tied block as one position, which is the closest faithful reading available without that circularity."
             },
             {
               "step": "opponents_cumulative_conf_pct",

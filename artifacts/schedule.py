@@ -1321,6 +1321,8 @@ def _build_tiebreak_inputs(
 
     config = _tiebreaker_config()
     rules = rules_for(config, raw_conference, season) if config is not None else None
+    if rules is not None:
+        _warn_unhonoured_policies(raw_conference, season, rules)
     if rules is None:
         logger.info(
             "schedule.py: no tiebreaker rule set for conference=%r season=%s; using the "
@@ -1334,6 +1336,45 @@ def _build_tiebreak_inputs(
         divisions=divisions,
         non_fbs_teams=non_fbs_teams,
     )
+
+
+_UNHONOURED_POLICY_WARNED: set = set()
+
+
+def _warn_unhonoured_policies(raw_conference: str, season: int, rules: RuleSet) -> None:
+    """Say once, per conference and season, when a rule set declares something this caller does
+    not implement.
+
+    Two such fields exist, and both are grouping rules rather than steps: `tie_definition` other
+    than plain win-percentage equality, and `restart_at: "redefine_tied_teams"`. The ACC defines
+    its tied set to include teams on an alternate number of conference games with the same wins
+    OR the same losses, and CUSA to include teams within one conference win with equal losses --
+    neither of which this function's caller builds, since it groups on conference win percentage
+    alone. The engine's own docstring is honest about not implementing them, but nothing in a
+    running pipeline said so, and today falls inside the ACC's 2026 era, which is exactly the
+    entry whose grouping rule is unimplemented.
+
+    A warning rather than an error: the configured STEPS are still applied correctly to whatever
+    group it is handed, so the result is a good answer to a slightly narrower question, not a
+    wrong one.
+    """
+    key = (raw_conference, season)
+    if key in _UNHONOURED_POLICY_WARNED:
+        return
+    unhonoured = []
+    if rules.tie_definition != "win_pct":
+        unhonoured.append(f"tie_definition={rules.tie_definition!r}")
+    if rules.multi_team.restart_at == "redefine_tied_teams":
+        unhonoured.append("restart_at='redefine_tied_teams'")
+    if unhonoured:
+        _UNHONOURED_POLICY_WARNED.add(key)
+        logger.warning(
+            "schedule.py: conference=%r season=%s declares %s, which this caller does not "
+            "implement -- tied groups are still built on conference win percentage alone. The "
+            "configured tiebreaker STEPS are applied normally; only the definition of who counts "
+            "as tied is narrower than the conference's own.",
+            raw_conference, season, " and ".join(unhonoured),
+        )
 
 
 def _engine_order_group(
@@ -1521,9 +1562,13 @@ def _sort_conference_teams(
                 # multi-team procedure is what this whole feature exists to stop doing.
                 t1, t2 = group[0]["team"], group[1]["team"]
                 winner = _head_to_head_winner(rows, season, t1, t2)
+                if winner is not None:
+                    # Recorded whichever way it fell: head-to-head fixed both positions just as
+                    # much when the winner was already first as when they had to be swapped.
+                    # Setting it only inside the swap published a null for half the cases.
+                    group[0]["resolved_by"] = group[1]["resolved_by"] = "head_to_head"
                 if winner == t2:
                     entries[i], entries[i + 1] = entries[i + 1], entries[i]
-                    group[0]["resolved_by"] = group[1]["resolved_by"] = "head_to_head"
             i = j + 1
     else:
         entries.sort(key=lambda e: (-e["_placement_pct"], _rank_sort_key(e), e["team"]))

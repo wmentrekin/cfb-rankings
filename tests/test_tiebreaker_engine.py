@@ -381,6 +381,26 @@ def test_every_step_name_in_the_registry_is_driveable():
         assert sorted(outcome.flat) == ["A", "B", "C"], name
 
 
+def test_a_step_that_breaks_the_partition_contract_is_refused_not_recursed_on(monkeypatch):
+    """The termination guard. No shipped primitive can reach it -- a partition of two or more
+    non-empty groups always yields strictly smaller sub-groups -- so it is only reachable by a
+    future primitive that breaks the contract, which is exactly when it matters: the alternative
+    is recursing forever inside an artifact publish.
+
+    Checked with an explicit raise rather than a bare `assert`, because `python -O` strips
+    asserts and would turn this into the infinite loop it exists to prevent."""
+    from artifacts import tiebreaker_steps
+
+    def _contract_breaker(tied, ctx, **params):
+        # Two groups, but each is the whole input: the driver must refuse this rather than
+        # recurse on a group it has not shrunk.
+        return [list(tied), list(tied)]
+
+    monkeypatch.setitem(tiebreaker_steps.STEP_REGISTRY, "head_to_head", _contract_breaker)
+    with pytest.raises(AssertionError, match="termination guarantee"):
+        order_tied_group(["A", "B", "C"], _ctx(), _rules())
+
+
 def test_unknown_step_name_is_skipped_not_raised(caplog):
     """Config validation makes this unreachable, but a hand-built rule set must degrade to the
     fallback rather than take down an artifact publish."""

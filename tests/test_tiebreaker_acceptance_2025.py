@@ -170,8 +170,25 @@ def _acc_fixture():
     return rows, conf_records
 
 
+# Production hands every primitive the WHOLE LEAGUE's schedule grid for the season, including
+# fixtures that have not been played. Every fixture in this suite originally contained only the
+# tied group's own conference and only completed games, and that single shared blind spot is what
+# hid a real bug: the cascade's "final weekend" was derived league-wide and from scheduled rather
+# than played games, so it landed on a week the tied teams had no game in, every team read as
+# idle, and the whole condition silently stopped applying. Both fixtures below now carry these.
+def _league_noise():
+    """Rows that must not influence any conference's tiebreak: another conference's games, and an
+    unplayed fixture in a later week than anything in the fixture proper."""
+    return [
+        _row("Some SEC Team", "Another SEC Team", "win", week=14),
+        _row("Another SEC Team", "Some SEC Team", "loss", week=14),
+        _row("Some Big Ten Team", "Another Big Ten Team", "upcoming", week=15),
+    ]
+
+
 def _acc_context():
     rows, conf_records = _acc_fixture()
+    rows = rows + _league_noise()
     # frozen_order is by conference win percentage ALONE (K4). The five tied teams lead at .750;
     # everyone else follows. Only its relative order matters to vs_placed_opponents.
     others = sorted(t for t in conf_records if t not in ACC_FIVE)
@@ -350,6 +367,7 @@ def _mw_context(ranks=None, final_week_results=None):
             rows += _pair(team, closer, week=FINAL_WEEK)
         else:
             rows += _pair(closer, team, week=FINAL_WEEK)
+    rows += _league_noise()
     return TiebreakContext(
         rows=rows,
         season=SEASON,
@@ -404,11 +422,17 @@ def test_mountain_west_2025_is_not_a_round_robin_and_nobody_swept_it():
 
 
 def test_mountain_west_an_unranked_team_does_not_advance_on_the_ranking_step():
-    """Control one. If UNLV's advancement came from something structural in the fixture rather
-    than from the ranking step, moving it outside the ranked cutoff would not change anything."""
-    ranks = {"UNLV": 60, "MW Rival A": 3, "MW Rival B": None, "MW Rival C": None}
-    final = {"UNLV": "win", "MW Rival A": "win", "MW Rival B": "win", "MW Rival C": "loss"}
+    """Control one: the ranked cutoff is load-bearing.
+
+    UNLV is the ONLY team to win the final weekend, so the survival half of the condition favours
+    it outright -- but at rank 60 it is outside the cutoff and cannot be a ranked survivor, so it
+    must not be promoted. An earlier version of this control gave a rival the best rank as well,
+    which meant widening the cutoff changed nothing and the assertion held either way; this
+    version fails if the cutoff stops being applied."""
+    ranks = {"UNLV": 60, "MW Rival A": 20, "MW Rival B": None, "MW Rival C": None}
+    final = {"UNLV": "win", "MW Rival A": "loss", "MW Rival B": "loss", "MW Rival C": "loss"}
     outcome = order_tied_group(MW_FOUR, _mw_context(ranks, final), _mw_rules())
+    assert outcome.flat[0] != "UNLV", outcome.flat
     assert outcome.flat[0] == "MW Rival A", outcome.flat
 
 

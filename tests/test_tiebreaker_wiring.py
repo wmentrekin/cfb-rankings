@@ -357,6 +357,48 @@ def test_non_fbs_roster_keeps_the_school_names():
 
 
 # ---------------------------------------------------------------------------
+# Declared-but-unimplemented policies must be visible
+# ---------------------------------------------------------------------------
+def test_an_unhonoured_grouping_policy_warns_once(caplog):
+    """The ACC's 2026 entry declares a tie definition this caller does not build -- tied groups
+    are formed on conference win percentage alone, while the ACC also counts teams on an
+    alternate number of conference games with the same wins or losses. That is a real narrowing,
+    and before this it happened silently in a running pipeline."""
+    schedule_mod._UNHONOURED_POLICY_WARNED.clear()
+    entries = [_entry("A", (1, 0), (1, 0))]
+    with caplog.at_level(logging.WARNING, logger="cfb_lp"):
+        _build_tiebreak_inputs("ACC", entries, 2026, None)
+    assert "tie_definition" in caplog.text
+    assert "redefine_tied_teams" in caplog.text
+
+    # Once per conference and season, not once per division or per call.
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="cfb_lp"):
+        _build_tiebreak_inputs("ACC", entries, 2026, None)
+    assert caplog.text == ""
+
+
+def test_a_conference_with_nothing_unhonoured_stays_quiet(caplog):
+    """The warning has to be worth reading, so it must not fire for the seven conferences whose
+    declared policies this caller does implement in full."""
+    schedule_mod._UNHONOURED_POLICY_WARNED.clear()
+    with caplog.at_level(logging.WARNING, logger="cfb_lp"):
+        _build_tiebreak_inputs(CONFIGURED, [_entry("A", (1, 0), (1, 0))], SEASON, None)
+    assert caplog.text == ""
+
+
+def test_head_to_head_is_recorded_even_when_no_swap_was_needed():
+    """Pre-engine path. Head-to-head decided both positions whether or not the teams had to be
+    swapped, so publishing `resolved_by` only on the swap left it null for half the cases."""
+    entries = [_entry("Winner", (8, 1), (3, 1)), _entry("Loser", (7, 2), (3, 1))]
+    rows = _game("Winner", 27, "Loser", 20)          # already in the right order
+    tiebreak = _build_tiebreak_inputs(UNCONFIGURED, entries, SEASON, None)
+    out = _sort_conference_teams(entries, rows, SEASON, None, tiebreak)
+    assert [e["team"] for e in out] == ["Winner", "Loser"]
+    assert all(e["resolved_by"] == "head_to_head" for e in out), out
+
+
+# ---------------------------------------------------------------------------
 # Graceful degradation
 # ---------------------------------------------------------------------------
 def test_a_config_that_cannot_be_loaded_degrades_to_the_pre_engine_ordering(monkeypatch, caplog):

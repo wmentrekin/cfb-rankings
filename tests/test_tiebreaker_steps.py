@@ -36,6 +36,7 @@ from artifacts.tiebreaker_steps import (  # noqa: E402
     opponents_cumulative_conf_pct,
     random_draw,
     sub_group_record,
+    _final_conference_week,
     conditional_external_ranking,
     divisional_record,
     overall_win_pct,
@@ -50,7 +51,8 @@ SEASON = 2025
 # ---------------------------------------------------------------------------
 # Fixture helpers
 # ---------------------------------------------------------------------------
-def _row(team, opponent, status, team_score=None, opp_score=None, conference_game=True, season=SEASON):
+def _row(team, opponent, status, team_score=None, opp_score=None, conference_game=True,
+         season=SEASON, season_type="regular", game_id=None, week=None):
     return {
         "season": season,
         "team": team,
@@ -59,6 +61,9 @@ def _row(team, opponent, status, team_score=None, opp_score=None, conference_gam
         "conference_game": conference_game,
         "team_score": team_score,
         "opp_score": opp_score,
+        "season_type": season_type,
+        "game_id": game_id,
+        "week": week,
     }
 
 
@@ -543,6 +548,52 @@ def test_total_wins_capped_max_games_clamps_the_total():
     assert total_wins_capped(["A", "B"], ctx2, max_games=12) == [["A", "B"]]  # clamped: 12 == 12
 
 
+def test_total_wins_capped_excludes_postseason_and_championship_games():
+    """The Big 12's step e is a STANDINGS measure, so bowl wins and the conference title game
+    must not count toward it -- the same rule its sibling overall_win_pct and the engine's
+    fallback both apply. It did not, until an independent review caught the inconsistency.
+
+    A and B are each 1-0 in the regular season. A then wins the title game and a bowl, which
+    would put it ahead if either exclusion were missing; with both applied they stay level."""
+    rows = [
+        _row("A", "O1", "win"), _row("B", "P1", "win"),
+        _row("A", "Champ", "win", game_id=777),
+        _row("A", "Bowl", "win", season_type="postseason"),
+    ]
+    ctx = _ctx(rows, placement_excluded_game_ids=frozenset({777}))
+    assert total_wins_capped(["A", "B"], ctx) == [["A", "B"]]
+    # Without the championship-game exclusion A pulls ahead, which is what makes this an
+    # assertion about the filter rather than about the fixture.
+    unguarded = _ctx(rows)
+    assert total_wins_capped(["A", "B"], unguarded) == [["A"], ["B"]]
+
+
+def test_conference_game_rows_exclude_the_championship_game():
+    """_conf_game_rows feeds eight primitives -- head-to-head, intra-group record, sweeps,
+    round-robin detection, common opponents, placed opponents, opponents' records and divisional
+    record -- so a title game counted here reaches every one of them. TiebreakContext's own field
+    documents those ids as "game_ids that must not count toward STANDINGS PLACEMENT".
+
+    A and B split their season: B won in the regular season, A won the title game. Head-to-head
+    must read as B's win, not as a 1-1 wash."""
+    rows = (
+        _game("B", 21, "A", 14)
+        + [
+            {"season": SEASON, "team": "A", "opponent": "B", "status": "win",
+             "conference_game": True, "season_type": "regular", "game_id": 777,
+             "team_score": 28, "opp_score": 10},
+            {"season": SEASON, "team": "B", "opponent": "A", "status": "loss",
+             "conference_game": True, "season_type": "regular", "game_id": 777,
+             "team_score": 10, "opp_score": 28},
+        ]
+    )
+    ctx = _ctx(rows, placement_excluded_game_ids=frozenset({777}))
+    assert head_to_head(["A", "B"], ctx) == [["B"], ["A"]]
+    # Counting the title game makes it a 1-1 split, which head_to_head correctly reads as a wash
+    # -- so the exclusion is the only thing standing between "B won the tie" and "nobody did".
+    assert head_to_head(["A", "B"], _ctx(rows)) is None
+
+
 def test_total_wins_capped_without_the_roster_declines_rather_than_reporting_uncapped(caplog):
     """cap_fcs_wins=True with no non_fbs_teams roster must return None -- the engine's "this step
     has no opinion" signal, which the driver skips. The failure mode this guards against is
@@ -834,6 +885,15 @@ def test_vs_placed_opponents_rejects_an_unknown_standings_scope():
 # ===========================================================================
 # 11. conditional_external_ranking
 # ===========================================================================
+# _final_conference_week scopes to THIS conference's members via ctx.conf_records, so every
+# cascade fixture must declare them -- ctx.rows is the whole league's grid in production, and a
+# context with no members would legitimately find no final week at all.
+_CASCADE_MEMBERS = {
+    "A": (4, 2), "B": (4, 2),
+    "Early1": (2, 4), "Early2": (2, 4), "FinalA": (2, 4), "FinalB": (2, 4),
+}
+
+
 def _cascade_rows(a_result, b_result, final_week=10):
     """A and B each play one earlier conference game plus a final-week game whose outcome is set
     per team. `None` means idle in the final week (a bye), which is the case that separates the
@@ -845,6 +905,15 @@ def _cascade_rows(a_result, b_result, final_week=10):
         opp = f"Final{team}"
         rows += _row_pair(team, opp, result, week=final_week)
     return rows
+
+
+def _cascade_ctx(rows, team_ranks, conf_records=None, placement_excluded_game_ids=frozenset()):
+    return _ctx(
+        rows,
+        conf_records=conf_records or dict(_CASCADE_MEMBERS),
+        team_ranks=team_ranks,
+        placement_excluded_game_ids=placement_excluded_game_ids,
+    )
 
 
 def _row_pair(team, opponent, status, week):
@@ -864,7 +933,7 @@ def test_cascade_prefers_the_ranked_team_that_survived_the_final_weekend():
     not -- so A is selected despite the worse rating. A plain rating comparison returns the
     opposite order, which is what makes this discriminating."""
     rows = _cascade_rows(a_result="win", b_result="loss")
-    ctx = _ctx(rows, team_ranks={"A": 20, "B": 5})
+    ctx = _cascade_ctx(rows, {"A": 20, "B": 5})
     assert conditional_external_ranking(["A", "B"], ctx) == [["A"], ["B"]]
     assert external_ranking(["A", "B"], ctx) == [["B"], ["A"]]
 
@@ -874,7 +943,7 @@ def test_cascade_falls_back_to_the_rating_when_nobody_survives():
     average over the whole group -- which under the K6 substitution is the same rating. So the
     step must behave exactly like external_ranking here, not return no opinion."""
     rows = _cascade_rows(a_result="loss", b_result="loss")
-    ctx = _ctx(rows, team_ranks={"A": 20, "B": 5})
+    ctx = _cascade_ctx(rows, {"A": 20, "B": 5})
     assert conditional_external_ranking(["A", "B"], ctx) == [["B"], ["A"]]
 
 
@@ -882,7 +951,7 @@ def test_cascade_falls_back_to_the_rating_when_everybody_survives():
     """The mirror case: survival that splits nobody is no information, so the group is ordered by
     rating alone rather than being reported as separated for the wrong reason."""
     rows = _cascade_rows(a_result="win", b_result="win")
-    ctx = _ctx(rows, team_ranks={"A": 20, "B": 5})
+    ctx = _cascade_ctx(rows, {"A": 20, "B": 5})
     assert conditional_external_ranking(["A", "B"], ctx) == [["B"], ["A"]]
 
 
@@ -894,7 +963,7 @@ def test_cascade_ignores_a_team_outside_the_ranked_cutoff():
     Without the cutoff our rating would make EVERY team "ranked" and the whole cascade would
     collapse into a plain rating comparison, which is the failure this pins."""
     rows = _cascade_rows(a_result="win", b_result="loss")
-    ctx = _ctx(rows, team_ranks={"A": 90, "B": 5})
+    ctx = _cascade_ctx(rows, {"A": 90, "B": 5})
     assert conditional_external_ranking(["A", "B"], ctx, ranked_cutoff=25) == [["B"], ["A"]]
     # Widen the cutoff to include A and the survival condition decides instead.
     assert conditional_external_ranking(["A", "B"], ctx, ranked_cutoff=100) == [["A"], ["B"]]
@@ -905,7 +974,7 @@ def test_cascade_condition_splits_on_an_idle_final_weekend():
     it "does not lose" (american.txt 10.5.3) but does not "win" (mountainwest.txt 2(a)). B, worse
     rated, won. So the two settings give opposite answers on identical data."""
     rows = _cascade_rows(a_result=None, b_result="win")
-    ctx = _ctx(rows, team_ranks={"A": 5, "B": 20})
+    ctx = _cascade_ctx(rows, {"A": 5, "B": 20})
     # does_not_lose: both qualify -> nobody is split off -> ordered by rating, A first.
     assert conditional_external_ranking(
         ["A", "B"], ctx, condition="does_not_lose") == [["A"], ["B"]]
@@ -913,9 +982,31 @@ def test_cascade_condition_splits_on_an_idle_final_weekend():
     assert conditional_external_ranking(["A", "B"], ctx, condition="wins") == [["B"], ["A"]]
 
 
+def test_cascade_keeps_teams_it_cannot_tell_apart_in_one_group():
+    """Non-survivors it has no ranking for must stay together, not be exploded into singletons.
+
+    An earlier version returned one singleton per team, which did two wrong things at once: it
+    ordered UNRANKED teams relative to each other in whatever sequence they arrived in -- so the
+    same data gave different answers depending on input order -- and, because each was a
+    singleton, the driver recorded them as resolved and skipped every later step in the chain.
+    """
+    rows = _cascade_rows(a_result="win", b_result="loss")
+    members = dict(_CASCADE_MEMBERS)
+    members.update({"C": (4, 2), "D": (4, 2)})
+    ranks = {"A": 5, "B": None, "C": None, "D": None}
+    forwards = conditional_external_ranking(
+        ["A", "B", "C", "D"], _cascade_ctx(rows, ranks, conf_records=members))
+    backwards = conditional_external_ranking(
+        ["A", "D", "C", "B"], _cascade_ctx(rows, ranks, conf_records=members))
+    assert forwards == [["A"], ["B", "C", "D"]], forwards
+    # The unranked group's membership must not depend on the order it was handed in.
+    assert sorted(backwards[-1]) == ["B", "C", "D"], backwards
+    assert len(backwards) == len(forwards) == 2
+
+
 def test_cascade_is_gated_by_min_conference_games():
     rows = _cascade_rows(a_result="win", b_result="loss")
-    ctx = _ctx(rows, conf_records={"A": (1, 1), "B": (1, 1)}, team_ranks={"A": 20, "B": 5})
+    ctx = _cascade_ctx(rows, {"A": 20, "B": 5}, conf_records={"A": (1, 1), "B": (1, 1)})
     assert conditional_external_ranking(["A", "B"], ctx, min_conference_games=4) is None
 
 
@@ -923,32 +1014,73 @@ def test_cascade_declines_when_the_season_has_no_conference_games():
     """With no conference games there is no final weekend, so the condition is unanswerable. It
     must return None rather than silently degrading into a plain rating comparison -- otherwise
     an early-season tie would be decided by a condition nobody could have met."""
-    ctx = _ctx([], team_ranks={"A": 20, "B": 5})
+    ctx = _cascade_ctx([], {"A": 20, "B": 5})
     assert conditional_external_ranking(["A", "B"], ctx) is None
 
 
 def test_cascade_rejects_an_unknown_condition():
-    ctx = _ctx(_cascade_rows("win", "loss"), team_ranks={"A": 1, "B": 2})
+    ctx = _cascade_ctx(_cascade_rows("win", "loss"), {"A": 1, "B": 2})
     with pytest.raises(ValueError, match="condition"):
         conditional_external_ranking(["A", "B"], ctx, condition="doesnt_lose")
 
 
 def test_cascade_ignores_the_conference_championship_game_as_the_final_weekend():
-    """A championship game is a postseason row for this purpose and must not be mistaken for the
-    final weekend of the conference REGULAR season. If it were, the week would shift and both
-    teams' final-week outcomes would be read from the wrong game."""
+    """A championship game must not be mistaken for the final weekend of the conference REGULAR
+    season. It is excluded by its game_id, NOT by season_type -- this repo's own comment says "a
+    championship game is always season_type=='regular'" (artifacts/schedule.py), so an earlier
+    version of this test built it as 'postseason' and was therefore testing an input that cannot
+    occur. It passed for the wrong reason and gave false assurance on exactly the shape that
+    later turned out to be broken.
+
+    Here A wins in week 10 and loses the week-15 title game. With the title game excluded the
+    final week is 10, A survives it, and A is selected despite the worse rating."""
     rows = _cascade_rows(a_result="win", b_result="loss", final_week=10)
     rows += [
         {"season": SEASON, "team": "A", "opponent": "B", "status": "loss",
-         "conference_game": True, "season_type": "postseason", "week": 15,
+         "conference_game": True, "season_type": "regular", "week": 15, "game_id": 777,
          "team_score": None, "opp_score": None},
         {"season": SEASON, "team": "B", "opponent": "A", "status": "win",
-         "conference_game": True, "season_type": "postseason", "week": 15,
+         "conference_game": True, "season_type": "regular", "week": 15, "game_id": 777,
          "team_score": None, "opp_score": None},
     ]
-    ctx = _ctx(rows, team_ranks={"A": 20, "B": 5})
-    # A still wins the tie on its week-10 result, despite losing the week-15 title game.
+    ctx = _cascade_ctx(rows, {"A": 20, "B": 5}, placement_excluded_game_ids=frozenset({777}))
+    assert _final_conference_week(ctx) == 10
     assert conditional_external_ranking(["A", "B"], ctx) == [["A"], ["B"]]
+
+    # Without the exclusion the final week becomes 15, where A LOST -- so A stops surviving and
+    # the step hands the tie to the better-rated B. Opposite answer, same rows.
+    unguarded = _cascade_ctx(rows, {"A": 20, "B": 5})
+    assert _final_conference_week(unguarded) == 15
+    assert conditional_external_ranking(["A", "B"], unguarded) == [["B"], ["A"]]
+
+
+def test_final_conference_week_is_scoped_to_this_conference_and_to_played_games():
+    """The bug an independent review caught, pinned. ctx.rows is the WHOLE LEAGUE's grid in
+    production, including unplayed fixtures, so the final week must be derived only from THIS
+    conference's PLAYED games.
+
+    Unscoped, either of the two intruders below moves the final week past this conference's
+    finale, every tied team reads as idle, and the whole cascade silently degrades into a plain
+    rating comparison -- which never ties, and so pre-empts every remaining step in three
+    conferences' chains."""
+    rows = _cascade_rows(a_result="win", b_result="loss", final_week=10)
+    intruders = [
+        # Another conference, later week, already played.
+        {"season": SEASON, "team": "OtherConfTeam", "opponent": "OtherConfFoe", "status": "win",
+         "conference_game": True, "season_type": "regular", "week": 13, "game_id": None,
+         "team_score": None, "opp_score": None},
+        # This conference, later week, NOT YET PLAYED.
+        {"season": SEASON, "team": "A", "opponent": "Early1", "status": "upcoming",
+         "conference_game": True, "season_type": "regular", "week": 14, "game_id": None,
+         "team_score": None, "opp_score": None},
+    ]
+    ctx = _cascade_ctx(rows + intruders, {"A": 20, "B": 5})
+    assert _final_conference_week(ctx) == 10
+    # And the condition still does its job: A survived week 10, B did not.
+    assert conditional_external_ranking(["A", "B"], ctx) == [["A"], ["B"]]
+    assert external_ranking(["A", "B"], ctx) == [["B"], ["A"]], (
+        "the two must differ here, or this fixture proves nothing about the condition"
+    )
 
 
 # ===========================================================================
