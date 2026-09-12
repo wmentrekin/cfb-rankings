@@ -211,14 +211,29 @@ def sub_group_record(
 # 3. sweep_in_out
 # ---------------------------------------------------------------------------
 def sweep_in_out(tied: List[str], ctx: TiebreakContext, **params) -> StepResult:
-    """For an INCOMPLETE round robin among 3+ tied teams: a team that beat every tied opponent it
-    actually played is promoted into its own top group; a team that lost to every tied opponent
-    it actually played is demoted into its own bottom group; everyone else (split, or never
-    played a tied opponent) lands in one unseparated middle group. Returns None -- not a guess --
-    when the round robin IS complete (sub_group_record applies instead, per every source
-    document), when fewer than 3 teams are tied, or when no team swept or was swept (matching
-    sec.txt A.2.c: "if no team either beat all or lost to all -> all tied teams advance to the
-    next step", i.e. this step had no opinion).
+    """For an INCOMPLETE round robin among 3+ tied teams: a team that beat EVERY OTHER TIED TEAM
+    is promoted into its own top group; a team that lost to EVERY OTHER TIED TEAM is demoted into
+    its own bottom group; everyone else lands in one unseparated middle group. Returns None --
+    not a guess -- when the round robin IS complete (sub_group_record applies instead, per every
+    source document), when fewer than 3 teams are tied, or when no team swept or was swept
+    (matching sec.txt A.2.c: "if no team either beat all or lost to all -> all tied teams advance
+    to the next step", i.e. this step had no opinion).
+
+    "EVERY OTHER TIED TEAM" MEANS ALL OF THEM, NOT ALL THE ONES IT PLAYED. This is the whole
+    subtlety of the step, and getting it wrong is not an academic matter -- it inverts a real
+    result. The source texts are explicit: acc.txt Sec 2.b[sic].ii.1 says "The Tied Team which
+    defeated EACH OF THE OTHER Tied Teams", and sec.txt A.2(a) says "One team beat ALL THE OTHER
+    tied teams". A team that played one tied opponent and won has not beaten all the others; it
+    has beaten one of them.
+
+    The 2025 ACC five-way tie at 6-2 is the disproof of the looser reading. Georgia Tech played
+    exactly one of the other four tied teams (Duke) and won; Duke played exactly one (Georgia
+    Tech) and lost. Under "all the ones it played", Georgia Tech is promoted to the top and Duke
+    is demoted to the bottom, and the step resolves the tie on the strength of a single game
+    between two of five teams. Duke actually WON that tie, on the opponents'-combined-conference-
+    record step four places later (its eight ACC opponents went 32-32, .500, the best of the
+    five). Requiring a result against every other tied team makes this step correctly silent on
+    that shape, so the chain reaches the step that really decided it.
 
     BOTH-SIDED, per source text in sec.txt A.2(a)/(b) and acc.txt Sec 2.b[sic].ii.1 explicitly
     ("the tied team which lost to each of the other Tied Teams is removed from the tie").
@@ -254,16 +269,19 @@ def sweep_in_out(tied: List[str], ctx: TiebreakContext, **params) -> StepResult:
     bottom: List[str] = []
     middle: List[str] = []
     for team in tied:
-        played, beat, lost = set(), set(), set()
+        others = tied_set - {team}
+        beat, lost = set(), set()
         for row in _conf_game_rows(ctx, team):
             opp = row.get("opponent")
             if opp not in tied_set or opp == team:
                 continue
-            played.add(opp)
             (beat if row["status"] == "win" else lost).add(opp)
-        if played and beat == played:
+        # Compared against `others`, NOT against the subset this team happened to play. Both
+        # comparisons therefore require a result against EVERY other tied team; a team with an
+        # unplayed tied opponent can be neither a sweeper nor a total-loser. See the docstring.
+        if beat == others:
             top.append(team)
-        elif played and lost == played:
+        elif lost == others:
             bottom.append(team)
         else:
             middle.append(team)
@@ -677,6 +695,29 @@ def random_draw(tied: List[str], ctx: TiebreakContext, **params) -> StepResult:
     step. Always returns None; the driver's own fallback chain (outside this module's scope)
     is what actually resolves a tie that reaches here."""
     return None
+
+
+def satisfies_when(when: Optional[str], tied: List[str], ctx: TiebreakContext) -> bool:
+    """Whether a config step's `when` predicate holds for this group, so the driver can gate a
+    step without itself knowing the row shape.
+
+    Lives here rather than in the driver because the only thing either predicate asks about is
+    whether the tied teams all played each other, which is a question about game rows -- the
+    subject of this module. The vocabulary is validated at config load
+    (tiebreaker_rules.WHEN_PREDICATES); an unrecognised value reaching here is a programming
+    error, so it is refused loudly rather than silently treated as "always".
+
+    None means the step is unconditional."""
+    if when is None:
+        return True
+    if when == "round_robin_among_tied":
+        return _is_complete_round_robin(ctx, tied)
+    if when == "not_round_robin_among_tied":
+        return not _is_complete_round_robin(ctx, tied)
+    raise ValueError(
+        f"satisfies_when: unrecognised predicate {when!r}. Valid values are "
+        "'round_robin_among_tied', 'not_round_robin_among_tied', or None."
+    )
 
 
 STEP_REGISTRY: Dict[str, Callable] = {

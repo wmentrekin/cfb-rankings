@@ -152,12 +152,39 @@ def test_sub_group_record_fewer_than_three_is_none():
 # 3. sweep_in_out
 # ===========================================================================
 def test_sweep_in_out_promotes_sweeper_and_demotes_total_losers():
-    # Incomplete round robin: A beat B and C (both games A played); B and C only played A (and
-    # lost); D played nobody among the tied group.
+    """A beat all three others, D lost to all three others, and B vs C was never played -- so the
+    round robin is incomplete and both the promote and demote halves fire."""
+    rows = (
+        _game("A", 20, "B", 10) + _game("A", 20, "C", 10) + _game("A", 20, "D", 10)
+        + _game("B", 20, "D", 10) + _game("C", 20, "D", 10)
+    )
+    ctx = _ctx(rows)
+    assert sweep_in_out(["A", "B", "C", "D"], ctx) == [["A"], ["B", "C"], ["D"]]
+
+
+def test_sweep_in_out_needs_a_result_against_every_other_tied_team():
+    """A beat the two tied teams it played but never played D, so it has NOT "defeated each of
+    the other Tied Teams" (acc.txt) / "beat all the other tied teams" (sec.txt). Nobody in this
+    shape qualifies, so the step must decline.
+
+    The looser reading -- swept everyone it happened to play -- promotes A on two games out of a
+    possible three and is what this test exists to forbid."""
     rows = _game("A", 20, "B", 10) + _game("A", 20, "C", 10)
     ctx = _ctx(rows)
-    result = sweep_in_out(["A", "B", "C", "D"], ctx)
-    assert result == [["A"], ["D"], ["B", "C"]]
+    assert sweep_in_out(["A", "B", "C", "D"], ctx) is None
+
+
+def test_sweep_in_out_is_silent_on_the_real_2025_acc_five_way():
+    """The regression case, from live data. Georgia Tech played exactly one of the other four
+    tied teams (Duke) and won it; Duke played exactly one (Georgia Tech) and lost it; the other
+    three pairs never met. Under "beat all the ones it played", Georgia Tech is promoted and Duke
+    demoted to last on the strength of one game among five teams -- and Duke actually won this
+    tie, four steps later, on its opponents' combined conference record (32-32, .500).
+
+    So this step must have no opinion here."""
+    five = ["Duke", "Georgia Tech", "Miami", "Pittsburgh", "SMU"]
+    ctx = _ctx(_game("Georgia Tech", 27, "Duke", 20))
+    assert sweep_in_out(five, ctx) is None
 
 
 def test_sweep_in_out_no_separation_returns_none():

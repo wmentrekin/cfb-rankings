@@ -36,10 +36,9 @@ branching:
 
 summary:
   current_focus: >
-    Batch B1 executing. T1 (rule schema, loader, validation, plus the four Power 4 configs) and
-    T2 (the ten shared step primitives) are running concurrently -- they own disjoint files.
-    T3, the recursive peel-off driver, is gated on both and is orchestrator-owned per the
-    frontier routing in the plan.
+    T1, T2 and T3 are complete: the engine exists and is tested end to end against the real
+    Power 4 chains. 382 tests pass. Next is T4, wiring order_tied_group into
+    _sort_conference_teams, dropping _conf_net and surfacing resolved_by.
   last_completed: >
     The user supplied primary-source rule text for all four Power 4 conferences, committed at
     docs/conference-tiebreakers/source-rules/. Cross-conference step comparison showed heavy
@@ -49,7 +48,10 @@ summary:
   current_blocker: >
     Six conferences still have no primary source: American, Mountain West, MAC, Sun Belt,
     Conference USA, Pac-12. The user is sourcing them. This blocks T5 and part of T6 only;
-    it does not block the engine.
+    the engine is done without them, and each is expected to be a config edit rather than new
+    code. Also outstanding: sec.txt references an Appendix B of ~25 conference-authored worked
+    examples whose text was not included in the paste. Those are the best available acceptance
+    fixtures for T6 and are worth asking for again.
 
 artifacts:
   requirements: "docs/conference-tiebreakers/requirements.yaml"
@@ -106,7 +108,7 @@ agents:
     requested_provider_model: "Claude Sonnet 5"
     actual_model: "claude-sonnet-5"
     routing_enforced: true
-    status: "in_progress"
+    status: "complete"
     stage: "execution"
     task: "Config schema, loader, strict validation, and the four Power 4 rule sets."
     last_update: "2026-09-11"
@@ -119,10 +121,25 @@ agents:
     requested_provider_model: "Claude Sonnet 5"
     actual_model: "claude-sonnet-5"
     routing_enforced: true
-    status: "in_progress"
+    status: "complete"
     stage: "execution"
     task: "The ten shared step primitives and STEP_REGISTRY."
     last_update: "2026-09-11"
+    blocker: ""
+  - id: "T3-driver"
+    role: "data-engineer"
+    task_profile: "implementation"
+    requested_model_tier: "frontier"
+    requested_reasoning: "high"
+    requested_provider_model: "Claude Opus 5"
+    actual_model: "claude-opus-5"
+    routing_enforced: true
+    status: "complete"
+    stage: "execution"
+    task: >
+      The recursive peel-off driver. Built by the orchestrator directly rather than delegated,
+      per the plan's frontier routing for T3.
+    last_update: "2026-09-12"
     blocker: ""
   - id: "prior-art-researcher"
     role: "platform-researcher"
@@ -175,6 +192,28 @@ blockers:
     owner: "user"
 
 decisions:
+  - id: "D7"
+    decision: >
+      A step's partition is read as an ORDERING between groups, not as a selection event -- the
+      one reframing that lets participant-selection rules drive full-season standings.
+    rationale: >
+      Every published procedure answers "which one or two teams go to the title game" and talks
+      about teams being selected or eliminated. This project needs a total order over the whole
+      group, all season. Reading "selected" as "placed above everyone remaining" and "eliminated"
+      as "placed below everyone still in contention, and still ordered among its own band" makes
+      the published chains usable verbatim. It also makes the Big Ten's "shall not be pulled back
+      into the tiebreaker" structural rather than a flag to check: recursion happens strictly
+      within a group, so a team can never cross above one an earlier step placed higher.
+  - id: "D8"
+    decision: "sweep_in_out requires a result against EVERY other tied team, not every one it played."
+    rationale: >
+      The first implementation promoted a team that beat all the tied teams it happened to play.
+      The texts say "defeated EACH OF THE OTHER Tied Teams" (ACC) and "beat ALL THE OTHER tied
+      teams" (SEC), and the looser reading inverts a real result: in the 2025 ACC five-way,
+      Georgia Tech played one of the other four and won, Duke played one and lost, so the step
+      would have resolved a five-team tie on a single game and placed Duke last. Duke actually
+      won that tie four steps later on its opponents' combined conference record. Caught by a
+      driver test written against the real outcome, not by review.
   - id: "D1"
     decision: "Rules live as configuration data, not code."
     rationale: >
