@@ -442,6 +442,7 @@ SHIPPED_RULE_SETS = [
     ("SEC", 2025), ("Big 12", 2025), ("Big Ten", 2025),
     ("ACC", 2025), ("ACC", 2026),
     ("Mid-American", 2025), ("Pac-12", 2026), ("Conference USA", 2025),
+    ("Mountain West", 2025), ("American Athletic", 2025),
 ]
 
 

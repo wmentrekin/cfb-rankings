@@ -185,6 +185,15 @@ STEP_PARAMS: Dict[str, FrozenSet[str]] = {
     "total_wins_capped": frozenset({"max_games", "cap_fcs_wins"}),
     "external_ranking": frozenset({"min_conference_games"}),
     "random_draw": frozenset(),
+    # The Mountain West / Sun Belt / American cascade: an outside ranking conditioned on the
+    # final weekend's result. See artifacts/tiebreaker_steps.conditional_external_ranking for
+    # what the K6 rating substitution costs here, which is more than it costs elsewhere.
+    "conditional_external_ranking": frozenset(
+        {"min_conference_games", "ranked_cutoff", "condition"}
+    ),
+    # Overall winning percentage in the three variants the American, Mountain West and Sun Belt
+    # each ask for. Distinct from total_wins_capped, which is the Big 12's 12-game win COUNT.
+    "overall_win_pct": frozenset({"fcs_win_cap", "fbs_only"}),
 }
 
 # The set of step NAMES, used both for validation fallback and for the drift-detection test

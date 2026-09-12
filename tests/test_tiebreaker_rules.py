@@ -127,7 +127,12 @@ def test_rules_for_unknown_conference_returns_none():
     """No config for a conference -> None, so the caller falls back to current behaviour
     (AC7) -- never raises."""
     cfg = load_conference_rules(known_step_names=KNOWN_STEPS)
-    assert rules_for(cfg, "Mountain West", 2025) is None
+    # A name that is not a conference at all, so this stays true no matter how many real
+    # conferences get transcribed. Using a real-but-unconfigured conference here made the test
+    # silently stop testing anything the moment that conference gained a rule set.
+    assert rules_for(cfg, "Not A Conference", 2025) is None
+    # And a real conference asked about a season outside every era it has.
+    assert rules_for(cfg, "SEC", 1999) is None
 
 
 def test_rules_for_season_outside_every_range_returns_none():
@@ -572,6 +577,8 @@ def test_every_multi_team_chain_opens_with_a_round_robin_gated_intra_group_recor
 # cusa.txt state no sweep clause of any kind.
 CONFERENCES_WITH_A_SWEEP_STEP = {
     "SEC", "ACC", "Big 12", "Big Ten", "Mid-American",
+    "Mountain West",     # mountainwest.txt multi 1: "unless one team defeated all other tied teams"
+    "American Athletic", # american.txt 10.6.3: the same escape, identical in force
 }
 CONFERENCES_WITHOUT_A_SWEEP_STEP = {
     "Pac-12",            # pac12.txt multi 1: "the process moves to the next criterion"
@@ -628,6 +635,46 @@ def test_a_sweep_step_when_present_is_second_and_gated_to_the_other_branch():
     # Both readings must actually be represented, or this test is vacuous in one direction.
     assert seen_with, "no conference configures a sweep step; the assertions above never ran"
     assert seen_without, "no conference omits the sweep step; the omission path is untested"
+
+
+# Which wording each conference uses for its final-weekend condition is a claim about its source
+# text, so the answer is listed rather than inferred from the config it checks. The distinction is
+# not cosmetic: a team IDLE in the final weekend satisfies "does not lose" and fails "wins", so
+# the two settings order such a team differently.
+EXPECTED_FINAL_WEEK_CONDITIONS = {
+    # mountainwest.txt 2(a)/(b): "and WINS on the final weekend of the regular season".
+    "Mountain West": "wins",
+    # american.txt 10.5.3 / 10.5.5 / 10.6.4: "and DOESN'T LOSE in the final weekend".
+    "American Athletic": "does_not_lose",
+}
+
+
+def test_final_week_condition_matches_each_conference_s_own_wording():
+    """The Mountain West says "wins" and the American says "doesn't lose", and both are direct
+    quotations. Defaulting either to the other's wording would order a team that was idle in the
+    final weekend by a rule its conference did not write."""
+    cfg = load_conference_rules(known_step_names=KNOWN_STEPS)
+    checked = []
+    for conference, rule_sets in cfg.conferences.items():
+        expected = EXPECTED_FINAL_WEEK_CONDITIONS.get(conference)
+        for rs in rule_sets:
+            era = f"{conference} {rs.season_min}-{rs.season_max}"
+            for st in list(rs.two_team) + list(rs.multi_team.steps):
+                if st.step != "conditional_external_ranking":
+                    continue
+                assert expected is not None, (
+                    f"{era} uses conditional_external_ranking but is in neither wording list; "
+                    f"add it after reading its source file"
+                )
+                assert st.params.get("condition") == expected, (
+                    f"{era}: expected condition {expected!r}, got "
+                    f"{st.params.get('condition')!r}"
+                )
+                checked.append(era)
+    assert checked, "no conference configures the cascade; this test never ran"
+    # Both wordings must actually appear, or one of them is untested.
+    conditions = {EXPECTED_FINAL_WEEK_CONDITIONS[c] for c in EXPECTED_FINAL_WEEK_CONDITIONS}
+    assert conditions == {"wins", "does_not_lose"}
 
 
 def test_sweep_sides_is_promote_only_wherever_the_text_omits_the_demote_half():

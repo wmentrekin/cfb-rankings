@@ -748,6 +748,243 @@ def random_draw(tied: List[str], ctx: TiebreakContext, **params) -> StepResult:
     return None
 
 
+# ---------------------------------------------------------------------------
+# 11. overall_win_pct
+# ---------------------------------------------------------------------------
+def overall_win_pct(
+    tied: List[str],
+    ctx: TiebreakContext,
+    fcs_win_cap: Optional[int] = None,
+    fbs_only: bool = False,
+    **params,
+) -> StepResult:
+    """Overall winning percentage, conference and non-conference, in three published variants.
+
+    Three conferences reach for "overall record" late in their chains and each adjusts it
+    differently, which is why this is one primitive with parameters rather than three:
+
+      american.txt 10.5.9 / 10.6.10   plain overall percentage, "excluding exempt games"
+      mountainwest.txt two-team 3     overall percentage, "a maximum of ONE win against a team
+                                      from the NCAA Football Championship Subdivision shall be
+                                      included"                       -> fcs_win_cap=1
+      sunbelt.txt step 9              overall percentage "against FBS teams"  -> fbs_only=True
+
+    Note this is a PERCENTAGE, and distinct from `total_wins_capped`, which is the Big 12's
+    12-game win COUNT with its own FCS cap. Four conferences, four different adjustments to the
+    same underlying idea.
+
+    STANDINGS-PLACEMENT EXCLUSIONS APPLY. Postseason rows and
+    ctx.placement_excluded_game_ids (the conference championship games) are left out, matching
+    artifacts/schedule.py::_placement_pct and the engine's own fallback. None of the three source
+    documents says so explicitly -- they predate or ignore the question -- but the repo owner's
+    rule that bowl and playoff results must not affect standings placement applies to every
+    measure that places a team, not only to the primary key.
+
+    "EXCLUDING EXEMPT GAMES" IS NOT IMPLEMENTED and is not pretended to be. american.txt 10.5.9
+    and big12.txt step e both defer to NCAA Bylaw 17.10.5.2.1 (in practice the Hawaii
+    exemption); no data available to this module flags an exempt game. The effect is bounded to
+    teams that played a thirteenth regular-season game, and the American's config records the gap
+    in that step's `cites` rather than leaving it to be rediscovered.
+
+    Both `fcs_win_cap` and `fbs_only` need ctx.non_fbs_teams. When it was not supplied (None, as
+    opposed to an empty set) the step returns None and warns, rather than reporting an unadjusted
+    percentage as if it had been adjusted -- the same contract as total_wins_capped.
+    """
+    if (fcs_win_cap is not None or fbs_only) and ctx.non_fbs_teams is None:
+        logger.warning(
+            "overall_win_pct: fcs_win_cap/fbs_only requested but ctx.non_fbs_teams was not "
+            "supplied for season=%s conference=%s; skipping the step rather than reporting an "
+            "unadjusted percentage as an adjusted one.",
+            ctx.season, ctx.conference,
+        )
+        return None
+
+    non_fbs = ctx.non_fbs_teams or frozenset()
+    pct: Dict[str, Optional[float]] = {}
+    for team in tied:
+        wins: List[Dict[str, Any]] = []
+        losses = 0
+        for row in ctx.rows:
+            if row.get("season") != ctx.season or row.get("team") != team:
+                continue
+            if row.get("season_type") == "postseason":
+                continue
+            if row.get("game_id") in ctx.placement_excluded_game_ids:
+                continue
+            status = row.get("status")
+            if status not in ("win", "loss"):
+                continue
+            opponent_is_non_fbs = row.get("opponent") in non_fbs
+            if fbs_only and opponent_is_non_fbs:
+                # Sun Belt step 9: the game is not counted at all, win or loss.
+                continue
+            if status == "win":
+                wins.append(row)
+            else:
+                losses += 1
+
+        win_count = len(wins)
+        if fcs_win_cap is not None:
+            # Mountain West: wins over non-FBS opponents count at most `fcs_win_cap` times. The
+            # LOSSES are untouched -- the rule caps what a team can bank from playing down, and
+            # says nothing about forgiving a loss to an FCS team.
+            fcs_wins = sum(1 for r in wins if r.get("opponent") in non_fbs)
+            win_count -= max(0, fcs_wins - fcs_win_cap)
+
+        played = win_count + losses
+        pct[team] = (win_count / played) if played else None
+    return _partition_by_value(tied, pct)
+
+
+# ---------------------------------------------------------------------------
+# 12. conditional_external_ranking
+# ---------------------------------------------------------------------------
+def _final_conference_week(ctx: TiebreakContext) -> Optional[int]:
+    """The conference's last REGULAR-SEASON conference week this season, or None if it has none.
+
+    Derived from the rows rather than from a calendar, because the week number is not constant:
+    get_cfb_week()'s anchor moves each year, so the final conference weekend is a different week
+    number in different seasons (artifacts/schedule.py documents the same thing for the
+    championship-week label). Postseason rows are excluded -- a conference championship game or a
+    bowl is not "the final weekend of the conference regular season".
+    """
+    weeks = [
+        r.get("week") for r in ctx.rows
+        if r.get("season") == ctx.season
+        and r.get("conference_game")
+        and r.get("season_type") != "postseason"
+        and r.get("week") is not None
+    ]
+    return max(weeks) if weeks else None
+
+
+def _final_week_outcome(ctx: TiebreakContext, team: str, final_week: int) -> Optional[str]:
+    """'win', 'loss', or None if the team had no conference game that week (a bye).
+
+    The bye case is why `condition` below has two values rather than one: a team on a bye
+    literally "does not lose" in the final weekend but does not "win" either, and the source
+    documents split on exactly that wording.
+    """
+    for row in ctx.rows:
+        if (
+            row.get("season") == ctx.season
+            and row.get("team") == team
+            and row.get("week") == final_week
+            and row.get("conference_game")
+            and row.get("season_type") != "postseason"
+            and row.get("status") in ("win", "loss")
+        ):
+            return row["status"]
+    return None
+
+
+def conditional_external_ranking(
+    tied: List[str],
+    ctx: TiebreakContext,
+    min_conference_games: int = 0,
+    ranked_cutoff: int = 25,
+    condition: str = "does_not_lose",
+    **params,
+) -> StepResult:
+    """An outside ranking CONDITIONED ON THE FINAL WEEKEND'S RESULT -- the step that dominates the
+    Mountain West, Sun Belt and American procedures.
+
+    All three enumerate the same operation case by case rather than stating it once
+    (mountainwest.txt two-team 2 and multi 2; sunbelt.txt steps 5-8; american.txt 10.5.3-10.5.7
+    and 10.6.4-10.6.8 -- five consecutive clauses there before any record-based measure appears).
+    Collapsed, the published logic is:
+
+      - a tied team that was RANKED going into the final weekend, and then won it (or merely did
+        not lose it -- the documents differ, see `condition`), is selected;
+      - if no ranked tied team survives the final weekend, the comparison reverts to a COMPOSITE
+        AVERAGE of computer rankings over all the tied teams.
+
+    Read as an ordering rather than a selection (see tiebreaker_engine's reframing), that is a
+    two-tier partition: the surviving ranked teams first, ordered among themselves, then everyone
+    else. When the first tier is empty, or contains every tied team, this step is exactly
+    `external_ranking` -- so it can only change an outcome when survival splits the group, which
+    is the case its tests pin.
+
+    WHAT THE SUBSTITUTION COSTS, STATED PLAINLY. Per K6 this project's own rating stands in for
+    every outside service, and here that erases a distinction the documents rely on: the CFP poll
+    ranks 25 teams, so "was ranked" is a real filter, while our rating ranks everyone, so it is
+    none. Left alone, every tied team would count as ranked and the cascade would collapse into
+    plain `external_ranking`, losing the final-weekend condition entirely.
+
+    `ranked_cutoff` (default 25) is the deliberate proxy: a team counts as "ranked going into the
+    final weekend" if our rank is within the cutoff, mirroring the poll's size. It is a proxy and
+    not the thing itself -- our top 25 is not the committee's -- and it is the single largest
+    interpretive liberty in any of the ten transcriptions.
+
+    The second substitution is invisible rather than lossy: the documents fall back from the CFP
+    poll to a composite of named computer rankings (Anderson & Hester, Massey, Colley, Wolfe for
+    the Sun Belt and Mountain West; Connolly SP+, SportSource TR116 SOR, ESPN SOR, KPI for the
+    American), and both the poll and the composite become the same rating here, so the
+    distinction between "use the ranking" and "use the composite" has no effect.
+
+    ALSO NOT MODELLED: the documents specify the poll AS OF A DATE before the final weekend
+    (mountainwest.txt names November 21). ctx.team_ranks is a single current snapshot with no
+    as-of dimension, so the rank used is the one we hold now, not the one we held then. The
+    repository does store weekly ratings, so this is a plumbing gap rather than an impossible one.
+
+    `condition` -- the wording genuinely differs and a bye is the case that separates them:
+      "does_not_lose"  american.txt 10.5.3/10.5.5/10.6.4 say "doesn't lose". A team idle in the
+                       final weekend satisfies this, as does a tie.
+      "wins"           mountainwest.txt 2(a)/(b) and sunbelt.txt 5-8 say "wins". An idle team
+                       does not qualify.
+
+    `min_conference_games` gates the whole step exactly as `external_ranking` does, so it cannot
+    fire in the thin-information early season.
+    """
+    if condition not in ("does_not_lose", "wins"):
+        raise ValueError(
+            f"conditional_external_ranking: unknown condition={condition!r}; expected "
+            "'does_not_lose' or 'wins'"
+        )
+
+    games_played = []
+    for team in tied:
+        rec = ctx.conf_records.get(team)
+        games_played.append((rec[0] + rec[1]) if rec else 0)
+    if games_played and min(games_played) < min_conference_games:
+        return None
+
+    final_week = _final_conference_week(ctx)
+    if final_week is None:
+        # No conference games at all this season: the condition is unanswerable, so this step has
+        # no opinion rather than degrading silently into a plain rating comparison.
+        return None
+
+    survivors: List[str] = []
+    for team in tied:
+        rank = ctx.team_ranks.get(team)
+        if rank is None or rank > ranked_cutoff:
+            continue
+        outcome = _final_week_outcome(ctx, team, final_week)
+        if condition == "wins":
+            qualifies = outcome == "win"
+        else:
+            qualifies = outcome != "loss"        # a win or a bye; only a loss disqualifies
+        if qualifies:
+            survivors.append(team)
+
+    def _rank_key(team: str) -> float:
+        rank = ctx.team_ranks.get(team)
+        return float(rank) if rank is not None else float("inf")
+
+    if not survivors or len(survivors) == len(tied):
+        # Nothing to split on: fall through to the composite over the whole group, which under
+        # the K6 substitution is the same rating. Identical to external_ranking's behaviour.
+        ranks: Dict[str, Optional[float]] = {t: ctx.team_ranks.get(t) for t in tied}
+        return _partition_by_value(tied, ranks, descending=False)
+
+    rest = [t for t in tied if t not in survivors]
+    return (
+        [[t] for t in sorted(survivors, key=_rank_key)]
+        + [[t] for t in sorted(rest, key=_rank_key)]
+    )
+
+
 def satisfies_when(when: Optional[str], tied: List[str], ctx: TiebreakContext) -> bool:
     """Whether a config step's `when` predicate holds for this group, so the driver can gate a
     step without itself knowing the row shape.
@@ -782,4 +1019,6 @@ STEP_REGISTRY: Dict[str, Callable] = {
     "total_wins_capped": total_wins_capped,
     "external_ranking": external_ranking,
     "random_draw": random_draw,
+    "conditional_external_ranking": conditional_external_ranking,
+    "overall_win_pct": overall_win_pct,
 }

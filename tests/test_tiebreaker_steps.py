@@ -36,6 +36,8 @@ from artifacts.tiebreaker_steps import (  # noqa: E402
     opponents_cumulative_conf_pct,
     random_draw,
     sub_group_record,
+    conditional_external_ranking,
+    overall_win_pct,
     sweep_in_out,
     total_wins_capped,
     vs_placed_opponents,
@@ -71,7 +73,7 @@ def _game(team_a, score_a, team_b, score_b, conference_game=True, season=SEASON)
 
 
 def _ctx(rows, frozen_order=None, conf_records=None, team_ranks=None, conference="TEST",
-         non_fbs_teams=None):
+         non_fbs_teams=None, placement_excluded_game_ids=frozenset()):
     """`non_fbs_teams` defaults to None, meaning NOT SUPPLIED -- deliberately distinct from an
     empty frozenset, which means supplied-and-nobody-is-non-FBS. total_wins_capped branches on
     exactly that difference, so the default must stay None rather than frozenset()."""
@@ -82,6 +84,7 @@ def _ctx(rows, frozen_order=None, conf_records=None, team_ranks=None, conference
         frozen_order=frozen_order or [],
         conf_records=conf_records or {},
         team_ranks=team_ranks or {},
+        placement_excluded_game_ids=placement_excluded_game_ids,
         non_fbs_teams=non_fbs_teams,
     )
 
@@ -604,6 +607,255 @@ def test_random_draw_always_none():
 
 
 # ===========================================================================
+# overall_win_pct
+# ===========================================================================
+def _nonconf(team, opponent, status, season=SEASON, season_type="regular", game_id=None):
+    return {
+        "season": season, "team": team, "opponent": opponent, "status": status,
+        "conference_game": False, "season_type": season_type, "week": 1,
+        "game_id": game_id, "team_score": None, "opp_score": None,
+    }
+
+
+def test_overall_win_pct_plain_is_the_american_variant():
+    """american.txt 10.5.9: plain overall percentage, conference and non-conference. A is 3-1
+    (.750), B is 2-2 (.500)."""
+    rows = [
+        _nonconf("A", "O1", "win"), _nonconf("A", "O2", "win"),
+        _nonconf("A", "O3", "win"), _nonconf("A", "O4", "loss"),
+        _nonconf("B", "P1", "win"), _nonconf("B", "P2", "win"),
+        _nonconf("B", "P3", "loss"), _nonconf("B", "P4", "loss"),
+    ]
+    assert overall_win_pct(["A", "B"], _ctx(rows)) == [["A"], ["B"]]
+
+
+def test_overall_win_pct_fcs_cap_is_the_mountain_west_variant():
+    """mountainwest.txt two-team 3: "a maximum of ONE win against a team from the NCAA Football
+    Championship Subdivision shall be included". A's 3-0 includes two FCS wins, so it counts 2-0
+    (1.000); B is 2-0 over FBS teams (1.000). Uncapped A looks better on volume; capped they are
+    level and the step separates nobody."""
+    rows = [
+        _nonconf("A", "FCS1", "win"), _nonconf("A", "FCS2", "win"), _nonconf("A", "FBS1", "win"),
+        _nonconf("B", "FBS2", "win"), _nonconf("B", "FBS3", "win"),
+    ]
+    ctx = _ctx(rows, non_fbs_teams=frozenset({"FCS1", "FCS2"}))
+    # Both 1.000 either way here, so use a loss to make the cap visible in the percentage.
+    rows2 = rows + [_nonconf("A", "FBS9", "loss"), _nonconf("B", "FBS8", "loss")]
+    ctx2 = _ctx(rows2, non_fbs_teams=frozenset({"FCS1", "FCS2"}))
+    assert overall_win_pct(["A", "B"], ctx2) == [["A"], ["B"]]          # 3-1 .750 vs 2-1 .667
+    assert overall_win_pct(["A", "B"], ctx2, fcs_win_cap=1) == [["A", "B"]]   # 2-1 vs 2-1
+
+
+def test_overall_win_pct_fcs_cap_does_not_forgive_a_loss_to_an_fcs_team():
+    """The rule caps what a team can bank from playing down; it says nothing about excusing a
+    LOSS to an FCS opponent. A cap that dropped such losses too would quietly reward the worst
+    result in college football."""
+    rows = [
+        _nonconf("A", "FCS1", "win"), _nonconf("A", "FCS2", "loss"),
+        _nonconf("B", "FBS1", "win"),
+    ]
+    ctx = _ctx(rows, non_fbs_teams=frozenset({"FCS1", "FCS2"}))
+    assert overall_win_pct(["A", "B"], ctx, fcs_win_cap=1) == [["B"], ["A"]]   # 1.000 vs .500
+
+
+def test_overall_win_pct_fbs_only_is_the_sun_belt_variant():
+    """sunbelt.txt step 9: overall percentage "against FBS teams" -- the non-FBS game is dropped
+    entirely, win or loss, rather than capped. A is 1-1 against FBS (.500) once its FCS win is
+    removed; B is 2-0 (1.000)."""
+    rows = [
+        _nonconf("A", "FCS1", "win"), _nonconf("A", "FBS1", "win"), _nonconf("A", "FBS2", "loss"),
+        _nonconf("B", "FBS3", "win"), _nonconf("B", "FBS4", "win"),
+    ]
+    ctx = _ctx(rows, non_fbs_teams=frozenset({"FCS1"}))
+    assert overall_win_pct(["A", "B"], ctx, fbs_only=True) == [["B"], ["A"]]
+    # Counting the FCS win would make A 2-1 (.667) -- still behind, so assert the difference
+    # against the uncapped call directly to prove the parameter did something.
+    assert overall_win_pct(["A", "B"], ctx) == [["B"], ["A"]]
+    plain = overall_win_pct(["A"], ctx)
+    fbs = overall_win_pct(["A"], ctx, fbs_only=True)
+    assert plain == fbs == [["A"]]          # single team: shape only, values asserted above
+
+
+def test_overall_win_pct_excludes_postseason_and_championship_games():
+    """Bowl and playoff results must not affect standings placement, and a championship game is a
+    'regular' row in CFBD's data so the caller passes its game_id.
+
+    The fixture is built so the two readings give OPPOSITE answers. A is 1-1 in the regular
+    season (.500) against B's 3-2 (.600), so B leads on placement record -- but A also won the
+    title game and a bowl, which would make it 3-1 (.750) and put it AHEAD if the exclusions
+    stopped working. An earlier version of this test used a fixture where the favoured team led
+    under both readings, which proved nothing about the exclusions at all.
+    """
+    rows = [
+        _nonconf("A", "O1", "win"), _nonconf("A", "O2", "loss"),
+        _nonconf("A", "Champ", "win", game_id=777),                       # excluded by game_id
+        _nonconf("A", "Bowl", "win", season_type="postseason"),           # excluded by type
+        _nonconf("B", "P1", "win"), _nonconf("B", "P2", "win"), _nonconf("B", "P3", "win"),
+        _nonconf("B", "P4", "loss"), _nonconf("B", "P5", "loss"),
+    ]
+    ctx = _ctx(rows, placement_excluded_game_ids=frozenset({777}))
+    assert overall_win_pct(["A", "B"], ctx) == [["B"], ["A"]]             # .500 vs .600
+
+
+def test_overall_win_pct_championship_exclusion_is_load_bearing_on_its_own():
+    """A championship game is season_type 'regular', so season_type alone cannot exclude it --
+    only the caller's game_id set can. A is 1-1 (.500) versus B's 3-2 (.600) with the exclusion,
+    and 2-1 (.667) versus .600 without it, so dropping this one guard inverts the result."""
+    rows = [
+        _nonconf("A", "O1", "win"), _nonconf("A", "O2", "loss"),
+        _nonconf("A", "Champ", "win", game_id=777),
+        _nonconf("B", "P1", "win"), _nonconf("B", "P2", "win"), _nonconf("B", "P3", "win"),
+        _nonconf("B", "P4", "loss"), _nonconf("B", "P5", "loss"),
+    ]
+    with_guard = _ctx(rows, placement_excluded_game_ids=frozenset({777}))
+    without_guard = _ctx(rows)
+    assert overall_win_pct(["A", "B"], with_guard) == [["B"], ["A"]]      # .500 vs .600
+    assert overall_win_pct(["A", "B"], without_guard) == [["A"], ["B"]]   # .667 vs .600
+
+
+def test_overall_win_pct_postseason_exclusion_is_load_bearing_on_its_own():
+    """The season_type guard, isolated: no excluded ids are passed at all, so only it can keep
+    the bowl win out. Same .500-versus-.600 shape, inverting to .667 if the guard is dropped."""
+    rows = [
+        _nonconf("A", "O1", "win"), _nonconf("A", "O2", "loss"),
+        _nonconf("A", "Bowl", "win", season_type="postseason"),
+        _nonconf("B", "P1", "win"), _nonconf("B", "P2", "win"), _nonconf("B", "P3", "win"),
+        _nonconf("B", "P4", "loss"), _nonconf("B", "P5", "loss"),
+    ]
+    assert overall_win_pct(["A", "B"], _ctx(rows)) == [["B"], ["A"]]      # .500 vs .600
+
+
+def test_overall_win_pct_declines_without_the_roster_when_an_adjustment_is_requested():
+    """Same contract as total_wins_capped: no roster means no opinion, rather than an unadjusted
+    percentage presented as an adjusted one. Plain mode needs no roster and still works."""
+    rows = [_nonconf("A", "O1", "win"), _nonconf("B", "P1", "loss")]
+    ctx = _ctx(rows)                       # non_fbs_teams is None
+    assert overall_win_pct(["A", "B"], ctx, fcs_win_cap=1) is None
+    assert overall_win_pct(["A", "B"], ctx, fbs_only=True) is None
+    assert overall_win_pct(["A", "B"], ctx) == [["A"], ["B"]]
+
+
+# ===========================================================================
+# 11. conditional_external_ranking
+# ===========================================================================
+def _cascade_rows(a_result, b_result, final_week=10):
+    """A and B each play one earlier conference game plus a final-week game whose outcome is set
+    per team. `None` means idle in the final week (a bye), which is the case that separates the
+    two `condition` values."""
+    rows = _row_pair("A", "Early1", "win", week=1) + _row_pair("B", "Early2", "win", week=1)
+    for team, result in (("A", a_result), ("B", b_result)):
+        if result is None:
+            continue
+        opp = f"Final{team}"
+        rows += _row_pair(team, opp, result, week=final_week)
+    return rows
+
+
+def _row_pair(team, opponent, status, week):
+    other = "loss" if status == "win" else "win"
+    return [
+        {"season": SEASON, "team": team, "opponent": opponent, "status": status,
+         "conference_game": True, "season_type": "regular", "week": week,
+         "team_score": None, "opp_score": None},
+        {"season": SEASON, "team": opponent, "opponent": team, "status": other,
+         "conference_game": True, "season_type": "regular", "week": week,
+         "team_score": None, "opp_score": None},
+    ]
+
+
+def test_cascade_prefers_the_ranked_team_that_survived_the_final_weekend():
+    """THE WHOLE POINT OF THE STEP. B is better rated, but B lost in the final weekend and A did
+    not -- so A is selected despite the worse rating. A plain rating comparison returns the
+    opposite order, which is what makes this discriminating."""
+    rows = _cascade_rows(a_result="win", b_result="loss")
+    ctx = _ctx(rows, team_ranks={"A": 20, "B": 5})
+    assert conditional_external_ranking(["A", "B"], ctx) == [["A"], ["B"]]
+    assert external_ranking(["A", "B"], ctx) == [["B"], ["A"]]
+
+
+def test_cascade_falls_back_to_the_rating_when_nobody_survives():
+    """If every ranked tied team lost in the final weekend, the documents revert to a composite
+    average over the whole group -- which under the K6 substitution is the same rating. So the
+    step must behave exactly like external_ranking here, not return no opinion."""
+    rows = _cascade_rows(a_result="loss", b_result="loss")
+    ctx = _ctx(rows, team_ranks={"A": 20, "B": 5})
+    assert conditional_external_ranking(["A", "B"], ctx) == [["B"], ["A"]]
+
+
+def test_cascade_falls_back_to_the_rating_when_everybody_survives():
+    """The mirror case: survival that splits nobody is no information, so the group is ordered by
+    rating alone rather than being reported as separated for the wrong reason."""
+    rows = _cascade_rows(a_result="win", b_result="win")
+    ctx = _ctx(rows, team_ranks={"A": 20, "B": 5})
+    assert conditional_external_ranking(["A", "B"], ctx) == [["B"], ["A"]]
+
+
+def test_cascade_ignores_a_team_outside_the_ranked_cutoff():
+    """"Was ranked going into the final weekend" is a real filter in the source documents -- the
+    CFP poll holds 25 teams. A survived the final weekend but sits outside the cutoff, so it is
+    not a ranked survivor and cannot be promoted over the better-rated B on that basis.
+
+    Without the cutoff our rating would make EVERY team "ranked" and the whole cascade would
+    collapse into a plain rating comparison, which is the failure this pins."""
+    rows = _cascade_rows(a_result="win", b_result="loss")
+    ctx = _ctx(rows, team_ranks={"A": 90, "B": 5})
+    assert conditional_external_ranking(["A", "B"], ctx, ranked_cutoff=25) == [["B"], ["A"]]
+    # Widen the cutoff to include A and the survival condition decides instead.
+    assert conditional_external_ranking(["A", "B"], ctx, ranked_cutoff=100) == [["A"], ["B"]]
+
+
+def test_cascade_condition_splits_on_an_idle_final_weekend():
+    """A bye is exactly where the two published wordings disagree. A is idle in the final week:
+    it "does not lose" (american.txt 10.5.3) but does not "win" (mountainwest.txt 2(a)). B, worse
+    rated, won. So the two settings give opposite answers on identical data."""
+    rows = _cascade_rows(a_result=None, b_result="win")
+    ctx = _ctx(rows, team_ranks={"A": 5, "B": 20})
+    # does_not_lose: both qualify -> nobody is split off -> ordered by rating, A first.
+    assert conditional_external_ranking(
+        ["A", "B"], ctx, condition="does_not_lose") == [["A"], ["B"]]
+    # wins: only B qualifies -> B is promoted above the better-rated A.
+    assert conditional_external_ranking(["A", "B"], ctx, condition="wins") == [["B"], ["A"]]
+
+
+def test_cascade_is_gated_by_min_conference_games():
+    rows = _cascade_rows(a_result="win", b_result="loss")
+    ctx = _ctx(rows, conf_records={"A": (1, 1), "B": (1, 1)}, team_ranks={"A": 20, "B": 5})
+    assert conditional_external_ranking(["A", "B"], ctx, min_conference_games=4) is None
+
+
+def test_cascade_declines_when_the_season_has_no_conference_games():
+    """With no conference games there is no final weekend, so the condition is unanswerable. It
+    must return None rather than silently degrading into a plain rating comparison -- otherwise
+    an early-season tie would be decided by a condition nobody could have met."""
+    ctx = _ctx([], team_ranks={"A": 20, "B": 5})
+    assert conditional_external_ranking(["A", "B"], ctx) is None
+
+
+def test_cascade_rejects_an_unknown_condition():
+    ctx = _ctx(_cascade_rows("win", "loss"), team_ranks={"A": 1, "B": 2})
+    with pytest.raises(ValueError, match="condition"):
+        conditional_external_ranking(["A", "B"], ctx, condition="doesnt_lose")
+
+
+def test_cascade_ignores_the_conference_championship_game_as_the_final_weekend():
+    """A championship game is a postseason row for this purpose and must not be mistaken for the
+    final weekend of the conference REGULAR season. If it were, the week would shift and both
+    teams' final-week outcomes would be read from the wrong game."""
+    rows = _cascade_rows(a_result="win", b_result="loss", final_week=10)
+    rows += [
+        {"season": SEASON, "team": "A", "opponent": "B", "status": "loss",
+         "conference_game": True, "season_type": "postseason", "week": 15,
+         "team_score": None, "opp_score": None},
+        {"season": SEASON, "team": "B", "opponent": "A", "status": "win",
+         "conference_game": True, "season_type": "postseason", "week": 15,
+         "team_score": None, "opp_score": None},
+    ]
+    ctx = _ctx(rows, team_ranks={"A": 20, "B": 5})
+    # A still wins the tie on its week-10 result, despite losing the week-15 title game.
+    assert conditional_external_ranking(["A", "B"], ctx) == [["A"], ["B"]]
+
+
+# ===========================================================================
 # STEP_REGISTRY
 # ===========================================================================
 def test_step_registry_exact_keys_and_mapping():
@@ -616,6 +868,8 @@ def test_step_registry_exact_keys_and_mapping():
         "opponents_cumulative_conf_pct",
         "capped_relative_scoring_margin",
         "total_wins_capped",
+        "conditional_external_ranking",
+        "overall_win_pct",
         "external_ranking",
         "random_draw",
     }

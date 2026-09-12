@@ -37,9 +37,15 @@ SEASON = 2025
 
 # A conference with primary-source rules, and one with none supplied yet. If the second ever
 # gains a rule set, this constant is the one thing to change -- and the test that asserts it has
-# no rules will fail first and say so.
+# no rules will fail first and say so. It has already done that job once: this was
+# "Mountain West" until that conference was transcribed.
+#
+# The Sun Belt is the last one left, and it needs three measures nothing else asks for
+# (divisional record, non-divisional common opponents, overall percentage against FBS teams
+# only). When it lands, every conference will be configured and these tests must instead build
+# an unconfigured conference by name rather than borrowing a real one.
 CONFIGURED = "SEC"
-UNCONFIGURED = "Mountain West"
+UNCONFIGURED = "Sun Belt"
 
 
 def _entry(team, overall, conf, rank=None):
