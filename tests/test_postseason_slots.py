@@ -366,8 +366,8 @@ def test_playoff_round_is_null_on_every_placeholder_and_bye_cell():
 # K6 -- short bowl/CFP-round display names (artifacts/bowl_names.py)
 # ===========================================================================
 @pytest.mark.parametrize("full,expected_short", [
-    # K9: short names now strip the trailing "Bowl" too (see docs/season-grid-standings-fixes),
-    # not just the sponsor -- "Gasparilla", not "Gasparilla Bowl".
+    # Short names strip the trailing "Bowl" too, not just the sponsor -- "Gasparilla", not
+    # "Gasparilla Bowl".
     ("Union Home Mortgage Gasparilla Bowl", "Gasparilla"),
     ("Bucked Up LA Bowl", "LA"),
     ("Scooter's Coffee Frisco Bowl", "Frisco"),
@@ -416,8 +416,9 @@ def test_short_bowl_name_for_2025s_real_cfp_rounds(full, expected_short):
 
 # The complete 2025 postseason name universe (R3/K9): all 35 ordinary bowls curated in
 # _ROOT_NAMES plus all 8 CFP-related names, input -> expected output, as a single pinned table.
-# This is the deliverable that makes the K9 change reviewable -- see
-# docs/season-grid-standings-fixes/plan.yaml risk R3. Every entry here also appears, split across
+# This table is what makes the short-name rule reviewable at a glance: the risk it guards is a
+# structural rule that reads well on a handful of examples and mangles the rest, which happened
+# twice before this existed. Every entry here also appears, split across
 # concerns, in the parametrized tests above/below; this table is what pins the WHOLE 2025 season
 # in one place so a future change can't fix one bowl's test while silently breaking another's.
 _COMPLETE_2025_TABLE = [

@@ -111,10 +111,9 @@ For substantial migration work, prefer the shared workflow in `.agents/` (git su
 `.agents/AGENTS.md` first, then invoke it with `/work` — a single orchestrator that handles
 discovery, planning, execution, and verification internally, not separate phase commands.
 
-Durable planning artifacts should live under:
-
-- `docs/<feature>/requirements.yaml`
-- `docs/<feature>/plan.yaml`
-- `docs/<feature>/implementation-report.yaml`
+Feature planning artifacts are scratch state, not deliverables: `$work` writes them under
+`docs/<feature>/` while a feature is in flight and deletes that directory before the PR merges.
+Nothing in the tree should cite one, since it will not survive -- put anything worth keeping in
+the code it describes.
 
 Use this file for stable repo-level direction, not for detailed feature plans.

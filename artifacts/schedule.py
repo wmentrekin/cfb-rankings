@@ -91,8 +91,7 @@ NAVY_TEAM = "Navy"
 # Nothing in schedule_grid distinguishes a flex week from an ordinary bye: bucket
 # 13 is simply absent from the data for all 8 Pac-12 teams today, exactly like a
 # real bye week would be. This config is what turns that absence into a `tbd`
-# cell (reusing the existing status -- see contracts.interfaces in
-# docs/season-grid-refinement/plan.yaml, no new status value) instead of `bye`,
+# cell (reusing the existing `tbd` status -- no new status value was introduced) instead of `bye`,
 # scoped narrowly to this one (season, conference, week-bucket) triple so no
 # other conference and no other season is affected.
 #
