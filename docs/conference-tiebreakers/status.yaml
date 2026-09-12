@@ -38,8 +38,10 @@ summary:
   current_focus: >
     B1 and B2 are complete. ALL TEN FBS CONFERENCES now run their own published procedure, from
     primary-source text, and the engine is live in the standings sort. 444 tests pass. What
-    remains is T6 (acceptance fixtures from the real 2025 ties) and an independent code review
-    before handoff.
+    remains is an independent code review before handoff, then a PR. T6's acceptance fixtures
+    are in: they reproduce the DECISIVE STRUCTURE of the real 2025 ACC and Mountain West ties
+    rather than replaying the schedules, because this environment has no database credentials.
+    Verifying the 2025 payload end to end still needs a reingest and republish against real rows.
   last_completed: >
     The user supplied primary-source rule text for all four Power 4 conferences, committed at
     docs/conference-tiebreakers/source-rules/. Cross-conference step comparison showed heavy
@@ -127,6 +129,24 @@ agents:
     task: "The ten shared step primitives and STEP_REGISTRY."
     last_update: "2026-09-11"
     blocker: ""
+  - id: "T6-acceptance-fixtures"
+    role: "generalist-developer"
+    task_profile: "test_design"
+    requested_model_tier: "frontier"
+    requested_reasoning: "high"
+    requested_provider_model: "Claude Opus 5"
+    actual_model: "claude-opus-5"
+    routing_enforced: true
+    status: "complete"
+    stage: "verification"
+    task: >
+      Acceptance fixtures for the real 2025 ACC five-way and Mountain West four-way ties,
+      asserting resolved_by as well as order.
+    last_update: "2026-09-12"
+    blocker: >
+      No database credentials in this session, so the fixtures reproduce each tie's decisive
+      structure using aggregates recomputed earlier rather than replaying the schedules. Stated
+      in the module docstring rather than left implicit.
   - id: "T5-group-of-six-configs"
     role: "data-engineer"
     task_profile: "documentation"
