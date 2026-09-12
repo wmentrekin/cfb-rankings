@@ -1,0 +1,52 @@
+CONFERENCE USA — FOOTBALL REGULATIONS, SECTION 10 (CHAMPION DETERMINATION)
+Supplied by repo owner 2026-09-12. Undated in the source; no era stated.
+
+A. Conference Championship Game. The top two teams with the highest conference winning
+percentage at the end of the regular season will participate in the Conference USA Football
+Championship Game. If two or more teams are tied, the following six-step tiebreaker procedure
+will be used to determine participants. The same criteria will be applied to determine the host
+institution if the two participants have identical conference records. Member football teams
+that are not bowl eligible (due to transition status, NCAA sanctions, etc.) will not have the
+opportunity to compete in the conference championship football game.
+
+B. Conference Championship Tiebreaker Procedure (Participant Selection & Hosting). In the event
+of a tie for a place in the CUSA Football Championship Game, the following tiebreaking
+procedures will be applied, PROVIDED ALL TEAMS PLAYED AN EQUAL NUMBER OF CONFERENCE GAMES. The
+championship game participants will be determined first, followed by the selection of the host.
+  1. Head-to-Head Competition: Winner of the head-to-head matchup is selected.
+  2. Winning Percentage Against Common Conference Opponents: The team with the higher winning
+     percentage against shared conference opponents shall be selected.
+  3. Record Against the Team(s) with the Best Conference Record: If still tied, compare records
+     against the common opponent(s) with the highest conference winning percentage, proceeding
+     downward through the standings until the tie is broken.
+  4. Average Computer Ranking: Higher average ranking across Connelly SP+, SportSource
+     Analytics, ESPN SOR, and KPI Rankings.
+  5. Cumulative Conference Winning Percentage of All Conference Opponents: Team whose opponents
+     have the higher combined conference winning percentage is selected.
+  6. Coin Toss: Conducted by the Commissioner or designee if all other steps fail.
+
+C. Conference Championship Tiebreaker Procedure (Unequal Number of Games). In determining the
+top two teams and host, the following will apply: If any team(s) has not played an equal amount
+of Conference games (due to not being able to reschedule a postponed Conference game) and any
+team(s) is WITHIN ONE CONFERENCE WIN from the team(s) with the highest conference winning
+percentage AND HAS AN EQUAL NUMBER OF LOSSES, those teams shall be declared tied. The
+championship game participants will be determined first, followed by the selection of the host
+(See tiebreaker policy outlined above).
+
+D. Multi-Team Ties. When Comparing Records Against Groups of Tied Teams: If, during the
+application of the tiebreaker procedure, a set of tied teams is encountered in the standings (for
+example, multiple teams tied for second place), each tied team's record shall be evaluated
+COLLECTIVELY against the entire group of tied teams. If the tied teams have the same record OR
+PLAYED AN UNEQUAL NUMBER OF GAMES against the teams within the tied group, immediately advance
+to the team(s) with the next highest conference winning percentage. If at any point the tie is
+broken in a multiple team tie, the remaining teams will begin the process again at step #1.
+
+-----------------------------------------------------------------------------
+IMPLEMENTATION NOTES (added by the implementer, not part of the source)
+-----------------------------------------------------------------------------
+- Note the ORDER: the computer ranking is step 4, BEFORE opponents' cumulative conference win
+  percentage at step 5. Every Power 4 conference has these the other way round.
+- Section C is a TIE DEFINITION, not a tiebreaker step, and it differs from the ACC's: CUSA uses
+  "within one conference win AND equal losses", the ACC "same wins OR same losses".
+- Section D's "same record OR unequal games played -> immediately advance" is a skip condition on
+  the record-against-placed-opponents step that no other conference states.

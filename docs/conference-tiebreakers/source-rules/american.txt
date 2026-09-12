@@ -1,0 +1,153 @@
+THE AMERICAN (AMERICAN ATHLETIC CONFERENCE) — SECTION 10: CONFERENCE CHAMPION DETERMINATION
+Supplied by repo owner 2026-09-12, from the conference manual (pages 27-31). Undated.
+
+10.1 CONFERENCE COMPETITION
+10.1.1 All teams will be scheduled to play eight (8) games as part of the conference schedule.
+       Each team will not play five other conference teams.
+
+10.2 TROPHY PRESENTATION
+10.2.1 The American will award championship trophy to the winner of the championship game.
+
+10.3 CHAMPIONSHIP GAME PARTICIPANT DETERMINATION
+10.3.1 The two teams that complete the conference season with the highest winning percentages
+       will be the participants in the Conference Championship Game.
+10.3.2 The conference's tiebreaking procedures will be used to break all ties for first or
+       second place.
+10.3.3 The team that wins the championship game will be the American Football Champion.
+
+10.4 CHAMPIONSHIP GAME PARTICIPANTS (UNBALANCED SCHEDULE)
+10.4.1 For teams to be considered in a tie-break scenario, TEAMS MUST PLAY AT LEAST SEVEN
+       CONFERENCE GAMES in years where eight games are scheduled.
+10.4.2 The championship participants will be determined by the best winning percentages within
+       the conference. In the event of an unbalanced schedule where there is A TIE FOR THE BEST,
+       OR SECOND BEST, RECORD IN THE LOSS COLUMN, HEAD-TO-HEAD RESULTS WILL TAKE PRECEDENCE OVER
+       THE WINNING PERCENTAGE as long as the required number of conference games were completed
+       AND THE TEAM WITH FEWER GAMES DEFEATED ALL OTHER TIED TEAMS. If the teams remain tied, the
+       tie-breaking procedures will be applied.
+10.4.3 This procedure will be applied to determine the two championship game representatives and
+       the championship game host.
+10.4.4 This provision is subject to review by the Commissioner and the Athletic Directors from
+       the institutions that are not in contention to be championship game participants.
+
+10.5 TWO-TEAM TIE
+10.5.1 If there is a two-team tie for first place, both teams will play in the championship game.
+10.5.2 If there is a two-team tie for second place, the head-to-head result shall determine the
+       championship game participant.
+10.5.3 If there is NO head-to-head result, and ONE of the tied teams was ranked in the latest
+       available CFP Selection Committee rankings and DOESN'T LOSE in the final weekend of
+       regular-season conference play, it will be declared a championship game participant.
+10.5.4 If there is no head-to-head result, and one of the tied teams was ranked in the latest
+       available CFP rankings and LOSES in the final weekend, then a composite average of
+       selected computer metrics (Connolly SP+, SportSource TR116 SOR, ESPN SOR, KPI) will be
+       used.
+10.5.5 If there is no head-to-head result, and BOTH tied teams are ranked in the latest available
+       CFP rankings, the higher-ranked tied team that DOESN'T LOSE in the final weekend will be a
+       championship game participant.
+10.5.6 If there is no head-to-head result, and NEITHER of the tied ranked teams WINS in the final
+       weekend, the composite average of selected computer metrics after all games conclude the
+       final weekend will be used.
+10.5.7 If there is no head-to-head result, and NEITHER of the tied teams is ranked in the latest
+       available CFP rankings going into the final weekend, the composite average after all teams
+       conclude the final weekend will be used.
+10.5.8 If still tied, win percentage against all common conference opponents.
+10.5.9 If still tied, the team with the highest overall winning percentage (conference and
+       non-conference) EXCLUDING EXEMPT GAMES.
+10.5.10 If still tied, a coin toss will be conducted by the commissioner.
+
+10.6 MULTIPLE TEAM TIE
+10.6.1 If more than two teams tie for first or second place, the tiebreaker procedures will be
+       applied separately to identify the two participants in the championship game.
+10.6.2 If only two teams remain tied after any step, the two-team tie procedures shall be used.
+10.6.3 The conference records of the tied teams are compared in a MINI ROUND-ROBIN format. IF
+       WITHIN THE MINI ROUND-ROBIN ANY OF THE TIED TEAMS DID NOT PLAY EACH OTHER, THE GROUP OF
+       TEAMS SHALL REMAIN TIED UNLESS ONE TEAM DEFEATED ALL OTHER TIED TEAMS.
+10.6.4 If the highest-ranked of the tied teams in the latest available CFP rankings DOESN'T LOSE
+       in the final weekend, it will be declared a championship game participant.
+10.6.5 If the highest-ranked of the tied teams in the latest available CFP rankings LOSES in the
+       final weekend, then the composite average of selected computer metrics will be used.
+10.6.6 If there are MULTIPLE tied teams ranked, the highest-ranked team or teams that WIN in the
+       final weekend will be championship game participants.
+10.6.7 If NONE of the ranked tied teams win in the final weekend, the composite average after all
+       games conclude the final weekend will be used.
+10.6.8 If NO teams are ranked going into the final weekend, the composite average after all games
+       conclude the final weekend will be used.
+10.6.9 If still tied, win percentage against all common conference opponents.
+10.6.10 If still tied, the team with the highest overall winning percentage (conference and
+        non-conference) excluding exempt games.
+10.6.11 Drawing to be conducted by the Commissioner.
+
+10.7 INELIGIBLE TEAM
+10.7.1 If one or both participants are ineligible, the participant(s) shall be determined by the
+       following procedure.
+10.7.2 If the ineligible team is tied with another team, the team it tied with shall be the
+       participant.
+10.7.3 If two or more teams are tied with an ineligible team, the ineligible team is removed and
+       the remaining teams revert to the tiebreaker procedure.
+10.7.4 If there is a tie for second place, the tied teams shall revert to the tiebreaker.
+
+10.8 CHAMPIONSHIP HOST DETERMINATION
+10.8.1 The championship game shall be played at the home venue of the participant with the
+       highest winning percentage in conference games.
+10.8.2 The following tiebreaker will be used to determine the host location.
+
+10.9 CHAMPIONSHIP HOST TIE-BREAKER (a SEPARATE chain from the participant chain)
+10.9.1 Head-to-head results between tied teams.
+10.9.2 If still tied, and only one team was ranked in the latest available CFP rankings and didn't
+       lose in the final weekend, it will be declared the host.
+10.9.3 If only one participant was ranked and loses in the final weekend, the composite average
+       will be used.
+10.9.4 If the higher-ranked team in the latest available CFP rankings loses in the final weekend,
+       the composite average will be used.
+10.9.5 If both teams are ranked, the higher-ranked team that doesn't lose in the final weekend
+       will be declared the host.
+10.9.6 If neither of the ranked teams wins in the final weekend, the composite average after all
+       games conclude the final weekend will be used.
+10.9.7 If no teams are ranked going into the final weekend, the composite average after all games
+       conclude the final weekend will be used.
+10.9.8 If still tied, the best win percentage against all common conference opponents.
+10.9.9 If still tied, the team with the highest overall (conference and non-conference) winning
+       percentage [excluding exempt games] shall be the host.
+10.9.10 If still tied, a coin toss.
+
+10.10 INABILITY TO HOST
+10.10.1 If the host institution is unable to host, the other participant shall be the host.
+
+10.11 COMMISSIONER AUTHORITY & FORFEITS
+10.11.1 The Commissioner or designee will make the final decision regarding conference
+        competition, including cancelling, postponing, rescheduling or terminating a contest.
+10.11.2 Once a contest is to be rescheduled, members must abide. A member refusing to participate
+        shall be deemed to have forfeited. If both refuse, the outcome is a double-forfeit.
+10.11.3 For the purposes of conference records, standings, tie-breaking formulas and Championship
+        Participation, the FORFEITING TEAM WILL BE CHARGED WITH A LOSS and the opposing team
+        CREDITED WITH A WIN.
+
+-----------------------------------------------------------------------------
+IMPLEMENTATION NOTES (added by the implementer, not part of the source)
+-----------------------------------------------------------------------------
+STRUCTURALLY THE MOST UNUSUAL OF THE TEN: the American's chain is dominated by the CFP-ranking
+cascade. After head-to-head, FIVE consecutive clauses (10.5.3-10.5.7, and 10.6.4-10.6.8) are all
+one conditional operation -- "the CFP-ranked team that doesn't lose in the final weekend, else a
+computer composite" -- enumerated case by case rather than stated once. Only after all of them
+does it reach a record-based measure (common opponents, 10.5.8).
+
+Note "DOESN'T LOSE" in 10.5.3/10.5.5/10.6.4, not "wins": a tie would satisfy it, and so, read
+literally, would not playing. 10.5.6 and 10.6.6/10.6.7 switch to "wins". The asymmetry appears
+deliberate in the source and is preserved here rather than normalised.
+
+TWO GATES NO OTHER CONFERENCE HAS:
+- 10.4.1 is a hard ELIGIBILITY THRESHOLD: a team must have played at least 7 of 8 conference
+  games to enter a tiebreak at all. Not a step -- a precondition on membership of the tied group.
+- 10.4.2 is a TIE DEFINITION on the LOSS COLUMN (not win percentage, and not the ACC's
+  wins-or-losses rule nor CUSA's within-one-win rule), and it INVERTS the normal priority:
+  head-to-head takes precedence OVER winning percentage when the team with fewer games beat all
+  other tied teams. That is the only place in any of the ten documents where a tiebreaker step
+  outranks the primary standings key itself.
+
+10.6.3 is the mini-round-robin with the "remain tied unless one team defeated all others" escape,
+identical in force to the Mountain West's multi-team step 1.
+
+"Excluding exempt games" (10.5.9/10.6.10) is the same NCAA Bylaw 17.10.5.2.1 exemption the Big 12
+cites, and remains uncomputable: no available data flags an exempt game.
+
+Forfeits (10.11.3) are assumed already reflected in the result CFBD reports; nothing here models
+them separately.

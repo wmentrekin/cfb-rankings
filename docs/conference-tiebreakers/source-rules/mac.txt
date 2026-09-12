@@ -1,0 +1,49 @@
+MID-AMERICAN CONFERENCE — FOOTBALL CHAMPIONSHIP TIEBREAKER
+Supplied by repo owner 2026-09-12. Undated in the source; no era stated.
+
+CHAMPIONSHIP GAME PARTICIPANTS
+
+A. The participating teams shall be decided by conference winning percentage. In the event of a
+   tie, the following tiebreak formula shall be used to determine which team(s) will participate
+   in the Mid-American Conference Championship Game.
+
+B. Scenario -- Two Teams
+   1. Head-to-head competition between the two tied teams.
+   2. Win percentage versus all common opponents.
+   3. The team with the higher ranking by the Team Rating Score metric provided by SportSource
+      Analytics following the conclusion of regular season games.
+   4. Win percentage versus common opponents based upon their order of finish (overall conference
+      win percentage, WITH TIES BROKEN) and proceeding through other common opponents based upon
+      their order of finish.
+   5. Combined conference win percentage of conference opponents.
+   6. The representative shall be chosen by a draw as administered by the Commissioner or the
+      Commissioner's designee.
+
+C. Scenario -- More than Two Teams
+   1. Combined head-to-head win percentage among the tied teams IF ALL TIED TEAMS ARE COMMON
+      OPPONENTS.
+   2. If all the tied teams are NOT common opponents, the tied team that DEFEATED EACH OF THE
+      OTHER TIED TEAMS advances.
+   3. Win percentage versus all common opponents.
+   4. The team with the higher ranking by the Team Rating Score metric provided by SportSource
+      Analytics following the conclusion of regular season games.
+   5. Win percentage versus common opponents based upon their order of finish (overall conference
+      win percentage, with ties broken) and proceeding through other common opponents based upon
+      their order of finish.
+   6. Combined conference win percentage of conference opponents.
+   7. The representative shall be chosen by a draw as administered by the Commissioner or the
+      Commissioner's designee.
+
+-----------------------------------------------------------------------------
+IMPLEMENTATION NOTES (added by the implementer, not part of the source)
+-----------------------------------------------------------------------------
+- FULLY EXPRESSIBLE by the existing step vocabulary; the MAC needs no new primitive. Its only
+  peculiarity is ORDER: the external ranking is step 3, far earlier than any other conference,
+  ahead of both record-against-placed-opponents and opponents' cumulative win percentage.
+- Steps C.1 and C.2 are the round-robin / not-round-robin pair, with the PROMOTE half only (a
+  team that defeated each of the others advances). No demote clause, matching the Big 12, Big
+  Ten, Mountain West and American, and unlike the SEC and ACC.
+- "order of finish (overall conference win percentage, WITH TIES BROKEN)" conflicts with this
+  project's K4 decision, which freezes the order of finish by win percentage ALONE and does not
+  tie-break it. The MAC asks for the fully resolved standings, which is circular unless resolved
+  recursively. Deviation is deliberate and recorded; see the gap analysis.

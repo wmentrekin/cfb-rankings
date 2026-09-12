@@ -1,0 +1,74 @@
+PAC-12 CONFERENCE — FOOTBALL CHAMPIONSHIP GAME TIEBREAKERS
+Supplied by repo owner 2026-09-12. Explicitly the 2026 policy for the rebuilt conference.
+
+CONTEXT FROM THE SAME SOURCE:
+The 2026 Pac-12 Football Championship Game will be played Friday, Dec. 4, hosted at the home
+venue of the league's highest seed. The matchup will feature the top two eligible teams in the
+final regular-season standings, with host and seeding determined by the tiebreaking procedures.
+
+For the 2026 season the Pac-12 will play a SEVEN-GAME conference schedule over an eight-week
+span from weeks five through 12, with each program receiving one bye over that stretch. THE
+FINAL WEEK OF THE REGULAR SEASON, WEEK 13, WILL FEATURE A NEW HOME-AND-HOME FLEX MATCHUP THAT
+WILL NOT COUNT TOWARD CONFERENCE STANDINGS.
+
+-----------------------------------------------------------------------------
+TWO-TEAM TIES
+-----------------------------------------------------------------------------
+1. If two teams are tied for first place both teams will participate in the championship game
+   and the winner of the head-to-head will be the No. 1 seed. If there is not a tie for first
+   place, but two teams are tied for second place, the two-team tiebreaker policy will apply and
+   the winner will be the No. 2 seed and visiting team.
+2. Win percentage against the next-highest-placed common opponent in the standings (based on
+   record in all games played within the Conference), proceeding through the standings.
+   - When arriving at another group of tied teams while comparing records, use each team's win
+     percentage against the collective tied teams as a group (prior to that group's own
+     tiebreaking procedure) rather than the performance against individual tied teams.
+3. Win percentage against all common conference opponents.
+4. Highest CFP ranking(s) on the Tuesday prior to week 13 contests.
+5. Highest ranking by SportSource Analytics (team Rating Score metric) following the last
+   weekend of regular-season conference games.
+6. Coin toss
+
+-----------------------------------------------------------------------------
+MULTIPLE-TEAM TIES
+-----------------------------------------------------------------------------
+In the event of a tie involving more than two teams, the Pac-12 will use a progressive
+multiple-team tiebreaking procedure to establish championship game participants and seeding.
+
+Once one team gains an advantage and is seeded, the remaining teams will restart the applicable
+multiple-team tiebreaking procedure. If the process reduces the tie to two teams, the two-team
+procedure will then be applied.
+
+1. Head-to-head results, based on the best cumulative winning percentage among the tied teams.
+   IF EVERY TIED TEAM HAS NOT PLAYED ONE ANOTHER, THE PROCESS MOVES TO THE NEXT CRITERION.
+2. Winning percentage against all common Conference opponents.
+3. Record against the next-highest placed common opponent in the Conference standings,
+   proceeding through the standings as necessary.
+   - When arriving at another group of tied teams, each team's winning percentage against the
+     collective tied group will be used before that group's own tiebreaking procedure is applied.
+4. Combined Conference winning percentage of Conference opponents, measuring strength of
+   Conference schedule.
+5. Highest ranking in the SportSource Analytics Team Rating Score following the final weekend of
+   regular-season games.
+6. Coin toss.
+
+-----------------------------------------------------------------------------
+IMPLEMENTATION NOTES (added by the implementer, not part of the source)
+-----------------------------------------------------------------------------
+- SEASON SCOPE IS CRITICAL. This is the 2026 policy for an eight-team conference. In 2024 and
+  2025 the Pac-12 consisted of Oregon State and Washington State ALONE -- two members and no
+  championship game -- so this document must NOT be applied to those seasons.
+- The two-team chain is the FIRST supplied procedure that puts record-against-placed-opponents
+  (step 2) BEFORE record-against-all-common-opponents (step 3). The SEC, Big 12, Big Ten, MAC
+  and CUSA all have those two the other way round. The multi-team chain reverts to the common
+  order. This is the clearest single vindication of keeping step order as data.
+- Its multi-team step 1 has NO sweep clause of any kind: if the tied teams did not all play one
+  another the step is simply void. The Mountain West and American keep a "unless one team
+  defeated all others" escape; the SEC and ACC promote AND demote. Three distinct readings.
+- Two DIFFERENT external rankings appear in the two-team chain (CFP at 4, SportSource at 5).
+  Substituting this project's own rating for both collapses them into a duplicate step.
+- THE WEEK-13 FLEX GAMES DO NOT COUNT TOWARD CONFERENCE STANDINGS. artifacts/schedule.py's
+  FLEX_WEEK_TBD_CONFIG already knows about this week and ASSUMES those games "will arrive as
+  conference_game=false". That assumption is still unverified -- week 13 is unpopulated -- and if
+  CFBD marks them conference_game=true they would contaminate conference records AND every
+  tiebreaker step that reads them.

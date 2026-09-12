@@ -1,0 +1,104 @@
+SUN BELT CONFERENCE — FOOTBALL TIE-BREAKING PROCEDURES
+Supplied by repo owner 2026-09-12. Undated in the source. THE ONLY SUPPLIED DOCUMENT FOR A
+CONFERENCE THAT STILL PLAYS DIVISIONS.
+
+FORMAT
+Two seven-team divisions.
+  East: App State, Coastal Carolina, Georgia Southern, Georgia State, James Madison, Marshall,
+        Old Dominion
+  West: Arkansas State, Louisiana, ULM, South Alabama, Southern Miss, Texas State, Troy
+
+The Champion is decided by a game between the east and west division champions. A DIVISION
+CHAMPION SHALL BE THE TEAM WITH THE HIGHEST WINNING PERCENTAGE IN ALL CONFERENCE GAMES, BOTH
+DIVISIONAL AND NON-DIVISIONAL. A tie game counts as half-a-game won and half-a-game lost.
+
+-----------------------------------------------------------------------------
+TWO TEAM TIE FOR THE DIVISION CHAMPIONSHIP
+-----------------------------------------------------------------------------
+1. Head-to-head result between tied teams.
+2. If still tied, the team with the HIGHEST OVERALL DIVISIONAL WINNING PERCENTAGE shall be the
+   division champion.
+3. If still tied, each team's winning percentage vs the team occupying the next highest position
+   in the final DIVISIONAL standings, continuing down through the standings until one team
+   prevails. When arriving at another group of tied teams while comparing records, use each
+   team's record against the collective tied teams AS A GROUP.
+4. If still tied, combined highest winning percentage against all COMMON NON-DIVISIONAL
+   Conference opponents.
+5. If still tied, if ONE team was ranked in the latest available CFP Selection Committee rankings
+   and WINS in the final weekend of the Conference regular season, it will be declared the
+   division champion. If in that same scenario the highest ranked team LOSES in the final
+   weekend, a composite average of selected computer rankings (Anderson & Hester, Massey, Colley
+   and Wolfe) that include all games on the final weekend will be used.
+6. If there are MULTIPLE teams ranked, if the highest-ranked team WINS in the final weekend they
+   will be declared the division champion. If the highest ranked team loses, the composite
+   average will be used.
+7. If NONE of the ranked teams win on the final weekend, the composite average will be used.
+8. If NO teams are ranked going into the final weekend, the composite average will be used.
+9. If still tied, the team with the highest overall (Conference and non-Conference) WINNING
+   PERCENTAGE AGAINST FBS TEAMS shall be the division champion.
+10. If still tied, coin toss conducted by the Commissioner.
+
+-----------------------------------------------------------------------------
+MULTIPLE TEAM TIE FOR THE DIVISION CHAMPIONSHIP
+-----------------------------------------------------------------------------
+If three or more teams are tied atop a division, the following criteria are used until one team
+remains and is declared the representative of the Championship game.
+1. The team with the highest winning percentage IN GAMES PLAYED AMONG THE TIED TEAMS.
+2. If still tied, the team with the highest overall DIVISIONAL winning percentage.
+3. If still tied, each team's winning percentage vs the team occupying the next highest position
+   in the final divisional standings, continuing down through the standings. Use each team's
+   record against the collective tied teams as a group. If still tied, combined highest winning
+   percentage against all common NON-DIVISIONAL Conference opponents.
+4.-8. The same CFP-ranked / composite-computer-average cascade as the two-team steps 5-8.
+9. If still tied, the team with the highest overall (Conference and non-Conference) winning
+   percentage against FBS teams.
+10. If still tied, the division champion will be determined by lot.
+For all ties of three or more teams, the progression shall be followed until the champion amongst
+the tied is determined. If one team falls out of contention for the highest seed, the remaining
+teams continue down the tiebreaker.
+
+INELIGIBLE DIVISION CHAMPION
+If one or both division champions are ineligible, the divisional team with the next highest
+winning percentage in all conference games shall participate. If there is a tie for the next
+best overall divisional record:
+1. If the ineligible team is tied for the division championship, the team it tied with shall be
+   the representative.
+2. If two or more teams are tied with an ineligible team, the ineligible team is removed and the
+   remaining teams revert to the tie-break procedure.
+3. If there is a division runner-up tie, the tied teams revert to the tiebreak procedure.
+
+The Championship Game shall be played at the home venue of the Division Champion with highest
+winning percentage in Conference games only.
+
+HOST TIE BREAKER (a SEPARATE chain from the participant chain)
+1. Head-to-head result between tied teams.
+2.-5. The same CFP-ranked / composite-computer-average cascade.
+6. If still tied, highest winning percentage against all common Conference opponents.
+7. If still tied, highest overall (Conference and non-Conference) winning percentage against FBS
+   teams.
+8. If still tied, coin toss.
+
+If at any time during this analysis any team(s) should gain an advantage over the other team(s)
+tied at that position, the team(s) holding the advantage shall move forward while the other
+team(s) are ELIMINATED. If it is reduced to a two-team tie at any point, the process shall revert
+to the BEGINNING of the two-team procedures and shall be applied in order until broken.
+
+-----------------------------------------------------------------------------
+IMPLEMENTATION NOTES (added by the implementer, not part of the source)
+-----------------------------------------------------------------------------
+THE MOST DEMANDING OF THE TEN. It needs three operations no other conference asks for:
+- Step 2: DIVISIONAL winning percentage -- conference record restricted to divisional opponents.
+  Note the division champion itself is decided on ALL conference games (divisional AND
+  non-divisional), so the divisional-only record is a genuinely separate measure, not the
+  primary key.
+- Step 4: common opponents restricted to NON-DIVISIONAL conference opponents.
+- Step 9: overall winning percentage against FBS TEAMS ONLY. Computable now that the non_fbs
+  roster is plumbed through, but a different measure from both the Big 12's capped 12-game win
+  count and the Mountain West's one-FCS-win-capped overall percentage. Three variants of "overall
+  record, adjusted" across three conferences.
+- Steps 5-8 are the CFP-ranked / final-weekend-result / computer-composite cascade shared with
+  the Mountain West and the American.
+Its step 3 walks the DIVISIONAL standings, not the conference standings, so frozen_order needs a
+divisional scope for this conference.
+The HOST chain is a separate ordered chain and is deliberately out of scope: this project renders
+standings, not championship-game hosts.

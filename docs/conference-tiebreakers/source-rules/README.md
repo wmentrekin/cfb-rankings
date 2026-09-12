@@ -17,16 +17,26 @@ records which of these files it came from.
 | `verified_against_real_tie` | `primary_source`, and it reproduces a known real outcome |
 | `search_derived` | reconstructed from secondary reporting; **not** to be trusted for step order |
 
-## Received so far
+## Received
+
+All ten FBS conferences. Supplied 2026-09-11 (Power 4) and 2026-09-12 (Group of 6).
 
 | conference | file | era covered | notes |
 |---|---|---|---|
 | ACC | `acc.txt` | **amended 2026-07-01** | Also contains a secondary summary describing the PRE-amendment chain. The two differ materially — see below. |
-| SEC | `sec.txt` | 2024 onward (divisionless) | Includes Appendix A, the full capped-relative-scoring-margin formula. |
+| SEC | `sec.txt` | 2024 onward (divisionless) | Includes Appendix A, the full capped-relative-scoring-margin formula. Appendix B (~25 worked examples) is referenced but its text was not supplied. |
 | Big 12 | `big12.txt` | 2024 onward (16 teams) | |
 | Big Ten | `bigten.txt` | 2024 onward (18 teams, divisionless) | |
+| American | `american.txt` | undated | Chain dominated by the CFP-ranking cascade; two gates no other conference has. |
+| Mountain West | `mountainwest.txt` | **dated 8/1/2023** | The only Group of 6 document with an explicit date. Explains the real 2025 four-way tie. |
+| MAC | `mac.txt` | undated | Fully expressible today; peculiar only in step ORDER. |
+| Sun Belt | `sunbelt.txt` | undated | The only conference here that still plays DIVISIONS. Most demanding of the ten. |
+| Conference USA | `cusa.txt` | undated | |
+| Pac-12 | `pac12.txt` | **2026 only** | For 2024–25 the Pac-12 was Oregon State and Washington State alone. Must be season-scoped. |
 
-Still outstanding: American, Mountain West, MAC, Sun Belt, Conference USA, Pac-12.
+Seven of the ten are undated, so each needs a defensible `season_min` in the config rather than
+an open-ended range. Earlier seasons resolve to no rules and fall back, which is honest about
+what we have not read — see the ACC's 2023 floor for the pattern.
 
 ## Two findings that shaped the design
 
