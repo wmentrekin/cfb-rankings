@@ -1,0 +1,82 @@
+artifact: requirements
+feature: "standings-gaps"
+mode: "bounded-feature"
+
+objective: >-
+  Correct two standings defects visible in the published season grid: early-season ordering that
+  lets model rank outrank a better win-loss record, and conference-title statuses that never
+  eliminate teams after the title game has already been played.
+
+requirements:
+  - id: R1
+    title: "Overall win count must outrank model rating in standings order"
+    statement: >-
+      When two teams in the same conference are tied on conference record and on overall win
+      PERCENTAGE, the team with more overall wins sorts higher. Model rating breaks ties only
+      among teams with identical overall win-loss records.
+    rationale: >-
+      User rule: 'overall win-loss record should only matter before the tie breaker is
+      applicable' and 'N+1 and 0 beats N and 0'. The engine's own fallback already implements
+      this; schedule.py's parallel sort key does not.
+    acceptance:
+      - "USC 2-0 overall / 0-0 conference sorts above three 1-0 / 0-0 teams that are better ranked."
+      - "A team 3-1 sorts above a team 6-2 only if the sort reaches rating; 6-2 has more wins at a lower pct, so pct still decides first."
+      - "Teams with identical overall records are still ordered by rating, then name."
+    verification: "Unit test on _sort_conference_teams with an all-0-0 conference."
+
+  - id: R2
+    title: "Army-Navy must not count toward American Athletic conference records"
+    statement: >-
+      The annual Army-Navy game is by designation a non-conference game. It must not contribute
+      to conf_wins, conf_losses, or conf_games_remaining for either participant, and therefore
+      must not influence conference-championship status.
+    rationale: >-
+      CFBD tags it conference_game=true (both teams are AAC members). The repo already diverts it
+      to its own display column and already excludes it from championship-game identification, but
+      never excludes it from the standings tally.
+    acceptance:
+      - "Navy's 2025 conf_record excludes the Army-Navy result."
+      - "Army's 2025 conf_record excludes it too."
+      - "The Army-Navy display column is unchanged -- the game still renders in its own slot."
+      - "conf_games_remaining is not inflated by an unplayed Army-Navy game."
+    verification: "Unit test mirroring test_duke_virginia_2025_conf_record_excludes_championship_game."
+
+  - id: R3
+    title: "A played conference championship game eliminates every non-participant"
+    statement: >-
+      Once a conference's championship game has been PLAYED, every team in that conference that
+      did not play in it has championship_status 'eliminated'.
+    rationale: >-
+      The elimination test is `B[t] < nth_highest_other_w` -- strictly less than raw conference
+      wins. A team tied on wins with the team that actually played in the title game is never
+      eliminated, so it shows 'In the Hunt' forever. Observed in 2025 for Ole Miss, Texas A&M
+      (tied with Alabama at 7), Navy (tied with North Texas at 7), Ohio, Toledo (tied with
+      Miami OH at 6), New Mexico, San Diego State (tied with UNLV at 6).
+    acceptance:
+      - "All seven teams above resolve to 'eliminated' once the CCG result is known."
+      - "An IDENTIFIED BUT UNPLAYED championship game changes nothing -- test_identified_but_unplayed_championship_game_does_not_change_status stays green."
+      - "A conference with no championship game at all (2025 Pac-12) is unaffected."
+      - "The two participants' own cells still render the real game result, not a computed status."
+    verification: "Unit tests for played CCG, unplayed CCG, and no CCG."
+
+non_requirements:
+  - "Do NOT loosen the eliminated/clinched inequalities themselves. Over-eliminating is worse than under-eliminating; R3 supplies a known FACT rather than a stronger projection."
+  - "Do NOT resolve win-count ties via the tiebreaker engine inside the status math."
+  - "No change to personal-site -- it is a pure label map (possible -> 'In the Hunt')."
+  - "No ingest/DB schema change. Army-Navy stays conference_game=true in the DB as CFBD reports it; the carve-out is applied at standings time, consistent with the existing display-side carve-out."
+
+constraints:
+  - "Never commit to main; feature branch + PR; the user merges."
+  - "Subagents never touch the live DB or R2 and never seek credentials. Fixtures only."
+  - "Every new assertion is mutation-tested: inject the defect, confirm red, revert byte-identically."
+  - "No new dependencies."
+
+open_questions:
+  - id: Q1
+    question: "Which 4 ACC teams show 'In the Hunt' in the CURRENT artifact?"
+    status: "unresolved -- does not block"
+    note: >-
+      The local 2026-09-10 payload has the ACC correct (Duke/Virginia 7-2 played the CCG; Georgia
+      Tech, Miami, Pittsburgh, SMU at 6-2 all correctly eliminated). The 09-11 Backfill Games runs
+      likely shifted a win total. R3's fix is data-independent and eliminates every CCG
+      non-participant regardless of record, so it covers them either way.

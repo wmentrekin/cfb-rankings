@@ -1,0 +1,153 @@
+artifact: plan
+feature: "standings-gaps"
+mode: "bounded-feature"
+
+objective: >-
+  Land R1 (win-count ahead of rating in standings order), R2 (Army-Navy out of AAC conference
+  records) and R3 (a played championship game eliminates non-participants) in one PR.
+
+branching:
+  branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
+  base: "origin/main @ 1898ab7"
+  worktrees: []
+  rationale: >-
+    No worktrees. T1 and T2/T3 both edit artifacts/schedule.py; scope overlaps, so they run
+    sequentially on the single feature branch.
+
+key_decisions:
+  - id: K1
+    decision: "Add a win-count term to the sort key rather than routing the group through the tiebreaker engine."
+    rationale: >-
+      The engine is gated behind is_real_tie, which requires _conf_played=True (schedule.py:1557).
+      Opening that gate would send a whole unplayed conference through a cascade whose every step
+      declines, for no benefit. The engine already agrees with the intended ordering; the caller's
+      parallel key is simply missing a term. One term is the smaller, safer change.
+  - id: K2
+    decision: "Apply the win-count fix to the Independents branch too (schedule.py:1584)."
+    rationale: >-
+      Structurally identical defect. The user's rule is about records, not about conferences.
+  - id: K3
+    decision: "Exclude Army-Navy BEFORE compute_standings, not after."
+    rationale: >-
+      The championship-game exclusion deliberately runs AFTER compute_standings, because removing
+      an unplayed title game would wrongly shrink conf_games_remaining for both participants
+      mid-championship-week (schedule.py:1619-1626). That reasoning does not apply to Army-Navy:
+      it is a rivalry game with no bearing on either team's title eligibility, so it is both safe
+      and necessary to strip it before the status math -- a post-hoc fix would correct only the
+      DISPLAYED record and leave clinch/eliminate still wrong, which is the whole defect.
+  - id: K4
+    decision: "R3 keys off _resolve_conference_championship_outcomes, which already returns participants ONLY for played games."
+    rationale: >-
+      Reuses an existing, tested helper and inherits its played-vs-unplayed discipline for free,
+      keeping test_identified_but_unplayed_championship_game_does_not_change_status green.
+  - id: K5
+    decision: "R3 forces 'eliminated' for non-participants; it does not touch the eliminated/clinched inequalities."
+    rationale: >-
+      A played title game is a FACT about who is out, not a stronger projection. This is what
+      keeps the conservatism guard (test_an_undecided_division_yields_possible_not_a_premature_clinch)
+      intact while still fixing the reported teams.
+
+execution_batches:
+  - batch: 1
+    tasks:
+      - id: T1
+        title: "R1: win count outranks rating in _sort_conference_teams"
+        assigned_domain: "generalist-developer"
+        parallelizable: false
+        owned_scope:
+          - "artifacts/schedule.py: _placement_pct and the two sort-key sites (~1157-1211, 1507-1509, 1584)"
+          - "tests/test_conference_sort_and_pac12.py"
+        detail: >-
+          _placement_pct computes the win count w at line 1209 and discards it after dividing.
+          Surface it (e.g. a _placement_wins scratch field set alongside _placement_pct) and
+          insert -e['_placement_wins'] immediately after -e['_placement_pct'] and before
+          _rank_sort_key(e) in BOTH sort calls: the has_conf_records branch (1507-1509) and the
+          Independents branch (1584).
+        task_profile: implementation
+        uncertainty: low
+        consequence: medium
+        scope_size: narrow
+        determinism: deterministic
+        model_tier: balanced
+        reasoning: medium
+        provider_model: "Claude Sonnet 5"
+        acceptance:
+          - "R1 acceptance criteria."
+          - "All existing tests in test_conference_sort_and_pac12.py stay green unmodified."
+
+      - id: T2
+        title: "R2 + R3: Army-Navy out of conference records; a played CCG eliminates non-participants"
+        assigned_domain: "generalist-developer"
+        parallelizable: false
+        depends_on: [T1]
+        owned_scope:
+          - "artifacts/schedule.py: the call ordering at ~1795-1816"
+          - "artifacts/schedule_standings.py: compute_team_records, compute_conference_championship_status, compute_standings signatures"
+          - "tests/test_conference_championship_records.py, tests/test_division_championship_status.py"
+        detail: >-
+          (a) Move identify_army_navy_game and _resolve_conference_championship_outcomes ABOVE the
+          compute_standings call -- both depend only on rows/season/champ_games_by_conf, all
+          available earlier.
+          (b) Thread an excluded_conference_game_ids parameter through compute_standings into
+          compute_team_records so the Army-Navy game_id is skipped when tallying conf_wins,
+          conf_losses and conf_games_remaining. Keep schedule_standings.py free of team-name
+          knowledge -- it receives game ids, not an Army-Navy concept (preserves its stated I/O
+          boundary). The display path keeps the full rows so the Army-Navy column is unaffected.
+          (c) Thread the played-CCG participants per conference into
+          compute_conference_championship_status; for any conference with a played CCG, every team
+          in the pool that is not a participant gets status 'eliminated'. Leave both inequalities
+          untouched.
+        task_profile: implementation
+        uncertainty: medium
+        consequence: high
+        scope_size: bounded
+        determinism: interpretive
+        model_tier: balanced
+        reasoning: medium
+        provider_model: "Claude Sonnet 5"
+        escalation_policy: "One tier increase to frontier if the divisional (Sun Belt) interaction in R3 proves ambiguous; return evidence first."
+        acceptance:
+          - "R2 and R3 acceptance criteria."
+          - "test_identified_but_unplayed_championship_game_does_not_change_status green, unmodified."
+          - "test_an_undecided_division_yields_possible_not_a_premature_clinch green, unmodified."
+          - "All 9 tests in test_division_championship_status.py green, unmodified."
+
+  - batch: 2
+    tasks:
+      - id: T3
+        title: "Regression tests + mutation testing for all three requirements"
+        assigned_domain: "generalist-developer"
+        parallelizable: false
+        depends_on: [T1, T2]
+        owned_scope: ["tests/"]
+        detail: >-
+          New tests: (1) all-0-0 conference, USC-shaped, asserting win count beats a better rating;
+          (2) Independents equivalent; (3) Army-Navy excluded from BOTH participants' conf_record
+          and from conf_games_remaining; (4) a played CCG eliminates a non-participant TIED on
+          conference wins with the losing participant -- the exact 2025 shape; (5) an unplayed
+          identified CCG changes nothing; (6) a conference with no CCG is unaffected.
+          Then mutation-test every new assertion: revert the fix, confirm the test fails for the
+          RIGHT reason, restore byte-identically. Report the table.
+        task_profile: test_design
+        uncertainty: medium
+        consequence: high
+        scope_size: bounded
+        determinism: interpretive
+        model_tier: balanced
+        reasoning: medium
+        provider_model: "Claude Sonnet 5"
+        acceptance:
+          - "Each new test fails when its own fix is reverted, and for the right reason."
+          - "Fixtures must not let the favoured answer hold under both readings -- the recurring failure mode on this codebase."
+          - "Full suite green (465 tests on main before this work)."
+
+risks:
+  - "R1 changes ordering for ALL ten conferences, any season, whenever teams tie on overall pct but not games played. Intended, but wide."
+  - "R3 is the one that can over-eliminate if the CCG participant set is ever wrong. Mitigated by keying off the PLAYED-only helper and by leaving the inequalities alone."
+  - "_placement_pct returns 0.5 for an unplayed team while the engine's fallback uses 0.0 (schedule.py:1211 vs tiebreaker_engine.py:186). Pre-existing divergence, orthogonal; do NOT silently change it, but confirm the new win-count term does not disturb the 0.5-sentinel ordering pinned by test_nc_state_vs_duke_exact_case."
+  - "Sun Belt is divisional; R3 must eliminate within the right pool, not across divisions."
+
+verification:
+  - "reviewer agent, frontier tier -- R3 is the high-consequence change."
+  - "tester agent -- full suite plus the mutation table."
+  - "Both post findings to the PR."
