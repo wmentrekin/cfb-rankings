@@ -1,0 +1,123 @@
+artifact: status
+feature: "standings-gaps"
+mode: "bounded-feature"
+stage: "discovery"
+owner_skill: work
+
+objective: >-
+  Close two defects found by visual inspection of the 2025/2026 season grid artifacts published
+  from main@1898ab7: (1) the 2026 Big Ten orders an all-0-0-conference group by our team ranking
+  instead of by overall record, so USC at 2-0 sorts below 1-0 teams; (2) 2025 conference-title
+  clinch/eliminate states are wrong for Navy (shows clinched, should be eliminated) and for ten
+  teams across ACC/SEC/MAC/MWC (show possible/"In the Hunt", should be eliminated).
+
+repository_sync:
+  completed_before_work: true
+  checked_at: "2026-09-12T19:50:00Z"
+  repositories:
+    - path: "/home/user/cfb-rankings"
+      remote: "https://github.com/wmentrekin/cfb-rankings"
+      relevant_branch: "main"
+      local_commit_before: "1898ab79fa488e8922c4da1da2d9683b3bfe4d61"
+      remote_commit_after_fetch: "1898ab79fa488e8922c4da1da2d9683b3bfe4d61"
+      local_commit_after: "1898ab79fa488e8922c4da1da2d9683b3bfe4d61"
+      result: "current"
+      notes: "Clean tree. Fast-forward pull reported already up to date."
+    - path: "/home/user/personal-site"
+      remote: "https://github.com/wmentrekin/personal-site"
+      relevant_branch: "main"
+      local_commit_before: "440e9e2e7e9e4158fff76e266a73760c28e2538b"
+      remote_commit_after_fetch: "6c8a33c (origin/main); local checkout is on work/season-grid-postseason-format"
+      local_commit_after: "440e9e2e7e9e4158fff76e266a73760c28e2538b"
+      result: "comparison_only"
+      notes: >-
+        Checked out on a feature branch matching its own remote; not switched. Expected to be
+        out of scope: the site renders labels, but clinch/eliminate status and standings order
+        are both computed in cfb-rankings (artifacts/schedule_standings.py, artifacts/schedule.py)
+        and shipped inside the payload. Confirm during discovery before declaring it untouched.
+
+branching:
+  branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
+  base: "origin/main @ 1898ab7"
+  notes: >-
+    Branch name is imposed by the remote session harness, which forbids pushing elsewhere without
+    explicit user permission. It does not follow this repo's work/<feature-slug> convention and
+    its name is unrelated to the task. The branch already existed locally, 97 commits behind main
+    with zero unique commits (fully merged), and did not exist on the remote; it was reset to
+    origin/main per the merged-PR rule. Flagged to the user at the pre-execution checkpoint.
+
+summary:
+  current_focus: "Discovery: reproduce both defects and separate GAP 2a from GAP 2b."
+  last_completed: "Repository sync preflight; feature branch created off merged main."
+  current_blocker: ""
+
+artifacts:
+  requirements: null
+  plan: null
+  implementation_report: null
+
+pr:
+  number: null
+  url: null
+  status: "not_opened"
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    task_profile: "orchestration"
+    requested_model_tier: "frontier"
+    requested_reasoning: "high"
+    requested_provider_model: "Claude Opus 5"
+    actual_model: "claude-opus-5"
+    actual_reasoning: "high"
+    routing_enforced: true
+    escalation_count: 0
+    status: "active"
+    stage: "discovery"
+    task: "Coordinate discovery of both gaps; keep scope tight."
+    last_update: "2026-09-12T19:50:00Z"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: pending
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+
+decisions:
+  - id: D1
+    decision: "Mode = bounded-feature, not quick-fix."
+    rationale: >-
+      Two independent defects in different modules, at least one (GAP 2b) with an unknown root
+      cause spanning ten teams in four conferences. Not localized. User asked to keep it tight,
+      which constrains scope, not rigor.
+  - id: D2
+    decision: "Treat GAP 2a (Navy) and GAP 2b (ACC/SEC/MAC/MWC) as separate root causes until reproduction proves otherwise."
+    rationale: >-
+      The user's 'because the army navy game is still being applied as a conference game'
+      explains Navy directly. Army-Navy cannot affect ACC or SEC standings, so assuming one fix
+      covers all eleven teams risks shipping a fix that closes one and hides the other.
+
+model_routing:
+  provider: "Claude Code / Anthropic"
+  provider_map_verified_at: "2026-09-07"
+  substitutions: []
+  unresolved_limitations:
+    - "Subagents inherit the main conversation's extended-thinking setting; per-agent reasoning level is advisory."
+
+next_action: "Spawn repo-researcher agents to reproduce GAP 1 and to isolate GAP 2a/2b root causes."
+next_recommended_command: "$work"
+user_input_needed: false
