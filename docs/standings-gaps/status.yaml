@@ -1,7 +1,7 @@
 artifact: status
 feature: "standings-gaps"
 mode: "bounded-feature"
-stage: "planning"
+stage: "execution"
 owner_skill: work
 
 objective: >-
@@ -47,7 +47,7 @@ branching:
     origin/main per the merged-PR rule. Flagged to the user at the pre-execution checkpoint.
 
 summary:
-  current_focus: "Pre-execution checkpoint: plan written, awaiting user direction."
+  current_focus: "Execution batch 1: T1 (sort win-count term) then T2 (Army-Navy exclusion + played-CCG elimination)."
   last_completed: "Discovery complete: all three root causes located and evidenced; requirements + plan written."
   current_blocker: ""
 
@@ -73,7 +73,7 @@ agents:
     routing_enforced: true
     escalation_count: 0
     status: "active"
-    stage: "planning"
+    stage: "execution"
     task: "Coordinate discovery of both gaps; keep scope tight."
     last_update: "2026-09-12T19:50:00Z"
     blocker: ""
@@ -88,7 +88,7 @@ loops:
 
 checkpoint:
   pre_execution_required: true
-  pre_execution_status: awaiting_user
+  pre_execution_status: approved
   options:
     - proceed
     - revise_plan
@@ -120,4 +120,4 @@ model_routing:
 
 next_action: "On approval, spawn T1 then T2 (generalist-developer, balanced/medium), then T3 tests + mutation table."
 next_recommended_command: "$work"
-user_input_needed: true
+user_input_needed: false
