@@ -1154,26 +1154,18 @@ def _head_to_head_winner(rows: List[Dict[str, Any]], season: int, team_a: str, t
 _UNRANKED_SORT_SENTINEL = 10**9
 
 
-def _placement_pct(entry: Dict[str, Any], rows: List[Dict[str, Any]], season: int, champ_game_ids: set) -> float:
+def _placement_win_loss(entry: Dict[str, Any], rows: List[Dict[str, Any]], season: int, champ_game_ids: set) -> Tuple[int, int]:
     """
-    T2/K6: this team's win percentage for STANDINGS PLACEMENT only -- excludes any postseason
-    (season_type=='postseason') row AND any row whose game_id is one of the identified
-    conference-championship games, per the user's rule that "bowl/playoff results must not
-    affect standings placement." Does NOT touch the DISPLAYED record (entry["record"]) -- that
-    keeps coming from schedule_standings.compute_team_records, untouched by this function.
+    T1/R1: the (wins, losses) pair _placement_pct divides, factored out so the standings SORT
+    KEY can read the win COUNT directly instead of reverse-engineering it from a percentage --
+    which is lossy on purpose (a 1-0 team and a 2-0 team both report 1.0, and that pct alone is
+    exactly what let USC's 2-0 sort below three 1-0-and-better-ranked teams before this fix; see
+    _sort_conference_teams). _placement_pct itself calls this and just does the division, so the
+    two can never drift out of sync on what counts as a placement win/loss.
 
-    Implemented as a SUBTRACTION from entry["record"] (which already counts every row for this
-    team this season, per compute_team_records) rather than an independent tally over `rows`,
-    deliberately: the two are mathematically identical whenever `rows` actually contains this
-    team's games (always true in the real pipeline, and in every fixture built from
-    build_schedule_payload), but the subtraction degrades gracefully -- rather than exploding to
-    the 0.5 "no games" sentinel -- for a hand-built entry passed with an empty/unrelated `rows`
-    list and a pre-set "record" (every fixture in tests/test_conference_sort_and_pac12.py): with
-    nothing to subtract, it reproduces entry["record"]'s own percentage exactly, so none of
-    those tests needed to change for this task.
-
-    Same 0.5 sentinel as the original _overall_pct for a team with no counted games after
-    exclusion.
+    See _placement_pct for what the two exclusions (postseason rows, identified championship-
+    game rows) are and why, and for the 0-clamp rationale on a hand-built entry whose "record"
+    disagrees with `rows`.
     """
     team = entry["team"]
     postseason_wins = postseason_losses = 0
@@ -1208,6 +1200,31 @@ def _placement_pct(entry: Dict[str, Any], rows: List[Dict[str, Any]], season: in
     # wrong ORDER is exactly the failure class this function was added to fix.
     w = max(0, entry["record"]["wins"] - postseason_wins - champ_wins)
     l = max(0, entry["record"]["losses"] - postseason_losses - champ_losses)
+    return w, l
+
+
+def _placement_pct(entry: Dict[str, Any], rows: List[Dict[str, Any]], season: int, champ_game_ids: set) -> float:
+    """
+    T2/K6: this team's win percentage for STANDINGS PLACEMENT only -- excludes any postseason
+    (season_type=='postseason') row AND any row whose game_id is one of the identified
+    conference-championship games, per the user's rule that "bowl/playoff results must not
+    affect standings placement." Does NOT touch the DISPLAYED record (entry["record"]) -- that
+    keeps coming from schedule_standings.compute_team_records, untouched by this function.
+
+    Implemented as a SUBTRACTION from entry["record"] (which already counts every row for this
+    team this season, per compute_team_records) rather than an independent tally over `rows`,
+    deliberately: the two are mathematically identical whenever `rows` actually contains this
+    team's games (always true in the real pipeline, and in every fixture built from
+    build_schedule_payload), but the subtraction degrades gracefully -- rather than exploding to
+    the 0.5 "no games" sentinel -- for a hand-built entry passed with an empty/unrelated `rows`
+    list and a pre-set "record" (every fixture in tests/test_conference_sort_and_pac12.py): with
+    nothing to subtract, it reproduces entry["record"]'s own percentage exactly, so none of
+    those tests needed to change for this task.
+
+    Same 0.5 sentinel as the original _overall_pct for a team with no counted games after
+    exclusion.
+    """
+    w, l = _placement_win_loss(entry, rows, season, champ_game_ids)
     return (w / (w + l)) if (w + l) > 0 else 0.5
 
 
@@ -1447,6 +1464,12 @@ def _sort_conference_teams(
         # that step -- publishing a reason the current standings were not decided by.
         e["resolved_by"] = None
         e["_placement_pct"] = _placement_pct(e, rows, season, champ_game_ids)
+        # T1/R1: the win COUNT behind _placement_pct, surfaced as its own scratch field so the
+        # sort key below can rank "more wins" above "better pct" -- e.g. 2-0 above 1-0 -- rather
+        # than only ever comparing percentages, which tie every unbeaten team at 1.0 regardless
+        # of games played and let model rank (the next key) decide among them. See
+        # _placement_win_loss for why this can never drift out of sync with _placement_pct.
+        e["_placement_wins"], _ = _placement_win_loss(e, rows, season, champ_game_ids)
         # Whether any conference game has been played, used only as a sort tiebreak below.
         e["_conf_played"] = bool(e["conf_record"] and (e["conf_record"]["wins"] + e["conf_record"]["losses"]) > 0)
         if e["conf_record"] is not None:
@@ -1504,9 +1527,17 @@ def _sort_conference_teams(
         # conference-championship-game winner sorts first, its loser second, regardless of
         # conf_pct. Placement pct precedes model rank -- see the long comment above this
         # function for why, with the concrete 2025 Oklahoma/Vanderbilt/Texas example.
+        # T1/R1: `-e["_placement_wins"]` sits immediately after `-e["_placement_pct"]` and before
+        # model rank -- overall win COUNT outranks model rating, but only once percentage (and
+        # everything ahead of it) has already failed to separate two teams. Without this term,
+        # every unbeaten team ties at _placement_pct==1.0 regardless of games played, and rank
+        # decides -- which is how USC (2-0, rank 20) sorted below three 1-0 teams ranked better.
+        # A team with MORE wins at a LOWER pct (6-2 vs. 3-1) is correctly unaffected: pct still
+        # decides first, so this term is only ever reached among teams already tied on pct.
         entries.sort(key=lambda e: (-e["_tier"],
                                     -(e["_conf_pct"] if e["_conf_pct"] is not None else -1.0),
-                                    -e["_conf_played"], -e["_placement_pct"], _rank_sort_key(e), e["team"]))
+                                    -e["_conf_played"], -e["_placement_pct"], -e["_placement_wins"],
+                                    _rank_sort_key(e), e["team"]))
         i, n = 0, len(entries)
         while i < n:
             j = i
@@ -1581,10 +1612,14 @@ def _sort_conference_teams(
                     entries[i], entries[i + 1] = entries[i + 1], entries[i]
             i = j + 1
     else:
-        entries.sort(key=lambda e: (-e["_placement_pct"], _rank_sort_key(e), e["team"]))
+        # T1/R1/K2: same win-count term, same reasoning, for the Independents branch -- the
+        # user's rule is about records, not about conferences, so an unbeaten Independent with
+        # more games played must outrank one with fewer at the same pct too.
+        entries.sort(key=lambda e: (-e["_placement_pct"], -e["_placement_wins"], _rank_sort_key(e), e["team"]))
 
     for e in entries:
         del e["_placement_pct"]
+        del e["_placement_wins"]
         del e["_conf_pct"]
         del e["_conf_played"]
         del e["_tier"]
