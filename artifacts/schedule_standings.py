@@ -389,7 +389,59 @@ def compute_conference_championship_status(
     that `participants` itself is wrong for this pool (see the ACCEPTED
     LIMITATION note on identify_conference_championship_games in
     artifacts/schedule.py), not as a genuine result to publish -- see the
-    in-function comment at the override site for the full reasoning.
+    in-function comment at the override site for the full reasoning. Note
+    that the skip is WHOLE-POOL, not per-team: a participant set judged
+    untrustworthy is untrustworthy for every elimination it implies, so a
+    merely-"possible" non-participant in that pool keeps its status too, not
+    just the contradicted team.
+
+    GUARD PREMISE, AND THE TWO KNOWN WAYS IT FAILS. Test (a) reads "a
+    non-participant computed as clinched" as proof that `participants` is
+    wrong. That inference rests on a premise: that every member of a pool has
+    played the same number of COUNTED conference games, so banked wins rank
+    teams the way the conference's own standings do, and the team a
+    conference actually sent to its title game is never one this function has
+    already locked out. Two known things break that premise:
+      1. UNEVEN COUNTED GAME COUNTS. artifacts/schedule.py strips the
+         Army-Navy game from the AAC's conference tallies (R2), permanently
+         leaving Army and Navy one counted conference game -- and so up to
+         one banked win -- short of every other AAC member, while the
+         conference's own standings still count that game. An Army that wins
+         the AAC's real tiebreaker on a record INCLUDING it can therefore
+         carry fewer counted wins here than the non-participants it beat out,
+         and one of those non-participants can compute "clinched".
+      2. TITLE-GAME INELIGIBILITY. A team barred from the title game
+         (postseason sanctions, an in-progress FBS reclassification) can win
+         its pool outright and still not play in it -- the 2012 Big Ten
+         Leaders division, where a banned 8-0 Ohio State stayed home and a
+         4-4 Wisconsin played, is the canonical shape. Ohio State computes
+         "clinched" and is a genuine non-participant.
+    In both, the guard fires on a correctly-identified championship game and
+    withdraws eliminations that were right. That cost is BOUNDED -- one pool,
+    one season, logged as an error every time -- and it is in the SAFE
+    direction: the pool falls back to the plain W/R/B/L statuses, which only
+    ever under-eliminate, so teams linger as "possible" (the original R3
+    defect) instead of being wrongly published as "Eliminated". Per
+    non_requirements ("over-eliminating is worse than under-eliminating")
+    that is the trade this guard is deliberately making.
+
+    RESIDUAL (known, NOT guarded): neither test fires when a misidentified
+    participant pair is drawn from pool members that are themselves neither
+    clinched nor the whole pool. E.g. four teams finish 7-0 in a flat
+    conference -- none of them clinches, because each of the other three can
+    reach its floor -- and the identified "title game" is a make-up game
+    between two also-rans who ARE pool members. The override then eliminates
+    all four 7-0 teams, silently. A stronger trigger was evaluated and
+    REJECTED: "no non-participant may have strictly more banked wins than a
+    participant" does catch that shape, but failure mode 1 above makes it
+    fire on legitimate AAC title games too (Army playing on 6 counted wins
+    while two 7-counted-win teams it beat head-to-head stay home and are
+    correctly eliminated), which would re-open the exact defect this override
+    exists to close, for a whole conference, every season that shape occurs.
+    Swapping wins for win percentage does not help -- the AAC's own seeding
+    reads a game this module deliberately does not count -- and failure mode
+    2 is not about records at all, so no record-based predicate separates the
+    genuine case from the false-positive one.
 
     CONDITIONAL_OPPONENT: the still-"possible" teams of a pool get
     conditional_opponent set to the name of the team that has already
@@ -619,9 +671,14 @@ def compute_conference_championship_status(
             # artifacts/schedule.py) -- a make-up/postponed game sitting alone in a late week
             # bucket gets identified as the title game even though it is not one, and the
             # override above would then apply to a completely wrong participant set. A
-            # genuine championship-game non-participant is essentially never "clinched": that
-            # status requires at most top_n - 1 OTHER teams to be able to reach its win floor,
-            # and both real participants normally can. So a non-participant that already
+            # genuine championship-game non-participant is rarely "clinched": that status
+            # requires at most top_n - 1 OTHER teams to be able to reach its win floor, and
+            # both real participants normally can. (Rarely, not never -- see GUARD PREMISE in
+            # this function's docstring for the two known shapes, uneven counted game counts
+            # after the AAC's Army-Navy exclusion and title-game ineligibility, where a
+            # genuine non-participant DOES clinch and this guard fires on a correct
+            # participant set. Both fail safe: the pool keeps its under-eliminating W/R/B/L
+            # statuses.) So a non-participant that already
             # computed as "clinched" above is a high-confidence signal the participant set
             # itself is wrong, not that the team is actually eliminated -- exactly like the
             # eliminated-and-clinched self-contradiction logged ~10 lines above, just sourced
@@ -641,13 +698,17 @@ def compute_conference_championship_status(
                     "top_n=%d W=%s R=%s B=%s L=%s",
                     pool_label, already_clinched, participants, top_n, W, R, B, L,
                 )
-            elif not any(t in participants for t in teams):
+            elif len(would_eliminate) == len(teams):
                 # Related sub-case: `participants` is non-empty but comes from a DIFFERENT
                 # pool's teams entirely (e.g. a divisional conference whose identified game
                 # turned out to be an intra-division make-up game, so neither the real
                 # participants nor anyone else in THIS pool is among them). Applying the
                 # override here would eliminate every single team in the pool -- the same
-                # over-elimination failure mode, just total instead of partial.
+                # over-elimination failure mode, just total instead of partial. "Every
+                # non-participant is the whole pool" is exactly "no pool member is a
+                # participant"; phrased off the list already computed above rather than
+                # re-scanning `participants`, so the test reads as the consequence it is
+                # actually guarding against.
                 logger.error(
                     "Played-championship-game override for pool %r has participants=%s with "
                     "no member among this pool's own teams %s -- applying it would eliminate "
@@ -691,10 +752,18 @@ def compute_conference_championship_status(
         # alone cannot yet call this participant clinched or eliminated for the pool's OWN slot
         # -- a real, separate question from who it played in the title game -- and without this
         # guard the "possible" branch below would name conditional_opponent_name (the OTHER
-        # slot's clinched team) for a team that has already played, and in the loser's case
-        # already LOST, exactly that game. E.g. a played-but-not-yet-eliminated SEC runner-up
-        # would come back "In the Hunt, would play Georgia" for a game it already lost to
-        # Georgia.
+        # slot's clinched team) as who this participant "would play".
+        #
+        # The justification is stated against `ccg_participants` as an INPUT, so that it also
+        # holds in the guard-skipped branch above, where that input has been judged untrust-
+        # worthy. Either we believe the set -- and then this team has already played that game
+        # (and, for the loser, already lost it), so a forward-looking "would play" is nonsense:
+        # a played-but-not-yet-eliminated SEC runner-up coming back "In the Hunt, would play
+        # Georgia" for the game it just lost to Georgia -- or one of the guards rejected the
+        # set for this pool, in which case we have just declared it unreliable and must not
+        # build a published prediction on it either. Both readings clear, and clearing is safe
+        # under both because it only ever writes None: it can withdraw a prediction, never
+        # assert a false one.
         pool_participants = ccg_participants.get(pool["conference"]) or set()
 
         for t in pool["teams"]:
