@@ -1,7 +1,7 @@
 artifact: status
 feature: "standings-gaps"
 mode: "bounded-feature"
-stage: "execution"
+stage: "verification"
 owner_skill: work
 
 objective: >-
@@ -47,8 +47,8 @@ branching:
     origin/main per the merged-PR rule. Flagged to the user at the pre-execution checkpoint.
 
 summary:
-  current_focus: "Execution complete (475 passing). Opening PR, then verification."
-  last_completed: "T1, T2, T3 complete; 10 new tests, 11 mutations, no survivors."
+  current_focus: "Verification complete. PR #20 ready for the user to review and merge."
+  last_completed: "Two review cycles closed; guard added and pinned; 481 passing."
   current_blocker: ""
 
 artifacts:
@@ -57,9 +57,9 @@ artifacts:
   implementation_report: "docs/standings-gaps/implementation-report.yaml"
 
 pr:
-  number: null
-  url: null
-  status: "not_opened"
+  number: 20
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/20"
+  status: "open_ready_for_user"
 
 agents:
   - id: "orchestrator"
@@ -73,7 +73,7 @@ agents:
     routing_enforced: true
     escalation_count: 0
     status: "active"
-    stage: "execution"
+    stage: "verification"
     task: "Coordinate discovery of both gaps; keep scope tight."
     last_update: "2026-09-12T19:50:00Z"
     blocker: ""
@@ -83,8 +83,9 @@ loops:
     count: 0
     max: 2
   execution_verification:
-    count: 0
+    count: 2
     max: 2
+    note: "Cap reached. Cycle 1: 1 must-fix + 4 should-fix. Cycle 2: 0 must-fix, 3 should-fix, closed on user direction. No further autonomous looping."
 
 checkpoint:
   pre_execution_required: true
@@ -118,6 +119,6 @@ model_routing:
   unresolved_limitations:
     - "Subagents inherit the main conversation's extended-thinking setting; per-agent reasoning level is advisory."
 
-next_action: "On approval, spawn T1 then T2 (generalist-developer, balanced/medium), then T3 tests + mutation table."
+next_action: "User reviews and merges PR #20. On merge confirmation: git rm -r docs/standings-gaps/ and push as the final commit, then republish 2025 and 2026."
 next_recommended_command: "$work"
 user_input_needed: false

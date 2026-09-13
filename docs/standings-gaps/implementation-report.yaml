@@ -64,8 +64,8 @@ model_usage:
     - "Test authoring was deliberately withheld from the implementer and given to a separate agent, because this codebase's recurring failure mode is fixtures that pass under both the buggy and fixed reading. That separation paid for itself: the test agent found two such fixtures in its own first drafts."
 
 pr:
-  number: null
-  url: null
+  number: 20
+  url: "https://github.com/wmentrekin/cfb-rankings/pull/20"
 
 changes:
   files:
@@ -93,6 +93,7 @@ local_validation:
 
 test_summary:
   status: complete
+  final_count: "481 passed (465 baseline on main, +16)
   checks_run: ["10 new regression tests", "11 mutations injected and reverted byte-identically"]
   failures: []
   mutation_results: "All mutations RED for the right reason. One expected survivor (R1 test 3 is a tiebreak guard, not a win-count test) was given its own targeted mutation, which went RED."
@@ -103,8 +104,38 @@ test_summary:
     - "No test exercises the real 2025 dataset end to end; all coverage is fixture-based."
 
 review_summary:
-  status: not_started
-  key_findings: []
+  status: complete
+  cycles: 2
+  key_findings:
+    - severity: must_fix
+      finding: "R3 override could flip a genuinely `clinched` team to `eliminated` when identify_conference_championship_games hit its documented false positive (a make-up game alone in a late week bucket). Verified end-to-end: two 4-0 teams clinched on main, eliminated on the branch."
+      resolution: "Guard skips the WHOLE pool and logger.errors, on two triggers: a would-be-eliminated team already computing as clinched, and a participant set sharing no member with the pool. Both pinned by caplog tests (ac5f345, 4e43513)."
+    - severity: should_fix
+      finding: "A new test passed with the entire override deleted -- it asserted a state that also holds when the feature does not exist."
+      resolution: "caplog assertion added; proved by deleting the 62-line override and confirming RED."
+    - severity: should_fix
+      finding: "The whole-pool-vs-per-team skip -- the core safety judgement -- was unpinned; the narrowed version left all 480 tests green."
+      resolution: "Fixture built where the two designs diverge (one clinched + one merely-possible non-participant). Narrowed mutation now fails that test alone."
+    - severity: should_fix
+      finding: "Reviewer proposed a stronger guard predicate (no non-participant may have more banked conference wins than any participant)."
+      resolution: >-
+        REJECTED, deliberately. The 2012 Big Ten Leaders shape (a banned 8-0 Ohio State, a 4-4
+        Wisconsin in the title game, same pool) makes it fire on a correct participant set. It
+        would trade a rare over-elimination for a recurring under-elimination.
+    - severity: nit
+      finding: "conditional_opponent justification did not hold in the guard-skipped branch."
+      resolution: "Reason rewritten to hold in both branches. Behaviour unchanged -- clearing only ever writes None."
+  orchestrator_corrections:
+    - >-
+      The final agent recorded, in the guard's docstring, that R2 leaves Army and Navy one
+      counted conference game short of other AAC members, and built its case against the
+      stronger predicate partly on that. Checked against the published 2025 payload: all
+      fourteen AAC members, Army and Navy included, play exactly eight conference opponents,
+      with the Army-Navy slot empty in the pre-backfill snapshot. CFBD tags Army-Navy
+      conference_game=true ON TOP of that slate, so R2 RESTORES parity at eight rather than
+      opening a deficit -- the premise was backwards. Docstring corrected in 1f3d78d. The
+      rejection of the stronger predicate still stands on the ineligibility case alone.
+      A follow-up task the agent queued from the same false premise was dismissed.
 
 open_issues:
   - id: Q1
