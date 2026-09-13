@@ -1171,8 +1171,10 @@ def test_ccg_override_skipped_for_pool_where_it_would_eliminate_a_clinched_team(
     compute_conference_championship_status directly: Alpha and Charlie are both 4-0 with the
     season over (0 remaining) in a 4-team SEC pool (top_n=2) -- each computes 'clinched' by the
     plain W/R/B/L math alone (only 1 other team, Charlie/Alpha respectively, can reach its
-    banked-win floor of 4, and top_n-1=1). Bravo (3-1) and Delta (0-4) are already 'eliminated'
-    by the same math.
+    banked-win floor of 4, and top_n-1=1). Bravo (3 banked conference wins) and Delta (0), both
+    also with the season over, are already 'eliminated' by the same math. (Records here are
+    stated as banked WINS, not W-L: _ccg_record sets conf_losses=0 for every fixture and this
+    function never reads conf_losses at all.)
 
     `ccg_participants` names Bravo and Delta as the pair that supposedly played the SEC title
     game -- exactly the false-positive shape identify_conference_championship_games documents
@@ -1207,7 +1209,7 @@ def test_ccg_override_skipped_for_pool_where_it_would_eliminate_a_clinched_team(
     ), caplog.records
 
 
-def test_ccg_override_skipped_for_pool_with_no_participant_among_its_own_teams():
+def test_ccg_override_skipped_for_pool_with_no_participant_among_its_own_teams(caplog):
     """Sun Belt shape: the West pool's `ccg_participants` (keyed by conference, per the
     docstring) actually names two EAST teams -- the intra-division false positive the review
     named ("a divisional conference whose identified game is intra-division"). No member of the
@@ -1215,15 +1217,25 @@ def test_ccg_override_skipped_for_pool_with_no_participant_among_its_own_teams()
     team in the West pool, including two that are still genuinely mathematically alive
     ('possible', not 'eliminated', by the plain math).
 
-    Troy (West) is 3-1 with 1 conference game remaining (B=4) and Arkansas State is 2-1 with 1
-    remaining (B=3) -- neither is eliminated (nobody else's banked wins exceed their best case)
-    nor clinched (each other could still catch up), so both are legitimately 'possible' before
-    the override. Louisiana and South Alabama are done at 1-3 and 0-4 and already 'eliminated'
-    by the plain math regardless.
+    Troy (West) has 3 banked conference wins with 1 conference game remaining (B=4) and
+    Arkansas State has 2 with 1 remaining (B=3) -- neither is eliminated (nobody else's banked
+    wins exceed their best case) nor clinched (each other could still catch up), so both are
+    legitimately 'possible' before the override. Louisiana (1 banked win) and South Alabama (0)
+    are done and already 'eliminated' by the plain math regardless. (Records are stated as
+    banked WINS, not W-L: _ccg_record sets conf_losses=0 for every fixture and this function
+    never reads conf_losses at all.)
 
     BUGGY (pre-guard) result: every West team, including Troy and Arkansas State, comes back
     'eliminated' -- a 100%-of-pool wipe from a participant set that does not even overlap with
     the pool.
+
+    The caplog assertion is load-bearing, not decoration: Troy and Arkansas State are
+    'possible' under the plain W/R/B/L math too, so the status assertions alone hold just as
+    well in a build where the whole played-championship-game override has been DELETED -- they
+    would prove nothing about the guard. Only guard (b)'s own logger.error distinguishes
+    "the override ran and this pool's participant set was rejected" from "there is no override
+    here at all", which is why it is asserted specifically (by the guard's own wording and this
+    pool's label) rather than just checking that some error was logged.
     """
     # A fresh 4-per-division map (min_members=4 needs 4, unlike this file's own 2-per-division
     # _SUN_BELT_DIVISIONS above, which is sized for a different, unrelated test).
@@ -1247,14 +1259,84 @@ def test_ccg_override_skipped_for_pool_with_no_participant_among_its_own_teams()
     # Both named participants are East teams -- disjoint from the West pool's own `teams`.
     ccg_participants = {SUN_BELT: {"App State", "Coastal Carolina"}}
 
-    result = schedule_standings.compute_conference_championship_status(
-        records, divisions=divisions, ccg_participants=ccg_participants
-    )
+    with caplog.at_level("ERROR"):
+        result = schedule_standings.compute_conference_championship_status(
+            records, divisions=divisions, ccg_participants=ccg_participants
+        )
 
     assert result["Troy"]["status"] == "possible", result["Troy"]
     assert result["Arkansas State"]["status"] == "possible", result["Arkansas State"]
     assert result["Louisiana"]["status"] == "eliminated", result["Louisiana"]
     assert result["South Alabama"]["status"] == "eliminated", result["South Alabama"]
+    # Guard (b) specifically -- and for the WEST pool, the one under test (the East pool's own
+    # participants are its own teams, so its override applies uneventfully and logs nothing).
+    assert any(
+        "no member among this pool's own teams" in record.getMessage()
+        and "West division" in record.getMessage()
+        for record in caplog.records
+    ), caplog.records
+
+
+def test_ccg_override_skip_withdraws_the_whole_pool_not_just_the_clinched_team(caplog):
+    """Pins the single most important SAFETY JUDGEMENT in the guard: when a pool's participant
+    set is rejected, ALL of that pool's overridden eliminations are withdrawn -- not just the
+    one contradicted (clinched) team.
+
+    test_ccg_override_skipped_for_pool_where_it_would_eliminate_a_clinched_team above cannot
+    pin this, because in its fixture the set of teams the override would eliminate is exactly
+    the set that already clinched, so "skip the whole pool" and the NARROWED alternative "skip
+    only the contradicting team, eliminate the other non-participants" produce identical
+    output. This fixture makes the two DIVERGE by giving the pool a non-participant that is
+    merely 'possible' alongside the clinched one.
+
+    Flat SEC pool, top_n=2, banked conference wins (W) and games remaining (R):
+      - Alpha   W=8 R=0 -> CLINCHED: no other team's best case reaches its floor of 8
+                           (Bravo tops out at 7), and top_n-1 = 1 allows one that does.
+      - Bravo   W=5 R=2 -> POSSIBLE: B=7 clears the 2nd-highest OTHER banked total (Charlie's
+                           6), so not eliminated; two others (Alpha 8, Charlie 6) can reach
+                           its floor of 5, so not clinched.
+      - Charlie W=6 R=0 -> participant; 'possible' by the plain math.
+      - Delta   W=3 R=0 -> participant; already 'eliminated' by the plain math.
+
+    `ccg_participants` names Charlie and Delta -- the misidentified-make-up-game shape again,
+    but this time with one of the pair (Delta) a team the math had already eliminated, so the
+    pair sits INSIDE the pool and guard (b) never applies. The override would eliminate both
+    non-participants, Alpha and Bravo; only Alpha contradicts a 'clinched' verdict.
+
+    MUTANT this test exists to kill (verified RED): narrowing the guard to
+        for t in would_eliminate:
+            if statuses[t] != "clinched":
+                statuses[t] = "eliminated"
+    leaves Alpha 'clinched' -- so every other assertion here, and every one of the other 480
+    tests, still passes -- while Bravo, a team with two conference games still to play and no
+    involvement whatsoever in the discredited game, is published 'Eliminated' on the authority
+    of a participant set this very function has just decided not to trust. Bravo staying
+    'possible' is true ONLY under the whole-pool design.
+    """
+    records = {
+        "Alpha": _ccg_record(_SEC, 8, 0),
+        "Bravo": _ccg_record(_SEC, 5, 2),
+        "Charlie": _ccg_record(_SEC, 6, 0),
+        "Delta": _ccg_record(_SEC, 3, 0),
+    }
+    ccg_participants = {_SEC: {"Charlie", "Delta"}}
+
+    with caplog.at_level("ERROR"):
+        result = schedule_standings.compute_conference_championship_status(
+            records, ccg_participants=ccg_participants
+        )
+
+    # THE discriminating assertion: the merely-'possible' non-participant is left alone too.
+    assert result["Bravo"]["status"] == "possible", result["Bravo"]
+    # The contradicted team keeps its clinch (true under both designs -- context, not proof).
+    assert result["Alpha"]["status"] == "clinched", result["Alpha"]
+    # And the rest of the pool is likewise exactly what the plain W/R/B/L math gave it.
+    assert result["Charlie"]["status"] == "possible", result["Charlie"]
+    assert result["Delta"]["status"] == "eliminated", result["Delta"]
+    assert any(
+        "CLINCHED" in record.getMessage() and "SEC" in record.getMessage()
+        for record in caplog.records
+    ), caplog.records
 
 
 # ---------------------------------------------------------------------------
