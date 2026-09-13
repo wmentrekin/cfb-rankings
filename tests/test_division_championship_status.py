@@ -460,11 +460,14 @@ def test_played_ccg_eliminates_non_participants_without_leaking_across_divisions
     fillers, already eliminated by the ordinary inequality regardless of this fix -- present only
     to satisfy min_members=4 per division.
 
-    "No leak" is checked two ways: (1) App State (an EAST participant) is not wrongly force-
-    eliminated by West's Troy being in the SAME conference-keyed ccg_participants set -- the
-    override only ever compares a pool's own `teams` against membership in that set, never
-    against which division a participant belongs to; (2) Troy (a WEST participant) is
-    correspondingly untouched by App State's presence in that same set.
+    Two things are checked: (1) each division's own bystander (Coastal Carolina, Louisiana) is
+    force-eliminated, proving the override actually fires; (2) both real participants (App
+    State, Troy) survive it, proving the `if t not in participants` guard is applied rather than
+    dropped or inverted. NOT proof of "no leak across divisions" as a distinct property from
+    conference-wide scoping: pools partition a conference's teams and `ccg_participants` is keyed
+    by conference, so per-pool application and conference-wide application over that SAME
+    conference's participant set are mathematically identical here -- there is no cross-division
+    leak for this fixture, or any fixture shaped like it, to actually catch.
 
     BUGGY (pre-fix) result: Coastal Carolina and Louisiana are each B_t == nth_highest_other_w
     (6 == 6), so the old inequality alone leaves both 'possible' forever, in exactly the pattern
@@ -495,9 +498,12 @@ def test_played_ccg_eliminates_non_participants_without_leaking_across_divisions
 
     assert result["Coastal Carolina"]["status"] == "eliminated", result["Coastal Carolina"]
     assert result["Louisiana"]["status"] == "eliminated", result["Louisiana"]
-    # Neither participant is force-eliminated by the OTHER division's participant sharing the
-    # same conference-keyed set -- proof the override is scoped per-pool (per-division), not
-    # per-conference.
+    # Both participants survive the override -- proof the `if t not in participants` guard is
+    # actually applied (an override that dropped it, or was somehow inverted, would catch these
+    # too). NOT proof of per-pool (per-division) vs. per-conference scoping: pools partition a
+    # conference's teams and `ccg_participants` is keyed by conference, so applying the override
+    # per pool and applying it conference-wide over the SAME conference's participant set are the
+    # same function here -- there is no cross-division leak for a fixture like this one to catch.
     assert result["App State"]["status"] != "eliminated", result["App State"]
     assert result["Troy"]["status"] != "eliminated", result["Troy"]
 

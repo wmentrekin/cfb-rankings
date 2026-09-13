@@ -356,6 +356,84 @@ def test_rating_still_breaks_ties_between_identical_overall_records():
     assert sorted_teams == ["Zeta-Better-Rank", "Alpha-Worse-Rank"], sorted_teams
 
 
+def test_equal_pct_more_wins_sorts_above_fewer_wins_regardless_of_rank():
+    """R1 test 4: the case the comment above the sort key (and requirements.yaml's R1
+    acceptance criterion 2) used to describe with an arithmetically FALSE example (6-2 vs. 3-1
+    as if those were different percentages -- 6/8 and 3/4 are both 0.750). This is the REAL
+    equal-pct-different-win-count case that comment was trying to describe: two teams tied
+    EXACTLY on conference pct (SixTwo 6-2 == .750, ThreeOne 3-1 == .750), so pct does NOT decide
+    between them and this term (win count) is actually reached. SixTwo has strictly more wins,
+    so it must sort above ThreeOne even with a much worse model rank -- rank is checked AFTER
+    the win-count term, so if it decided instead, ThreeOne (rank 1) would wrongly sort first.
+
+    Nothing in the existing suite pins this: test 1/2 above only cover the ALL-UNBEATEN
+    (1.0 pct) case, and test 3 covers two teams with IDENTICAL records, not merely identical
+    pct. This is the one place a genuine equal-pct/different-win-count pair is exercised.
+
+    BUGGY (mutant) result if the win-count term were dropped from the sort key: rank alone
+    would decide the pct-tied pair, putting ThreeOne (rank 1) first -- ['ThreeOne', 'SixTwo'].
+    """
+    entries = [
+        _entry("SixTwo", 6, 2, 6, 2),
+        _entry("ThreeOne", 3, 1, 3, 1),
+    ]
+    entries[0]["rank"] = 30
+    entries[1]["rank"] = 1
+    rows = []
+    sorted_entries = _sort_conference_teams(entries, rows, 2026)
+    sorted_teams = [e["team"] for e in sorted_entries]
+    assert sorted_teams == ["SixTwo", "ThreeOne"], (
+        f"got {sorted_teams}. SixTwo and ThreeOne are tied at .750 conference pct, so this "
+        "pair is decided by win count (6 > 3), not by rank -- if ThreeOne sorts first, the "
+        "win-count term is not being reached for pct-tied (not just record-identical) teams."
+    )
+
+
+# ---------------------------------------------------------------------------
+# NIT: the 0.5 unplayed-record sentinel now ties with, and loses the win-count term to, a real
+# .500-pct team -- a silent ordering change from before this PR (rank used to decide; now the
+# win-count term does). Defensible (see the in-function "DELIBERATE SIDE EFFECT" comment on the
+# Independents branch of _sort_conference_teams) but previously unpinned by any test.
+# ---------------------------------------------------------------------------
+def test_unplayed_0_5_sentinel_sorts_below_a_tied_played_team_even_when_better_ranked():
+    """`_placement_pct`'s 0.5 "no games" sentinel (ZeroZero, 0-0 overall) now ties exactly with
+    a genuine .500 team (OneOne, 1-1 overall) -- and R1's new win-count term (_placement_wins)
+    then decides the pair (1 > 0), NOT rank. Used here on the INDEPENDENTS branch
+    (conf_wins=None for both, so has_conf_records is False and _conf_pct/_conf_played -- which
+    would otherwise settle this first -- never enter into it at all) to isolate exactly the
+    placement-pct-sentinel-vs-win-count interaction the reviewer flagged, with nothing else able
+    to decide the pair first. Checked with rank both ways so the result is pinned as depending on
+    the win-count term, not on which team happens to be ranked better.
+
+    BEFORE this PR (no _placement_wins term in the Independents sort key), this pair tied all
+    the way down to rank, so a 0-0 team ranked #1 sorted ABOVE a 1-1 team ranked #30 -- the
+    opposite of the result asserted below. This agrees with tiebreaker_engine._fallback_sort_key,
+    which also scores an unplayed team below a played .500 team, and 0-0 still sorts above 0-1
+    (untouched by this change), so the sentinel's stated purpose survives -- but nothing pinned
+    this specific interaction before this test.
+    """
+    # 0-0 team ranked BETTER than the 1-1 team: still sorts second.
+    entries_a = [
+        _entry("ZeroZero", 0, 0, None, None),
+        _entry("OneOne", 1, 1, None, None),
+    ]
+    entries_a[0]["rank"] = 1
+    entries_a[1]["rank"] = 30
+    sorted_a = [e["team"] for e in _sort_conference_teams(entries_a, [], 2026)]
+    assert sorted_a == ["OneOne", "ZeroZero"], sorted_a
+
+    # 0-0 team ranked WORSE than the 1-1 team: still sorts second -- rank plays no part either
+    # way, confirming the win-count term (not rank) is what is deciding this pair.
+    entries_b = [
+        _entry("ZeroZero", 0, 0, None, None),
+        _entry("OneOne", 1, 1, None, None),
+    ]
+    entries_b[0]["rank"] = 30
+    entries_b[1]["rank"] = 1
+    sorted_b = [e["team"] for e in _sort_conference_teams(entries_b, [], 2026)]
+    assert sorted_b == ["OneOne", "ZeroZero"], sorted_b
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

@@ -381,6 +381,16 @@ def compute_conference_championship_status(
     even if it tried. Does NOT touch either inequality above (K5): this is
     a known fact layered on top, not a loosening of the projection.
 
+    GUARD (post-review hardening): the override is skipped for an entire pool,
+    with a logger.error naming the pool/team(s)/participants, if applying it
+    would (a) force a team the W/R/B/L math above already computed as
+    "clinched" to "eliminated", or (b) eliminate every team in the pool
+    because none of them is in `participants`. Both are treated as evidence
+    that `participants` itself is wrong for this pool (see the ACCEPTED
+    LIMITATION note on identify_conference_championship_games in
+    artifacts/schedule.py), not as a genuine result to publish -- see the
+    in-function comment at the override site for the full reasoning.
+
     CONDITIONAL_OPPONENT: the still-"possible" teams of a pool get
     conditional_opponent set to the name of the team that has already
     clinched the OTHER title-game slot, when exactly one team has:
@@ -603,8 +613,50 @@ def compute_conference_championship_status(
         # this pool's forcing loop.
         participants = ccg_participants.get(pool["conference"])
         if participants:
-            for t in teams:
-                if t not in participants:
+            # GUARD (post-review hardening): `participants` is only as trustworthy as
+            # identify_conference_championship_games' identification, which has a documented
+            # false positive (see the ACCEPTED LIMITATION note on that function in
+            # artifacts/schedule.py) -- a make-up/postponed game sitting alone in a late week
+            # bucket gets identified as the title game even though it is not one, and the
+            # override above would then apply to a completely wrong participant set. A
+            # genuine championship-game non-participant is essentially never "clinched": that
+            # status requires at most top_n - 1 OTHER teams to be able to reach its win floor,
+            # and both real participants normally can. So a non-participant that already
+            # computed as "clinched" above is a high-confidence signal the participant set
+            # itself is wrong, not that the team is actually eliminated -- exactly like the
+            # eliminated-and-clinched self-contradiction logged ~10 lines above, just sourced
+            # from bad input instead of disagreeing math. Per non_requirements ("over-
+            # eliminating is worse than under-eliminating"), the response is to distrust the
+            # WHOLE pool's participant set, not just the contradicted team: skip the override
+            # for this pool entirely and leave the plain W/R/B/L statuses as computed.
+            would_eliminate = [t for t in teams if t not in participants]
+            already_clinched = [t for t in would_eliminate if statuses[t] == "clinched"]
+            if already_clinched:
+                logger.error(
+                    "Played-championship-game override for pool %r would force team(s) %s -- "
+                    "already computed as CLINCHED by the W/R/B/L math -- to eliminated "
+                    "(participants=%s). Treating this as evidence the identified championship "
+                    "game is a false positive rather than a genuine result: skipping the "
+                    "override for this whole pool and leaving its W/R/B/L statuses unmodified. "
+                    "top_n=%d W=%s R=%s B=%s L=%s",
+                    pool_label, already_clinched, participants, top_n, W, R, B, L,
+                )
+            elif not any(t in participants for t in teams):
+                # Related sub-case: `participants` is non-empty but comes from a DIFFERENT
+                # pool's teams entirely (e.g. a divisional conference whose identified game
+                # turned out to be an intra-division make-up game, so neither the real
+                # participants nor anyone else in THIS pool is among them). Applying the
+                # override here would eliminate every single team in the pool -- the same
+                # over-elimination failure mode, just total instead of partial.
+                logger.error(
+                    "Played-championship-game override for pool %r has participants=%s with "
+                    "no member among this pool's own teams %s -- applying it would eliminate "
+                    "every team in the pool. Skipping the override for this whole pool and "
+                    "leaving its W/R/B/L statuses unmodified.",
+                    pool_label, participants, teams,
+                )
+            else:
+                for t in would_eliminate:
                     statuses[t] = "eliminated"
 
         statuses_by_pool.append(statuses)
@@ -633,12 +685,24 @@ def compute_conference_championship_status(
         conditional_opponent_name = (
             clinched_candidates[0] if len(clinched_candidates) == 1 else None
         )
+        # A pool's played-championship-game participants (if any -- see the PLAYED-
+        # CHAMPIONSHIP-GAME OVERRIDE section above) are never given a conditional_opponent even
+        # when their own status is still "possible": that status means the W/R/B/L projection
+        # alone cannot yet call this participant clinched or eliminated for the pool's OWN slot
+        # -- a real, separate question from who it played in the title game -- and without this
+        # guard the "possible" branch below would name conditional_opponent_name (the OTHER
+        # slot's clinched team) for a team that has already played, and in the loser's case
+        # already LOST, exactly that game. E.g. a played-but-not-yet-eliminated SEC runner-up
+        # would come back "In the Hunt, would play Georgia" for a game it already lost to
+        # Georgia.
+        pool_participants = ccg_participants.get(pool["conference"]) or set()
 
         for t in pool["teams"]:
-            if statuses[t] == "possible":
+            if statuses[t] == "possible" and t not in pool_participants:
                 result[t] = {"status": "possible", "conditional_opponent": conditional_opponent_name}
             else:
-                # both "clinched" and "eliminated" carry no conditional_opponent
+                # both "clinched" and "eliminated" carry no conditional_opponent, and so does a
+                # "possible" played-championship-game participant (see comment above).
                 result[t] = {"status": statuses[t], "conditional_opponent": None}
 
     return result

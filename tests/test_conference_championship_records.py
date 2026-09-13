@@ -1158,6 +1158,148 @@ def test_conference_with_no_championship_game_is_unaffected():
     assert any(v["status"] != "eliminated" for v in baseline.values()), baseline
 
 
+# ---------------------------------------------------------------------------
+# MUST-FIX (post-review): the override must refuse to run for a pool where it would
+# contradict the W/R/B/L math's own "clinched" verdict, or where it would eliminate a pool
+# with no real participant in it -- both are high-confidence signs `ccg_participants` itself
+# is wrong for this pool (see identify_conference_championship_games' documented false
+# positive: a make-up/postponed game sitting alone in a late bucket gets identified as the
+# title game even though it is not one), not a genuine result to publish.
+# ---------------------------------------------------------------------------
+def test_ccg_override_skipped_for_pool_where_it_would_eliminate_a_clinched_team(caplog):
+    """Reproduces the reviewer's verified defect end-to-end against
+    compute_conference_championship_status directly: Alpha and Charlie are both 4-0 with the
+    season over (0 remaining) in a 4-team SEC pool (top_n=2) -- each computes 'clinched' by the
+    plain W/R/B/L math alone (only 1 other team, Charlie/Alpha respectively, can reach its
+    banked-win floor of 4, and top_n-1=1). Bravo (3-1) and Delta (0-4) are already 'eliminated'
+    by the same math.
+
+    `ccg_participants` names Bravo and Delta as the pair that supposedly played the SEC title
+    game -- exactly the false-positive shape identify_conference_championship_games documents
+    (a make-up game between two also-ran teams, misidentified as the championship). Applying the
+    override unconditionally would force Alpha and Charlie -- both undefeated, both already
+    'clinched' -- to 'eliminated'.
+
+    BUGGY (pre-guard) result: Alpha and Charlie both come back 'eliminated' despite being 4-0
+    and mathematically clinched, with no log line -- the exact silent over-elimination the
+    review reproduced through the full pipeline.
+    """
+    records = {
+        "Alpha": _ccg_record(_SEC, 4, 0),
+        "Charlie": _ccg_record(_SEC, 4, 0),
+        "Bravo": _ccg_record(_SEC, 3, 0),
+        "Delta": _ccg_record(_SEC, 0, 0),
+    }
+    ccg_participants = {_SEC: {"Bravo", "Delta"}}
+
+    with caplog.at_level("ERROR"):
+        result = schedule_standings.compute_conference_championship_status(
+            records, ccg_participants=ccg_participants
+        )
+
+    # The two undefeated leaders keep the status the plain math gave them -- the override never
+    # ran for this pool at all.
+    assert result["Alpha"]["status"] == "clinched", result["Alpha"]
+    assert result["Charlie"]["status"] == "clinched", result["Charlie"]
+    assert any(
+        "CLINCHED" in record.getMessage() and "SEC" in record.getMessage()
+        for record in caplog.records
+    ), caplog.records
+
+
+def test_ccg_override_skipped_for_pool_with_no_participant_among_its_own_teams():
+    """Sun Belt shape: the West pool's `ccg_participants` (keyed by conference, per the
+    docstring) actually names two EAST teams -- the intra-division false positive the review
+    named ("a divisional conference whose identified game is intra-division"). No member of the
+    West pool is in that participant set at all, so applying the override would eliminate every
+    team in the West pool, including two that are still genuinely mathematically alive
+    ('possible', not 'eliminated', by the plain math).
+
+    Troy (West) is 3-1 with 1 conference game remaining (B=4) and Arkansas State is 2-1 with 1
+    remaining (B=3) -- neither is eliminated (nobody else's banked wins exceed their best case)
+    nor clinched (each other could still catch up), so both are legitimately 'possible' before
+    the override. Louisiana and South Alabama are done at 1-3 and 0-4 and already 'eliminated'
+    by the plain math regardless.
+
+    BUGGY (pre-guard) result: every West team, including Troy and Arkansas State, comes back
+    'eliminated' -- a 100%-of-pool wipe from a participant set that does not even overlap with
+    the pool.
+    """
+    # A fresh 4-per-division map (min_members=4 needs 4, unlike this file's own 2-per-division
+    # _SUN_BELT_DIVISIONS above, which is sized for a different, unrelated test).
+    east = ["App State", "Coastal Carolina", "Georgia Southern", "Georgia State"]
+    west = ["Troy", "Arkansas State", "Louisiana", "South Alabama"]
+    divisions = {**{t: "East" for t in east}, **{t: "West" for t in west}}
+
+    records = {
+        # East: mirrors the West shape below exactly, so this pool's own override application
+        # (participants ARE East teams) is uneventful and not what this test is about.
+        "App State": _ccg_record(SUN_BELT, 3, 1),
+        "Coastal Carolina": _ccg_record(SUN_BELT, 2, 1),
+        "Georgia Southern": _ccg_record(SUN_BELT, 1, 0),
+        "Georgia State": _ccg_record(SUN_BELT, 0, 0),
+        # West: the pool actually under test.
+        "Troy": _ccg_record(SUN_BELT, 3, 1),
+        "Arkansas State": _ccg_record(SUN_BELT, 2, 1),
+        "Louisiana": _ccg_record(SUN_BELT, 1, 0),
+        "South Alabama": _ccg_record(SUN_BELT, 0, 0),
+    }
+    # Both named participants are East teams -- disjoint from the West pool's own `teams`.
+    ccg_participants = {SUN_BELT: {"App State", "Coastal Carolina"}}
+
+    result = schedule_standings.compute_conference_championship_status(
+        records, divisions=divisions, ccg_participants=ccg_participants
+    )
+
+    assert result["Troy"]["status"] == "possible", result["Troy"]
+    assert result["Arkansas State"]["status"] == "possible", result["Arkansas State"]
+    assert result["Louisiana"]["status"] == "eliminated", result["Louisiana"]
+    assert result["South Alabama"]["status"] == "eliminated", result["South Alabama"]
+
+
+# ---------------------------------------------------------------------------
+# SHOULD-FIX (post-review): conditional_opponent must be cleared for BOTH participants of a
+# played championship game, even when one of them (typically the loser) is still "possible" by
+# the plain W/R/B/L math -- otherwise it comes back naming the very team it just played (and,
+# for the loser, already lost to) as who it "would play".
+# ---------------------------------------------------------------------------
+def test_conditional_opponent_cleared_for_both_participants_of_a_played_ccg():
+    """Georgia (champion, 8 conf wins) and Alabama (CCG loser, 7) actually played the SEC title
+    game. Ole Miss and Texas A&M (also 7, not participants) are force-eliminated by the R3
+    override, same as test_played_ccg_eliminates_a_non_participant_tied_with_the_loser above.
+
+    Georgia's own W/R/B/L math clinches it outright (nobody else's best case reaches its banked
+    floor of 8), so Georgia was never going to carry a conditional_opponent regardless of this
+    fix (clinched teams never do). Alabama is the load-bearing case: at 7 banked wins with the
+    season over, it is not eliminated (Georgia's 8 is the only OTHER banked total that beats it,
+    and top_n=2 needs 2 such teams) and not clinched (Ole Miss and Texas A&M can each also reach
+    7), so the plain math alone calls it 'possible' -- exactly like Ole Miss and Texas A&M
+    before the override runs. Since Georgia is this pool's own clinched team, BEFORE this fix
+    Alabama's entry would name conditional_opponent='Georgia': the team it already played, and
+    lost to, in the actual title game.
+
+    BUGGY (pre-fix) result: Alabama comes back {'status': 'possible', 'conditional_opponent':
+    'Georgia'} -- exactly the reviewer's verified repro.
+    """
+    records = {
+        "Georgia": _ccg_record(_SEC, 8, 0),
+        "Alabama": _ccg_record(_SEC, 7, 0),
+        "Ole Miss": _ccg_record(_SEC, 7, 0),
+        "Texas A&M": _ccg_record(_SEC, 7, 0),
+    }
+    ccg_participants = {_SEC: {"Georgia", "Alabama"}}
+
+    result = schedule_standings.compute_conference_championship_status(
+        records, ccg_participants=ccg_participants
+    )
+
+    assert result["Alabama"]["status"] == "possible", result["Alabama"]
+    assert result["Alabama"]["conditional_opponent"] is None, result["Alabama"]
+    # Georgia (clinched, per the docstring) already carried no conditional_opponent -- confirm
+    # this fix does not regress that.
+    assert result["Georgia"]["conditional_opponent"] is None, result["Georgia"]
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

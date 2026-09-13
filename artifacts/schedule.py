@@ -259,8 +259,31 @@ def _display_conference_name(raw_conference: Optional[str]) -> str:
 # _resolve_conference_championship_outcomes (crowns its winner and loser, who
 # then sort first and second via _tier -- see _sort_conference_teams) -- so a
 # false positive here misstates a real, played conference game's tally and
-# promotes the wrong team to the top of its conference. Still accepted, not
-# mitigated further in this pass: the
+# promotes the wrong team to the top of its conference.
+#
+# UPDATED CONSEQUENCE (standings-gaps R3): a third, larger consumer now hangs
+# off the SAME identification. _resolve_conference_championship_outcomes'
+# winner/loser feed schedule_standings.compute_conference_championship_status'
+# played-championship-game override (schedule_standings.py, the PLAYED-
+# CHAMPIONSHIP-GAME OVERRIDE section of that function's docstring) as
+# `ccg_participants`, which force-eliminates every OTHER team in the
+# conference. A false-positive identification here previously misstated one
+# game's tally and one conference's sort order; it can now publish
+# "Eliminated" for every non-participant in the conference, undefeated
+# leaders included. MITIGATED (not merely accepted) as of this pass: that
+# override refuses to run for a pool where it would contradict the W/R/B/L
+# math's own "clinched" verdict, or where none of the pool's own teams is
+# even in the false-positive participant set -- in both cases it skips the
+# whole pool, logs a logger.error, and leaves the pool's plain W/R/B/L
+# statuses untouched instead of publishing them. See the GUARD paragraph in
+# compute_conference_championship_status's docstring and the in-function
+# comment at the override site. This narrows the exposure to the cases the
+# guard cannot see (e.g. a false-positive pool where the wrongly-eliminated
+# team happens to still compute as merely "possible", not "clinched") -- it
+# does not eliminate the underlying false positive, which is still accepted
+# for the reason below.
+#
+# Still accepted, not mitigated further in this pass: the
 # structural signal (lone game, later than the regular slate) is the best
 # available without hand-curating a real championship-game schedule, and a
 # make-up game landing alone on/after what would be championship weekend is
@@ -1164,8 +1187,9 @@ def _placement_win_loss(entry: Dict[str, Any], rows: List[Dict[str, Any]], seaso
     two can never drift out of sync on what counts as a placement win/loss.
 
     See _placement_pct for what the two exclusions (postseason rows, identified championship-
-    game rows) are and why, and for the 0-clamp rationale on a hand-built entry whose "record"
-    disagrees with `rows`.
+    game rows) are and why. See the inline comment above this function's own `w = max(0, ...)`
+    line below for the 0-clamp rationale on a hand-built entry whose "record" disagrees with
+    `rows`.
     """
     team = entry["team"]
     postseason_wins = postseason_losses = 0
@@ -1532,8 +1556,11 @@ def _sort_conference_teams(
         # everything ahead of it) has already failed to separate two teams. Without this term,
         # every unbeaten team ties at _placement_pct==1.0 regardless of games played, and rank
         # decides -- which is how USC (2-0, rank 20) sorted below three 1-0 teams ranked better.
-        # A team with MORE wins at a LOWER pct (6-2 vs. 3-1) is correctly unaffected: pct still
-        # decides first, so this term is only ever reached among teams already tied on pct.
+        # A team with MORE wins at a genuinely LOWER pct (9-3 == 0.750 vs. 8-0 == 1.000, the same
+        # example tiebreaker_engine._fallback_sort_key's docstring uses) is correctly unaffected:
+        # pct still decides first, so this term is only ever reached among teams already tied on
+        # pct. (6-2 and 3-1 are NOT such a pair -- both are 0.750, so that comparison is actually
+        # decided by this term, not by pct.)
         entries.sort(key=lambda e: (-e["_tier"],
                                     -(e["_conf_pct"] if e["_conf_pct"] is not None else -1.0),
                                     -e["_conf_played"], -e["_placement_pct"], -e["_placement_wins"],
@@ -1615,6 +1642,18 @@ def _sort_conference_teams(
         # T1/R1/K2: same win-count term, same reasoning, for the Independents branch -- the
         # user's rule is about records, not about conferences, so an unbeaten Independent with
         # more games played must outrank one with fewer at the same pct too.
+        #
+        # DELIBERATE SIDE EFFECT, pinned by
+        # test_unplayed_0_5_sentinel_sorts_below_a_tied_played_team_even_when_better_ranked
+        # (tests/test_conference_sort_and_pac12.py): _placement_pct's 0.5 "no games" sentinel
+        # (a 0-0 team) now ties exactly with a genuine .500 record (a 1-1 team), and this new
+        # -e["_placement_wins"] term decides the pair (1 > 0) before rank ever gets a look --
+        # a 0-0 team sorts BELOW a 1-1 team even when the 0-0 team is ranked #1. Before this
+        # term existed, that tie fell all the way through to rank, so this is a silent ordering
+        # change versus the old behavior. It agrees with tiebreaker_engine._fallback_sort_key
+        # (which also scores an unplayed team below a played .500 one), and the sentinel's
+        # stated purpose survives (0-0 still sorts above 0-1), so this is accepted, not a
+        # regression to fix.
         entries.sort(key=lambda e: (-e["_placement_pct"], -e["_placement_wins"], _rank_sort_key(e), e["team"]))
 
     for e in entries:
@@ -1847,7 +1886,10 @@ def build_schedule_payload(
     conference_champions, conference_ccg_losers = _resolve_conference_championship_outcomes(champ_games_by_conf, rows, season)
     # T2/R3: fold winner+loser into one participant set per conference, for
     # compute_conference_championship_status's played-CCG-eliminates-everyone-else override
-    # (schedule_standings.py:272). A conference is a key here (with 1 or, almost always, 2
+    # (schedule_standings.py's PLAYED-CHAMPIONSHIP-GAME OVERRIDE section of that function's
+    # docstring, and the `participants = ccg_participants.get(...)` block it describes -- named
+    # rather than line-numbered here since line numbers drift and this one already had).
+    # A conference is a key here (with 1 or, almost always, 2
     # members) only when _resolve_conference_championship_outcomes actually found a win/loss row
     # for it -- i.e. only when its championship game has been PLAYED, which is exactly the gate
     # R3 requires: an identified-but-unplayed game contributes to neither dict, so it never

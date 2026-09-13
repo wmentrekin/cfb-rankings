@@ -20,7 +20,7 @@ requirements:
       this; schedule.py's parallel sort key does not.
     acceptance:
       - "USC 2-0 overall / 0-0 conference sorts above three 1-0 / 0-0 teams that are better ranked."
-      - "A team 3-1 sorts above a team 6-2 only if the sort reaches rating; 6-2 has more wins at a lower pct, so pct still decides first."
+      - "A team 8-0 (pct 1.000) sorts above a team 9-3 (pct .750) purely on pct, before win count or rating are ever consulted; 9-3 has MORE wins but a genuinely LOWER pct, so pct still decides first."
       - "Teams with identical overall records are still ordered by rating, then name."
     verification: "Unit test on _sort_conference_teams with an all-0-0 conference."
 
