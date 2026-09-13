@@ -28,7 +28,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import pandas as pd  # type: ignore
 from dotenv import load_dotenv  # type: ignore
@@ -259,8 +259,31 @@ def _display_conference_name(raw_conference: Optional[str]) -> str:
 # _resolve_conference_championship_outcomes (crowns its winner and loser, who
 # then sort first and second via _tier -- see _sort_conference_teams) -- so a
 # false positive here misstates a real, played conference game's tally and
-# promotes the wrong team to the top of its conference. Still accepted, not
-# mitigated further in this pass: the
+# promotes the wrong team to the top of its conference.
+#
+# UPDATED CONSEQUENCE (standings-gaps R3): a third, larger consumer now hangs
+# off the SAME identification. _resolve_conference_championship_outcomes'
+# winner/loser feed schedule_standings.compute_conference_championship_status'
+# played-championship-game override (schedule_standings.py, the PLAYED-
+# CHAMPIONSHIP-GAME OVERRIDE section of that function's docstring) as
+# `ccg_participants`, which force-eliminates every OTHER team in the
+# conference. A false-positive identification here previously misstated one
+# game's tally and one conference's sort order; it can now publish
+# "Eliminated" for every non-participant in the conference, undefeated
+# leaders included. MITIGATED (not merely accepted) as of this pass: that
+# override refuses to run for a pool where it would contradict the W/R/B/L
+# math's own "clinched" verdict, or where none of the pool's own teams is
+# even in the false-positive participant set -- in both cases it skips the
+# whole pool, logs a logger.error, and leaves the pool's plain W/R/B/L
+# statuses untouched instead of publishing them. See the GUARD paragraph in
+# compute_conference_championship_status's docstring and the in-function
+# comment at the override site. This narrows the exposure to the cases the
+# guard cannot see (e.g. a false-positive pool where the wrongly-eliminated
+# team happens to still compute as merely "possible", not "clinched") -- it
+# does not eliminate the underlying false positive, which is still accepted
+# for the reason below.
+#
+# Still accepted, not mitigated further in this pass: the
 # structural signal (lone game, later than the regular slate) is the best
 # available without hand-curating a real championship-game schedule, and a
 # make-up game landing alone on/after what would be championship weekend is
@@ -1154,26 +1177,19 @@ def _head_to_head_winner(rows: List[Dict[str, Any]], season: int, team_a: str, t
 _UNRANKED_SORT_SENTINEL = 10**9
 
 
-def _placement_pct(entry: Dict[str, Any], rows: List[Dict[str, Any]], season: int, champ_game_ids: set) -> float:
+def _placement_win_loss(entry: Dict[str, Any], rows: List[Dict[str, Any]], season: int, champ_game_ids: set) -> Tuple[int, int]:
     """
-    T2/K6: this team's win percentage for STANDINGS PLACEMENT only -- excludes any postseason
-    (season_type=='postseason') row AND any row whose game_id is one of the identified
-    conference-championship games, per the user's rule that "bowl/playoff results must not
-    affect standings placement." Does NOT touch the DISPLAYED record (entry["record"]) -- that
-    keeps coming from schedule_standings.compute_team_records, untouched by this function.
+    T1/R1: the (wins, losses) pair _placement_pct divides, factored out so the standings SORT
+    KEY can read the win COUNT directly instead of reverse-engineering it from a percentage --
+    which is lossy on purpose (a 1-0 team and a 2-0 team both report 1.0, and that pct alone is
+    exactly what let USC's 2-0 sort below three 1-0-and-better-ranked teams before this fix; see
+    _sort_conference_teams). _placement_pct itself calls this and just does the division, so the
+    two can never drift out of sync on what counts as a placement win/loss.
 
-    Implemented as a SUBTRACTION from entry["record"] (which already counts every row for this
-    team this season, per compute_team_records) rather than an independent tally over `rows`,
-    deliberately: the two are mathematically identical whenever `rows` actually contains this
-    team's games (always true in the real pipeline, and in every fixture built from
-    build_schedule_payload), but the subtraction degrades gracefully -- rather than exploding to
-    the 0.5 "no games" sentinel -- for a hand-built entry passed with an empty/unrelated `rows`
-    list and a pre-set "record" (every fixture in tests/test_conference_sort_and_pac12.py): with
-    nothing to subtract, it reproduces entry["record"]'s own percentage exactly, so none of
-    those tests needed to change for this task.
-
-    Same 0.5 sentinel as the original _overall_pct for a team with no counted games after
-    exclusion.
+    See _placement_pct for what the two exclusions (postseason rows, identified championship-
+    game rows) are and why. See the inline comment above this function's own `w = max(0, ...)`
+    line below for the 0-clamp rationale on a hand-built entry whose "record" disagrees with
+    `rows`.
     """
     team = entry["team"]
     postseason_wins = postseason_losses = 0
@@ -1208,6 +1224,31 @@ def _placement_pct(entry: Dict[str, Any], rows: List[Dict[str, Any]], season: in
     # wrong ORDER is exactly the failure class this function was added to fix.
     w = max(0, entry["record"]["wins"] - postseason_wins - champ_wins)
     l = max(0, entry["record"]["losses"] - postseason_losses - champ_losses)
+    return w, l
+
+
+def _placement_pct(entry: Dict[str, Any], rows: List[Dict[str, Any]], season: int, champ_game_ids: set) -> float:
+    """
+    T2/K6: this team's win percentage for STANDINGS PLACEMENT only -- excludes any postseason
+    (season_type=='postseason') row AND any row whose game_id is one of the identified
+    conference-championship games, per the user's rule that "bowl/playoff results must not
+    affect standings placement." Does NOT touch the DISPLAYED record (entry["record"]) -- that
+    keeps coming from schedule_standings.compute_team_records, untouched by this function.
+
+    Implemented as a SUBTRACTION from entry["record"] (which already counts every row for this
+    team this season, per compute_team_records) rather than an independent tally over `rows`,
+    deliberately: the two are mathematically identical whenever `rows` actually contains this
+    team's games (always true in the real pipeline, and in every fixture built from
+    build_schedule_payload), but the subtraction degrades gracefully -- rather than exploding to
+    the 0.5 "no games" sentinel -- for a hand-built entry passed with an empty/unrelated `rows`
+    list and a pre-set "record" (every fixture in tests/test_conference_sort_and_pac12.py): with
+    nothing to subtract, it reproduces entry["record"]'s own percentage exactly, so none of
+    those tests needed to change for this task.
+
+    Same 0.5 sentinel as the original _overall_pct for a team with no counted games after
+    exclusion.
+    """
+    w, l = _placement_win_loss(entry, rows, season, champ_game_ids)
     return (w / (w + l)) if (w + l) > 0 else 0.5
 
 
@@ -1447,6 +1488,12 @@ def _sort_conference_teams(
         # that step -- publishing a reason the current standings were not decided by.
         e["resolved_by"] = None
         e["_placement_pct"] = _placement_pct(e, rows, season, champ_game_ids)
+        # T1/R1: the win COUNT behind _placement_pct, surfaced as its own scratch field so the
+        # sort key below can rank "more wins" above "better pct" -- e.g. 2-0 above 1-0 -- rather
+        # than only ever comparing percentages, which tie every unbeaten team at 1.0 regardless
+        # of games played and let model rank (the next key) decide among them. See
+        # _placement_win_loss for why this can never drift out of sync with _placement_pct.
+        e["_placement_wins"], _ = _placement_win_loss(e, rows, season, champ_game_ids)
         # Whether any conference game has been played, used only as a sort tiebreak below.
         e["_conf_played"] = bool(e["conf_record"] and (e["conf_record"]["wins"] + e["conf_record"]["losses"]) > 0)
         if e["conf_record"] is not None:
@@ -1504,9 +1551,20 @@ def _sort_conference_teams(
         # conference-championship-game winner sorts first, its loser second, regardless of
         # conf_pct. Placement pct precedes model rank -- see the long comment above this
         # function for why, with the concrete 2025 Oklahoma/Vanderbilt/Texas example.
+        # T1/R1: `-e["_placement_wins"]` sits immediately after `-e["_placement_pct"]` and before
+        # model rank -- overall win COUNT outranks model rating, but only once percentage (and
+        # everything ahead of it) has already failed to separate two teams. Without this term,
+        # every unbeaten team ties at _placement_pct==1.0 regardless of games played, and rank
+        # decides -- which is how USC (2-0, rank 20) sorted below three 1-0 teams ranked better.
+        # A team with MORE wins at a genuinely LOWER pct (9-3 == 0.750 vs. 8-0 == 1.000, the same
+        # example tiebreaker_engine._fallback_sort_key's docstring uses) is correctly unaffected:
+        # pct still decides first, so this term is only ever reached among teams already tied on
+        # pct. (6-2 and 3-1 are NOT such a pair -- both are 0.750, so that comparison is actually
+        # decided by this term, not by pct.)
         entries.sort(key=lambda e: (-e["_tier"],
                                     -(e["_conf_pct"] if e["_conf_pct"] is not None else -1.0),
-                                    -e["_conf_played"], -e["_placement_pct"], _rank_sort_key(e), e["team"]))
+                                    -e["_conf_played"], -e["_placement_pct"], -e["_placement_wins"],
+                                    _rank_sort_key(e), e["team"]))
         i, n = 0, len(entries)
         while i < n:
             j = i
@@ -1581,10 +1639,26 @@ def _sort_conference_teams(
                     entries[i], entries[i + 1] = entries[i + 1], entries[i]
             i = j + 1
     else:
-        entries.sort(key=lambda e: (-e["_placement_pct"], _rank_sort_key(e), e["team"]))
+        # T1/R1/K2: same win-count term, same reasoning, for the Independents branch -- the
+        # user's rule is about records, not about conferences, so an unbeaten Independent with
+        # more games played must outrank one with fewer at the same pct too.
+        #
+        # DELIBERATE SIDE EFFECT, pinned by
+        # test_unplayed_0_5_sentinel_sorts_below_a_tied_played_team_even_when_better_ranked
+        # (tests/test_conference_sort_and_pac12.py): _placement_pct's 0.5 "no games" sentinel
+        # (a 0-0 team) now ties exactly with a genuine .500 record (a 1-1 team), and this new
+        # -e["_placement_wins"] term decides the pair (1 > 0) before rank ever gets a look --
+        # a 0-0 team sorts BELOW a 1-1 team even when the 0-0 team is ranked #1. Before this
+        # term existed, that tie fell all the way through to rank, so this is a silent ordering
+        # change versus the old behavior. It agrees with tiebreaker_engine._fallback_sort_key
+        # (which also scores an unplayed team below a played .500 one), and the sentinel's
+        # stated purpose survives (0-0 still sorts above 0-1), so this is accepted, not a
+        # regression to fix.
+        entries.sort(key=lambda e: (-e["_placement_pct"], -e["_placement_wins"], _rank_sort_key(e), e["team"]))
 
     for e in entries:
         del e["_placement_pct"]
+        del e["_placement_wins"]
         del e["_conf_pct"]
         del e["_conf_played"]
         del e["_tier"]
@@ -1796,21 +1870,64 @@ def build_schedule_payload(
     # :914 vs :911) -- so its result is available for the post-hoc conf_record exclusion right
     # below. This reorder is inert on its own: the only statement previously between the two
     # call sites was the unrelated fbs_team_names assignment, simply moved down with it.
+    #
+    # T2/K3/K4: identify_army_navy_game and _resolve_conference_championship_outcomes are ALSO
+    # moved up here, above compute_standings, for the same underlying reason as T1/K2 -- but one
+    # step further: both now feed compute_standings ITSELF (as excluded_conference_game_ids and
+    # ccg_participants below), not just a post-hoc adjustment of its output, so they must exist
+    # BEFORE that call rather than merely before some later display step. Both depend only on
+    # rows/season (and, for the CCG outcomes, champ_games_by_conf, identified one line above) --
+    # nothing either needs is computed any later than this point.
     champ_games_by_conf = identify_conference_championship_games(rows, season)
     champ_game_ids = set(champ_games_by_conf.values())
+    # T2/K4: the identified game's actual winner and loser (absent for a conference with no
+    # identified game, or one that hasn't been played yet) -- see
+    # _resolve_conference_championship_outcomes.
+    conference_champions, conference_ccg_losers = _resolve_conference_championship_outcomes(champ_games_by_conf, rows, season)
+    # T2/R3: fold winner+loser into one participant set per conference, for
+    # compute_conference_championship_status's played-CCG-eliminates-everyone-else override
+    # (schedule_standings.py's PLAYED-CHAMPIONSHIP-GAME OVERRIDE section of that function's
+    # docstring, and the `participants = ccg_participants.get(...)` block it describes -- named
+    # rather than line-numbered here since line numbers drift and this one already had).
+    # A conference is a key here (with 1 or, almost always, 2
+    # members) only when _resolve_conference_championship_outcomes actually found a win/loss row
+    # for it -- i.e. only when its championship game has been PLAYED, which is exactly the gate
+    # R3 requires: an identified-but-unplayed game contributes to neither dict, so it never
+    # reaches this loop at all and changes nothing (test_identified_but_unplayed_championship_
+    # game_does_not_change_status).
+    ccg_participants_by_conf: Dict[str, Set[str]] = {}
+    for conf, team in conference_champions.items():
+        ccg_participants_by_conf.setdefault(conf, set()).add(team)
+    for conf, team in conference_ccg_losers.items():
+        ccg_participants_by_conf.setdefault(conf, set()).add(team)
 
-    standings = schedule_standings.compute_standings(rows, season, divisions=divisions)
+    # T2/R2/K3: Army-Navy must be stripped from the AAC conference tally BEFORE compute_standings
+    # runs -- the OPPOSITE ordering from the championship-game exclusion just below, and
+    # deliberately so. That exclusion runs AFTER compute_standings because removing an unplayed
+    # title game would wrongly shrink conf_games_remaining for BOTH participants during
+    # championship week (see _exclude_championship_games_from_conf_records's docstring). Army-
+    # Navy has no such hazard: it is a rivalry game with no bearing on either team's title
+    # eligibility, so there is nothing a pre-standings exclusion could wrongly shrink mid-race --
+    # which is what makes doing it early both SAFE and NECESSARY here. A post-hoc fix, mirroring
+    # the CCG path, would only correct the DISPLAYED conf_record and leave the status math
+    # (clinch/eliminate) computed against the inflated tally -- exactly the defect R2 exists to
+    # close. schedule_standings.py never learns this is "Army-Navy" -- it receives an opaque
+    # game_id set (excluded_conference_game_ids below), honoring its stated no-team-name-
+    # knowledge, no-I/O boundary (see that module's docstring).
+    army_navy_game_id = identify_army_navy_game(rows, season)
+    excluded_conference_game_ids = {army_navy_game_id} if army_navy_game_id is not None else None
+
+    standings = schedule_standings.compute_standings(
+        rows, season, divisions=divisions,
+        excluded_conference_game_ids=excluded_conference_game_ids,
+        ccg_participants=ccg_participants_by_conf,
+    )
     # T1/K1: compute_standings above ran on UNMODIFIED rows, so championship_status is safe (see
     # _exclude_championship_games_from_conf_records's docstring). Only the conf_record that gets
     # DISPLAYED is adjusted, here, afterward.
     _exclude_championship_games_from_conf_records(standings, rows, season, champ_game_ids)
-    # T2/K3/K4: the identified game's actual winner and loser (absent for a conference with no
-    # identified game, or one that hasn't been played yet) -- see
-    # _resolve_conference_championship_outcomes.
-    conference_champions, conference_ccg_losers = _resolve_conference_championship_outcomes(champ_games_by_conf, rows, season)
 
     fbs_team_names = set(teams_meta.keys())
-    army_navy_game_id = identify_army_navy_game(rows, season)
     canonical_columns = build_canonical_columns(rows, season, champ_game_ids, army_navy_game_id)
     week_slot_ids_sorted = [slot_id for slot_id, _label in canonical_columns if slot_id.startswith("week-")]
     team_slot_rows = _build_team_slot_rows(rows, fbs_team_names, champ_game_ids, army_navy_game_id, week_slot_ids_sorted)

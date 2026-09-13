@@ -49,6 +49,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from artifacts import schedule_standings  # noqa: E402
 from artifacts.schedule import (  # noqa: E402
+    ARMY_NAVY_SLOT_ID,
     CONF_CHAMPIONSHIP_SLOT_ID,
     _build_tiebreak_inputs,
     _exclude_championship_games_from_conf_records,
@@ -921,6 +922,464 @@ def test_2025_sec_seven_team_standings_order(ccg_shape):
         "Texas (.75), because placement record is compared before rank, so Texas's better rank "
         "(11 vs Vanderbilt's 14) does not lift it over a whole game of record."
     )
+
+
+# ---------------------------------------------------------------------------
+# R2 (standings-gaps T3): Army-Navy excluded from AAC conference records.
+# ---------------------------------------------------------------------------
+AAC = "American Athletic"
+
+
+def _army_navy_fixture_rows():
+    """
+    Minimal American Athletic fixture: Army and Navy each play one AAC filler opponent (their
+    own win), then meet each other with Navy winning -- conference_game=True on every row,
+    matching CFBD's real tagging (R2's whole premise: Army-Navy is conference_game=true despite
+    being a rivalry game the conference itself does not count).
+
+    Week placement: Navy's two filler games (weeks 0 and 1) and Army's filler game (week 1,
+    shared with Navy's -- a different TEAM, so no per-team collision) are the only candidate
+    rows identify_conference_championship_games ever sees for the AAC (Army-Navy itself is
+    excluded from candidates by that function's own carve-out) -- and week 1 holds TWO distinct
+    game_ids, so `len(latest_game_ids) != 1` stops anything from being identified (see that
+    function's bucket-isolation gate). Army-Navy sits alone in week 5, much later, but never
+    becomes a candidate at all. Deliberate: this fixture must exercise ONLY the Army-Navy
+    carve-out (R2), with no championship-game machinery (R3, K3/K4) in play. Filler1/Filler2/
+    Filler3 are left OUT of teams_meta (same trick as _k4_teams_meta above) so only Army and
+    Navy become their own AAC entries in the payload.
+    """
+    rows = []
+    rows += _played(1, "Navy", "Filler1", AAC, week_offset=0)
+    rows += _played(2, "Navy", "Filler2", AAC, week_offset=1)
+    rows += _played(3, "Army", "Filler3", AAC, week_offset=1)
+    # Army-Navy itself: Navy wins, neutral site (matches the real game), much later in the
+    # season so it never collides with either team's own filler game week.
+    rows += _played(4, "Navy", "Army", AAC, week_offset=5, neutral_site=True)
+    return rows
+
+
+def _army_navy_teams_meta():
+    return _teams_meta(["Army", "Navy"], AAC)
+
+
+def test_army_navy_excluded_from_both_participants_conf_record():
+    """R2 test 4: Army-Navy must not count toward EITHER participant's conf_record, while each
+    team's OVERALL record still counts it (the game really happened).
+
+    BUGGY (pre-fix) result: compute_team_records's conf_rows included every conference_game=True
+    row unconditionally, so Navy's conf_record would read {"wins": 3, "losses": 0} (the Army win
+    folded in) instead of {"wins": 2, "losses": 0}, and Army's would read {"wins": 1, "losses": 1}
+    instead of {"wins": 1, "losses": 0} -- both differ from the fixed assertions below, so this
+    fixture discriminates the fix from the bug for both participants at once.
+    """
+    rows = _army_navy_fixture_rows()
+    payload = build_schedule_payload(rows, _army_navy_teams_meta(), SEASON)
+    entries = {e["team"]: e for e in _conf_entries(payload, "American")}
+
+    assert entries["Navy"]["record"] == {"wins": 3, "losses": 0}, entries["Navy"]["record"]
+    assert entries["Navy"]["conf_record"] == {"wins": 2, "losses": 0}, entries["Navy"]["conf_record"]
+    assert entries["Army"]["record"] == {"wins": 1, "losses": 1}, entries["Army"]["record"]
+    assert entries["Army"]["conf_record"] == {"wins": 1, "losses": 0}, entries["Army"]["conf_record"]
+
+
+def test_excluded_conference_game_id_does_not_inflate_conf_games_remaining():
+    """R2 test 5: an UNPLAYED excluded game (Army-Navy's real shape when scheduled but not yet
+    played: conference_game=True, status='upcoming') must not count toward conf_games_remaining
+    for either participant. Exercised directly against compute_team_records (the function R2
+    actually changed), with a SECOND, non-excluded upcoming conference game as a control -- an
+    unplayed game is never a win or a loss either way, so the overall win/loss tally alone would
+    pass with or without the fix; conf_games_remaining is the field this specifically guards.
+
+    BUGGY (pre-fix) result: conf_rows was every conference_game=True row unconditionally, so
+    Alpha's conf_games_remaining would read 2 (both game 100 and game 101 counted) instead of 1.
+    """
+    rows = [
+        # Excluded: Alpha vs Beta, upcoming, conference_game=True (Army-Navy's real shape).
+        dict(season=SEASON, game_id=100, team="Alpha", opponent="Beta", conference=ACC,
+             conference_game=True, status="upcoming"),
+        dict(season=SEASON, game_id=100, team="Beta", opponent="Alpha", conference=ACC,
+             conference_game=True, status="upcoming"),
+        # Control: Alpha vs Gamma, upcoming, conference_game=True, NOT excluded.
+        dict(season=SEASON, game_id=101, team="Alpha", opponent="Gamma", conference=ACC,
+             conference_game=True, status="upcoming"),
+        dict(season=SEASON, game_id=101, team="Gamma", opponent="Alpha", conference=ACC,
+             conference_game=True, status="upcoming"),
+    ]
+    records = schedule_standings.compute_team_records(rows, SEASON, excluded_conference_game_ids={100})
+
+    assert records["Alpha"]["conf_games_remaining"] == 1, records["Alpha"]
+    assert records["Beta"]["conf_games_remaining"] == 0, records["Beta"]
+    # Overall win/loss is untouched either way -- an upcoming game is never a win or a loss.
+    assert records["Alpha"]["wins"] == 0 and records["Alpha"]["losses"] == 0, records["Alpha"]
+
+
+def test_army_navy_still_renders_in_its_own_display_slot():
+    """R2 test 6: the conf_record exclusion must not have been implemented by filtering the
+    Army-Navy row out of `rows` wholesale before the display path -- it must still render in its
+    own ARMY_NAVY_SLOT_ID column, with the real game result, for both participants."""
+    rows = _army_navy_fixture_rows()
+    payload = build_schedule_payload(rows, _army_navy_teams_meta(), SEASON)
+    entries = {e["team"]: e for e in _conf_entries(payload, "American")}
+
+    navy_cell = _cell(entries["Navy"], ARMY_NAVY_SLOT_ID)
+    army_cell = _cell(entries["Army"], ARMY_NAVY_SLOT_ID)
+    assert navy_cell["status"] == "win", navy_cell
+    assert navy_cell["opponent"] == "Army", navy_cell
+    assert army_cell["status"] == "loss", army_cell
+    assert army_cell["opponent"] == "Navy", army_cell
+
+
+# ---------------------------------------------------------------------------
+# R3 (standings-gaps T3): a PLAYED conference championship game eliminates every
+# non-participant, including one merely TIED on conf_wins with the CCG LOSER -- the exact 2025
+# SEC shape (Ole Miss/Texas A&M tied with Alabama at 7, Alabama having lost the SEC title game
+# to Georgia). Exercised directly against compute_conference_championship_status (the function
+# R3 actually changed) with hand-built records, mirroring the direct-`records` style already
+# used by tests/test_division_championship_status.py, so each fixture pins exactly the inputs
+# the override reads (conf_wins, conf_games_remaining, ccg_participants) with nothing else able
+# to explain the result.
+# ---------------------------------------------------------------------------
+def _ccg_record(conference, conf_wins, conf_games_remaining):
+    """One compute_team_records()-shaped entry for the championship-status tests below. Overall
+    wins/losses are irrelevant to this function (only conf_wins/conf_games_remaining are read),
+    so they simply mirror the conference record."""
+    return {
+        "conference": conference,
+        "wins": conf_wins,
+        "losses": 0,
+        "conf_wins": conf_wins,
+        "conf_losses": 0,
+        "conf_games_remaining": conf_games_remaining,
+    }
+
+
+def test_played_ccg_eliminates_a_non_participant_tied_with_the_loser():
+    """R3 test 7 -- THE KEY TEST. Georgia (champion) and Alabama (CCG loser) actually played the
+    SEC title game; Ole Miss and Texas A&M did not, and are each tied EXACTLY on conf_wins (7)
+    with Alabama, the game's LOSER. The season is over for all four (conf_games_remaining=0).
+
+    Ole Miss/Texas A&M must resolve to 'eliminated' now that the game is known to be played and
+    lost by the team they are tied with -- under the OLD strict '<' inequality alone they never
+    would (see the BUGGY result below), which is exactly the reported defect: these two teams
+    showed 'In the Hunt' forever.
+
+    The tie must be EXACT: B[Ole Miss] = W[Ole Miss] + R[Ole Miss] = 7 + 0 = 7. The 2nd-highest
+    OTHER banked-win total in the 4-team pool (top_n=2) is Alabama's 7 (Georgia's 8 is the
+    highest). 7 < 7 is False, so the plain B_T < nth_highest_other_w inequality -- unchanged by
+    this fix, per K5/the non_requirements -- never eliminates Ole Miss or Texas A&M on its own.
+    One win fewer (6) would let the OLD inequality already eliminate it (6 < 7), proving nothing
+    about the fix; the exact tie is what isolates R3's override as the actual cause.
+
+    BUGGY (pre-fix) result: with no ccg_participants override, Ole Miss and Texas A&M's status
+    -- both eliminated=False (7 < 7 is False) and clinched=False (3 other teams' B >= their own
+    L of 7, which exceeds top_n-1=1) -- resolves to 'possible', matching the reported bug
+    exactly. Alabama itself also computes to 'possible' by the same math (untouched by the
+    override, since it's a participant) -- this test does not depend on Alabama's own status.
+    """
+    records = {
+        "Georgia": _ccg_record(_SEC, 8, 0),
+        "Alabama": _ccg_record(_SEC, 7, 0),
+        "Ole Miss": _ccg_record(_SEC, 7, 0),
+        "Texas A&M": _ccg_record(_SEC, 7, 0),
+    }
+    ccg_participants = {_SEC: {"Georgia", "Alabama"}}
+
+    result = schedule_standings.compute_conference_championship_status(
+        records, ccg_participants=ccg_participants
+    )
+
+    assert result["Ole Miss"]["status"] == "eliminated", result["Ole Miss"]
+    assert result["Texas A&M"]["status"] == "eliminated", result["Texas A&M"]
+    # The two actual participants are never touched by the override -- their real game result is
+    # rendered elsewhere (T4b's own game-result display), not through this status field.
+    assert result["Georgia"]["status"] != "eliminated", result["Georgia"]
+    assert result["Alabama"]["status"] != "eliminated", result["Alabama"]
+
+
+def test_identified_but_unplayed_ccg_does_not_eliminate_a_tied_bystander():
+    """R3 test 8 -- the over-elimination guard from the task brief, run through the FULL
+    PIPELINE (build_schedule_payload), not just compute_conference_championship_status in
+    isolation: this is deliberate, because the "identified vs. played" gate does not live in
+    compute_conference_championship_status at all -- it has no notion of a championship game,
+    only of whatever `ccg_participants` it is handed (see that function's own docstring). The
+    gate lives entirely in schedule.py's WIRING: _resolve_conference_championship_outcomes
+    (which builds ccg_participants_by_conf) only ever returns a winner/loser for a game that has
+    actually been PLAYED (K3/K4) -- an identified-but-unplayed game contributes to neither dict,
+    so ccg_participants never gets an entry for that conference. A test that instead calls
+    compute_conference_championship_status directly with a hand-built, empty ccg_participants
+    dict (an earlier draft of this test did exactly that) never exercises schedule.py's wiring at
+    all and would stay green even if that wiring forced participants through on mere
+    identification -- a survivor, caught only by actually running the mutation below.
+
+    Reuses the K1 fixture above (_k1_unplayed_championship_rows): Duke and Virginia are the
+    ACC's two unbeaten teams, still scheduled (status='upcoming', not yet played) to meet each
+    other in the identified ACC title game; TeamC and TeamD have already banked 4 conference wins
+    of their own with none left to play, and are legitimate bystanders, still mathematically
+    alive (see that fixture's own docstring for the exact B/W arithmetic).
+
+    BUGGY-MUTANT result: if schedule.py's ccg_participants_by_conf were instead built from the
+    championship game's two IDENTIFIED participants (Duke, Virginia) regardless of whether the
+    game has actually been PLAYED, TeamC and TeamD -- true bystanders, not merely tied with
+    anyone -- would be wrongly forced to 'eliminated' the moment the game is scheduled, weeks
+    before the season is actually decided.
+    """
+    rows = _k1_unplayed_championship_rows()
+    payload = build_schedule_payload(rows, _k1_teams_meta(), SEASON)
+    entries = {e["team"]: e for e in _conf_entries(payload, "ACC")}
+
+    assert _cell(entries["TeamC"], CONF_CHAMPIONSHIP_SLOT_ID)["status"] == "possible", \
+        _cell(entries["TeamC"], CONF_CHAMPIONSHIP_SLOT_ID)
+    assert _cell(entries["TeamD"], CONF_CHAMPIONSHIP_SLOT_ID)["status"] == "possible", \
+        _cell(entries["TeamD"], CONF_CHAMPIONSHIP_SLOT_ID)
+
+
+def test_conference_with_no_championship_game_is_unaffected():
+    """R3 test 9: a conference with no championship game at all this season (2025 Pac-12 shape)
+    must be byte-identical whether ccg_participants is omitted, passed as None, or passed as an
+    empty dict -- i.e. the override must never fire for a conference it has no entry for, no
+    matter how that "no entry" is spelled by the caller."""
+    records = {
+        "Pac12-A": _ccg_record("Pac-12", 6, 0),
+        "Pac12-B": _ccg_record("Pac-12", 4, 2),
+        "Pac12-C": _ccg_record("Pac-12", 2, 2),
+        "Pac12-D": _ccg_record("Pac-12", 0, 4),
+    }
+    baseline = schedule_standings.compute_conference_championship_status(records)
+    with_none = schedule_standings.compute_conference_championship_status(records, ccg_participants=None)
+    with_empty = schedule_standings.compute_conference_championship_status(records, ccg_participants={})
+    # An unrelated conference's participants must not affect the Pac-12 either.
+    with_other_conf = schedule_standings.compute_conference_championship_status(
+        records, ccg_participants={_SEC: {"Georgia", "Alabama"}}
+    )
+
+    assert baseline == with_none == with_empty == with_other_conf
+    # Sanity: the pool is genuinely still contested (not a degenerate all-eliminated result),
+    # so this is proof of "unaffected," not an accident of every team already being eliminated.
+    assert any(v["status"] != "eliminated" for v in baseline.values()), baseline
+
+
+# ---------------------------------------------------------------------------
+# MUST-FIX (post-review): the override must refuse to run for a pool where it would
+# contradict the W/R/B/L math's own "clinched" verdict, or where it would eliminate a pool
+# with no real participant in it -- both are high-confidence signs `ccg_participants` itself
+# is wrong for this pool (see identify_conference_championship_games' documented false
+# positive: a make-up/postponed game sitting alone in a late bucket gets identified as the
+# title game even though it is not one), not a genuine result to publish.
+# ---------------------------------------------------------------------------
+def test_ccg_override_skipped_for_pool_where_it_would_eliminate_a_clinched_team(caplog):
+    """Reproduces the reviewer's verified defect end-to-end against
+    compute_conference_championship_status directly: Alpha and Charlie are both 4-0 with the
+    season over (0 remaining) in a 4-team SEC pool (top_n=2) -- each computes 'clinched' by the
+    plain W/R/B/L math alone (only 1 other team, Charlie/Alpha respectively, can reach its
+    banked-win floor of 4, and top_n-1=1). Bravo (3 banked conference wins) and Delta (0), both
+    also with the season over, are already 'eliminated' by the same math. (Records here are
+    stated as banked WINS, not W-L: _ccg_record sets conf_losses=0 for every fixture and this
+    function never reads conf_losses at all.)
+
+    `ccg_participants` names Bravo and Delta as the pair that supposedly played the SEC title
+    game -- exactly the false-positive shape identify_conference_championship_games documents
+    (a make-up game between two also-ran teams, misidentified as the championship). Applying the
+    override unconditionally would force Alpha and Charlie -- both undefeated, both already
+    'clinched' -- to 'eliminated'.
+
+    BUGGY (pre-guard) result: Alpha and Charlie both come back 'eliminated' despite being 4-0
+    and mathematically clinched, with no log line -- the exact silent over-elimination the
+    review reproduced through the full pipeline.
+    """
+    records = {
+        "Alpha": _ccg_record(_SEC, 4, 0),
+        "Charlie": _ccg_record(_SEC, 4, 0),
+        "Bravo": _ccg_record(_SEC, 3, 0),
+        "Delta": _ccg_record(_SEC, 0, 0),
+    }
+    ccg_participants = {_SEC: {"Bravo", "Delta"}}
+
+    with caplog.at_level("ERROR"):
+        result = schedule_standings.compute_conference_championship_status(
+            records, ccg_participants=ccg_participants
+        )
+
+    # The two undefeated leaders keep the status the plain math gave them -- the override never
+    # ran for this pool at all.
+    assert result["Alpha"]["status"] == "clinched", result["Alpha"]
+    assert result["Charlie"]["status"] == "clinched", result["Charlie"]
+    assert any(
+        "CLINCHED" in record.getMessage() and "SEC" in record.getMessage()
+        for record in caplog.records
+    ), caplog.records
+
+
+def test_ccg_override_skipped_for_pool_with_no_participant_among_its_own_teams(caplog):
+    """Sun Belt shape: the West pool's `ccg_participants` (keyed by conference, per the
+    docstring) actually names two EAST teams -- the intra-division false positive the review
+    named ("a divisional conference whose identified game is intra-division"). No member of the
+    West pool is in that participant set at all, so applying the override would eliminate every
+    team in the West pool, including two that are still genuinely mathematically alive
+    ('possible', not 'eliminated', by the plain math).
+
+    Troy (West) has 3 banked conference wins with 1 conference game remaining (B=4) and
+    Arkansas State has 2 with 1 remaining (B=3) -- neither is eliminated (nobody else's banked
+    wins exceed their best case) nor clinched (each other could still catch up), so both are
+    legitimately 'possible' before the override. Louisiana (1 banked win) and South Alabama (0)
+    are done and already 'eliminated' by the plain math regardless. (Records are stated as
+    banked WINS, not W-L: _ccg_record sets conf_losses=0 for every fixture and this function
+    never reads conf_losses at all.)
+
+    BUGGY (pre-guard) result: every West team, including Troy and Arkansas State, comes back
+    'eliminated' -- a 100%-of-pool wipe from a participant set that does not even overlap with
+    the pool.
+
+    The caplog assertion is load-bearing, not decoration: Troy and Arkansas State are
+    'possible' under the plain W/R/B/L math too, so the status assertions alone hold just as
+    well in a build where the whole played-championship-game override has been DELETED -- they
+    would prove nothing about the guard. Only guard (b)'s own logger.error distinguishes
+    "the override ran and this pool's participant set was rejected" from "there is no override
+    here at all", which is why it is asserted specifically (by the guard's own wording and this
+    pool's label) rather than just checking that some error was logged.
+    """
+    # A fresh 4-per-division map (min_members=4 needs 4, unlike this file's own 2-per-division
+    # _SUN_BELT_DIVISIONS above, which is sized for a different, unrelated test).
+    east = ["App State", "Coastal Carolina", "Georgia Southern", "Georgia State"]
+    west = ["Troy", "Arkansas State", "Louisiana", "South Alabama"]
+    divisions = {**{t: "East" for t in east}, **{t: "West" for t in west}}
+
+    records = {
+        # East: mirrors the West shape below exactly, so this pool's own override application
+        # (participants ARE East teams) is uneventful and not what this test is about.
+        "App State": _ccg_record(SUN_BELT, 3, 1),
+        "Coastal Carolina": _ccg_record(SUN_BELT, 2, 1),
+        "Georgia Southern": _ccg_record(SUN_BELT, 1, 0),
+        "Georgia State": _ccg_record(SUN_BELT, 0, 0),
+        # West: the pool actually under test.
+        "Troy": _ccg_record(SUN_BELT, 3, 1),
+        "Arkansas State": _ccg_record(SUN_BELT, 2, 1),
+        "Louisiana": _ccg_record(SUN_BELT, 1, 0),
+        "South Alabama": _ccg_record(SUN_BELT, 0, 0),
+    }
+    # Both named participants are East teams -- disjoint from the West pool's own `teams`.
+    ccg_participants = {SUN_BELT: {"App State", "Coastal Carolina"}}
+
+    with caplog.at_level("ERROR"):
+        result = schedule_standings.compute_conference_championship_status(
+            records, divisions=divisions, ccg_participants=ccg_participants
+        )
+
+    assert result["Troy"]["status"] == "possible", result["Troy"]
+    assert result["Arkansas State"]["status"] == "possible", result["Arkansas State"]
+    assert result["Louisiana"]["status"] == "eliminated", result["Louisiana"]
+    assert result["South Alabama"]["status"] == "eliminated", result["South Alabama"]
+    # Guard (b) specifically -- and for the WEST pool, the one under test (the East pool's own
+    # participants are its own teams, so its override applies uneventfully and logs nothing).
+    assert any(
+        "no member among this pool's own teams" in record.getMessage()
+        and "West division" in record.getMessage()
+        for record in caplog.records
+    ), caplog.records
+
+
+def test_ccg_override_skip_withdraws_the_whole_pool_not_just_the_clinched_team(caplog):
+    """Pins the single most important SAFETY JUDGEMENT in the guard: when a pool's participant
+    set is rejected, ALL of that pool's overridden eliminations are withdrawn -- not just the
+    one contradicted (clinched) team.
+
+    test_ccg_override_skipped_for_pool_where_it_would_eliminate_a_clinched_team above cannot
+    pin this, because in its fixture the set of teams the override would eliminate is exactly
+    the set that already clinched, so "skip the whole pool" and the NARROWED alternative "skip
+    only the contradicting team, eliminate the other non-participants" produce identical
+    output. This fixture makes the two DIVERGE by giving the pool a non-participant that is
+    merely 'possible' alongside the clinched one.
+
+    Flat SEC pool, top_n=2, banked conference wins (W) and games remaining (R):
+      - Alpha   W=8 R=0 -> CLINCHED: no other team's best case reaches its floor of 8
+                           (Bravo tops out at 7), and top_n-1 = 1 allows one that does.
+      - Bravo   W=5 R=2 -> POSSIBLE: B=7 clears the 2nd-highest OTHER banked total (Charlie's
+                           6), so not eliminated; two others (Alpha 8, Charlie 6) can reach
+                           its floor of 5, so not clinched.
+      - Charlie W=6 R=0 -> participant; 'possible' by the plain math.
+      - Delta   W=3 R=0 -> participant; already 'eliminated' by the plain math.
+
+    `ccg_participants` names Charlie and Delta -- the misidentified-make-up-game shape again,
+    but this time with one of the pair (Delta) a team the math had already eliminated, so the
+    pair sits INSIDE the pool and guard (b) never applies. The override would eliminate both
+    non-participants, Alpha and Bravo; only Alpha contradicts a 'clinched' verdict.
+
+    MUTANT this test exists to kill (verified RED): narrowing the guard to
+        for t in would_eliminate:
+            if statuses[t] != "clinched":
+                statuses[t] = "eliminated"
+    leaves Alpha 'clinched' -- so every other assertion here, and every one of the other 480
+    tests, still passes -- while Bravo, a team with two conference games still to play and no
+    involvement whatsoever in the discredited game, is published 'Eliminated' on the authority
+    of a participant set this very function has just decided not to trust. Bravo staying
+    'possible' is true ONLY under the whole-pool design.
+    """
+    records = {
+        "Alpha": _ccg_record(_SEC, 8, 0),
+        "Bravo": _ccg_record(_SEC, 5, 2),
+        "Charlie": _ccg_record(_SEC, 6, 0),
+        "Delta": _ccg_record(_SEC, 3, 0),
+    }
+    ccg_participants = {_SEC: {"Charlie", "Delta"}}
+
+    with caplog.at_level("ERROR"):
+        result = schedule_standings.compute_conference_championship_status(
+            records, ccg_participants=ccg_participants
+        )
+
+    # THE discriminating assertion: the merely-'possible' non-participant is left alone too.
+    assert result["Bravo"]["status"] == "possible", result["Bravo"]
+    # The contradicted team keeps its clinch (true under both designs -- context, not proof).
+    assert result["Alpha"]["status"] == "clinched", result["Alpha"]
+    # And the rest of the pool is likewise exactly what the plain W/R/B/L math gave it.
+    assert result["Charlie"]["status"] == "possible", result["Charlie"]
+    assert result["Delta"]["status"] == "eliminated", result["Delta"]
+    assert any(
+        "CLINCHED" in record.getMessage() and "SEC" in record.getMessage()
+        for record in caplog.records
+    ), caplog.records
+
+
+# ---------------------------------------------------------------------------
+# SHOULD-FIX (post-review): conditional_opponent must be cleared for BOTH participants of a
+# played championship game, even when one of them (typically the loser) is still "possible" by
+# the plain W/R/B/L math -- otherwise it comes back naming the very team it just played (and,
+# for the loser, already lost to) as who it "would play".
+# ---------------------------------------------------------------------------
+def test_conditional_opponent_cleared_for_both_participants_of_a_played_ccg():
+    """Georgia (champion, 8 conf wins) and Alabama (CCG loser, 7) actually played the SEC title
+    game. Ole Miss and Texas A&M (also 7, not participants) are force-eliminated by the R3
+    override, same as test_played_ccg_eliminates_a_non_participant_tied_with_the_loser above.
+
+    Georgia's own W/R/B/L math clinches it outright (nobody else's best case reaches its banked
+    floor of 8), so Georgia was never going to carry a conditional_opponent regardless of this
+    fix (clinched teams never do). Alabama is the load-bearing case: at 7 banked wins with the
+    season over, it is not eliminated (Georgia's 8 is the only OTHER banked total that beats it,
+    and top_n=2 needs 2 such teams) and not clinched (Ole Miss and Texas A&M can each also reach
+    7), so the plain math alone calls it 'possible' -- exactly like Ole Miss and Texas A&M
+    before the override runs. Since Georgia is this pool's own clinched team, BEFORE this fix
+    Alabama's entry would name conditional_opponent='Georgia': the team it already played, and
+    lost to, in the actual title game.
+
+    BUGGY (pre-fix) result: Alabama comes back {'status': 'possible', 'conditional_opponent':
+    'Georgia'} -- exactly the reviewer's verified repro.
+    """
+    records = {
+        "Georgia": _ccg_record(_SEC, 8, 0),
+        "Alabama": _ccg_record(_SEC, 7, 0),
+        "Ole Miss": _ccg_record(_SEC, 7, 0),
+        "Texas A&M": _ccg_record(_SEC, 7, 0),
+    }
+    ccg_participants = {_SEC: {"Georgia", "Alabama"}}
+
+    result = schedule_standings.compute_conference_championship_status(
+        records, ccg_participants=ccg_participants
+    )
+
+    assert result["Alabama"]["status"] == "possible", result["Alabama"]
+    assert result["Alabama"]["conditional_opponent"] is None, result["Alabama"]
+    # Georgia (clinched, per the docstring) already carried no conditional_opponent -- confirm
+    # this fix does not regress that.
+    assert result["Georgia"]["conditional_opponent"] is None, result["Georgia"]
 
 
 if __name__ == "__main__":

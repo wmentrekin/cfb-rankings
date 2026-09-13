@@ -257,6 +257,183 @@ def test_pac12_two_team_split_head_to_head_produces_washington_state_first():
     )
 
 
+# ---------------------------------------------------------------------------
+# R1 (standings-gaps T3): overall win COUNT must outrank model rating in the
+# sort key, but only once conference record and overall PCT have already
+# failed to separate two teams. _placement_pct alone ties every unbeaten team
+# at 1.0 regardless of games played, so before this fix model rank decided
+# among them -- e.g. USC (2-0, rank 20) sorted below three 1-0 teams ranked
+# better, the real 2026 Big Ten shape from the bug report.
+# ---------------------------------------------------------------------------
+def test_win_count_outranks_better_model_rank_in_all_0_0_conference():
+    """R1 test 1: USC 2-0 overall / 0-0 conference, WORSE model rank (20), must sort ABOVE
+    three teams at 1-0 overall / 0-0 conference with BETTER ranks (2, 5, 8). All four tie at
+    _conf_pct==0.5 (nobody has played a conference game yet, so _conf_played is also tied) and
+    at _placement_pct==1.0 (all unbeaten) -- with rows=[], nothing is subtracted from the
+    pre-set "record", so _placement_pct reproduces entry["record"]'s own pct exactly (1.0 for
+    every team here). Only the win-COUNT term this fix adds can separate the group at that
+    point; without it, model rank decides next.
+
+    BUGGY (pre-fix) result: ['Better-2', 'Better-5', 'Better-8', 'USC'] -- with no
+    _placement_wins term in the sort key, all four teams tie through _placement_pct and rank
+    alone decides, putting the worse-ranked-but-more-winning USC dead last.
+    """
+    entries = [
+        _entry("USC", 2, 0, 0, 0),
+        _entry("Better-2", 1, 0, 0, 0),
+        _entry("Better-5", 1, 0, 0, 0),
+        _entry("Better-8", 1, 0, 0, 0),
+    ]
+    entries[0]["rank"] = 20
+    entries[1]["rank"] = 2
+    entries[2]["rank"] = 5
+    entries[3]["rank"] = 8
+    rows = []
+    sorted_entries = _sort_conference_teams(entries, rows, 2026)
+    sorted_teams = [e["team"] for e in sorted_entries]
+    assert sorted_teams[0] == "USC", (
+        f"got {sorted_teams}. USC's 2-0 overall record must outrank model rating once "
+        "conference record and overall pct (all tied at 1.0) fail to separate the group -- "
+        "if USC is not first, the win-count term is missing or ineffective."
+    )
+
+
+def test_independents_win_count_outranks_better_model_rank():
+    """R1 test 2: the Independents-branch equivalent of the test above -- structurally the
+    same defect (the Independents sort key lacked a _placement_wins term too), and K2's
+    rationale is that the user's rule is about records, not about conferences, so it must be
+    fixed on this branch as well. All four entries have conf_record=None, so has_conf_records
+    is False and _sort_conference_teams takes the `else` (Independents) branch.
+
+    BUGGY (pre-fix) result: ['Better-2', 'Better-5', 'Better-8', 'USC-Ind'] -- same mechanism
+    as test 1, on the other sort call site.
+    """
+    entries = [
+        _entry("USC-Ind", 2, 0, None, None),
+        _entry("Better-2", 1, 0, None, None),
+        _entry("Better-5", 1, 0, None, None),
+        _entry("Better-8", 1, 0, None, None),
+    ]
+    entries[0]["rank"] = 20
+    entries[1]["rank"] = 2
+    entries[2]["rank"] = 5
+    entries[3]["rank"] = 8
+    rows = []
+    sorted_entries = _sort_conference_teams(entries, rows, 2026)
+    sorted_teams = [e["team"] for e in sorted_entries]
+    assert sorted_teams[0] == "USC-Ind", (
+        f"got {sorted_teams}. Independents-branch equivalent of the USC case: 2-0 overall "
+        "must outrank a better model rank at tied placement pct."
+    )
+
+
+def test_rating_still_breaks_ties_between_identical_overall_records():
+    """R1 test 3 (guard, not a catch for the win-count term itself): both teams here are 1-0
+    overall AND 0-0 conference -- IDENTICAL records -- so _placement_wins ties too (1 == 1) and
+    contributes nothing to the ordering either way; model rank must still be what decides. This
+    pins R1's own acceptance wording -- "model rating breaks ties only among teams with
+    identical overall win-loss records" -- as still true after the fix. (Mutation-tested
+    against a DIFFERENT injected defect than the other two tests above -- see the task report:
+    removing the win-count term changes nothing here since both teams tie on it, so that
+    particular mutation is expected to leave this test green; dropping model rank from the sort
+    key entirely is the mutation that actually exercises this assertion.)
+
+    Team names are deliberately chosen so the BETTER-ranked team's name sorts ALPHABETICALLY
+    AFTER the worse-ranked team's ('Zeta-Better-Rank' > 'Alpha-Worse-Rank') -- the fixture
+    pitfall flagged in the task brief: an earlier draft of this test used names that happened to
+    already sort correctly by NAME alone, so it passed even with rank dropped from the sort key
+    entirely and proved nothing about rating actually being consulted.
+    """
+    entries = [
+        _entry("Zeta-Better-Rank", 1, 0, 0, 0),
+        _entry("Alpha-Worse-Rank", 1, 0, 0, 0),
+    ]
+    entries[0]["rank"] = 2
+    entries[1]["rank"] = 9
+    rows = []
+    sorted_entries = _sort_conference_teams(entries, rows, 2026)
+    sorted_teams = [e["team"] for e in sorted_entries]
+    assert sorted_teams == ["Zeta-Better-Rank", "Alpha-Worse-Rank"], sorted_teams
+
+
+def test_equal_pct_more_wins_sorts_above_fewer_wins_regardless_of_rank():
+    """R1 test 4: the case the comment above the sort key (and requirements.yaml's R1
+    acceptance criterion 2) used to describe with an arithmetically FALSE example (6-2 vs. 3-1
+    as if those were different percentages -- 6/8 and 3/4 are both 0.750). This is the REAL
+    equal-pct-different-win-count case that comment was trying to describe: two teams tied
+    EXACTLY on conference pct (SixTwo 6-2 == .750, ThreeOne 3-1 == .750), so pct does NOT decide
+    between them and this term (win count) is actually reached. SixTwo has strictly more wins,
+    so it must sort above ThreeOne even with a much worse model rank -- rank is checked AFTER
+    the win-count term, so if it decided instead, ThreeOne (rank 1) would wrongly sort first.
+
+    Nothing in the existing suite pins this: test 1/2 above only cover the ALL-UNBEATEN
+    (1.0 pct) case, and test 3 covers two teams with IDENTICAL records, not merely identical
+    pct. This is the one place a genuine equal-pct/different-win-count pair is exercised.
+
+    BUGGY (mutant) result if the win-count term were dropped from the sort key: rank alone
+    would decide the pct-tied pair, putting ThreeOne (rank 1) first -- ['ThreeOne', 'SixTwo'].
+    """
+    entries = [
+        _entry("SixTwo", 6, 2, 6, 2),
+        _entry("ThreeOne", 3, 1, 3, 1),
+    ]
+    entries[0]["rank"] = 30
+    entries[1]["rank"] = 1
+    rows = []
+    sorted_entries = _sort_conference_teams(entries, rows, 2026)
+    sorted_teams = [e["team"] for e in sorted_entries]
+    assert sorted_teams == ["SixTwo", "ThreeOne"], (
+        f"got {sorted_teams}. SixTwo and ThreeOne are tied at .750 conference pct, so this "
+        "pair is decided by win count (6 > 3), not by rank -- if ThreeOne sorts first, the "
+        "win-count term is not being reached for pct-tied (not just record-identical) teams."
+    )
+
+
+# ---------------------------------------------------------------------------
+# NIT: the 0.5 unplayed-record sentinel now ties with, and loses the win-count term to, a real
+# .500-pct team -- a silent ordering change from before this PR (rank used to decide; now the
+# win-count term does). Defensible (see the in-function "DELIBERATE SIDE EFFECT" comment on the
+# Independents branch of _sort_conference_teams) but previously unpinned by any test.
+# ---------------------------------------------------------------------------
+def test_unplayed_0_5_sentinel_sorts_below_a_tied_played_team_even_when_better_ranked():
+    """`_placement_pct`'s 0.5 "no games" sentinel (ZeroZero, 0-0 overall) now ties exactly with
+    a genuine .500 team (OneOne, 1-1 overall) -- and R1's new win-count term (_placement_wins)
+    then decides the pair (1 > 0), NOT rank. Used here on the INDEPENDENTS branch
+    (conf_wins=None for both, so has_conf_records is False and _conf_pct/_conf_played -- which
+    would otherwise settle this first -- never enter into it at all) to isolate exactly the
+    placement-pct-sentinel-vs-win-count interaction the reviewer flagged, with nothing else able
+    to decide the pair first. Checked with rank both ways so the result is pinned as depending on
+    the win-count term, not on which team happens to be ranked better.
+
+    BEFORE this PR (no _placement_wins term in the Independents sort key), this pair tied all
+    the way down to rank, so a 0-0 team ranked #1 sorted ABOVE a 1-1 team ranked #30 -- the
+    opposite of the result asserted below. This agrees with tiebreaker_engine._fallback_sort_key,
+    which also scores an unplayed team below a played .500 team, and 0-0 still sorts above 0-1
+    (untouched by this change), so the sentinel's stated purpose survives -- but nothing pinned
+    this specific interaction before this test.
+    """
+    # 0-0 team ranked BETTER than the 1-1 team: still sorts second.
+    entries_a = [
+        _entry("ZeroZero", 0, 0, None, None),
+        _entry("OneOne", 1, 1, None, None),
+    ]
+    entries_a[0]["rank"] = 1
+    entries_a[1]["rank"] = 30
+    sorted_a = [e["team"] for e in _sort_conference_teams(entries_a, [], 2026)]
+    assert sorted_a == ["OneOne", "ZeroZero"], sorted_a
+
+    # 0-0 team ranked WORSE than the 1-1 team: still sorts second -- rank plays no part either
+    # way, confirming the win-count term (not rank) is what is deciding this pair.
+    entries_b = [
+        _entry("ZeroZero", 0, 0, None, None),
+        _entry("OneOne", 1, 1, None, None),
+    ]
+    entries_b[0]["rank"] = 30
+    entries_b[1]["rank"] = 1
+    sorted_b = [e["team"] for e in _sort_conference_teams(entries_b, [], 2026)]
+    assert sorted_b == ["OneOne", "ZeroZero"], sorted_b
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

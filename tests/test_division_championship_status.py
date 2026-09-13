@@ -445,6 +445,69 @@ def test_schedule_payload_wires_divisions_into_the_championship_cell():
     assert all(c["status"] != "bye" for c in cells.values()), cells
 
 
+# ---------------------------------------------------------------------------
+# R3 (standings-gaps T3) test 10: a played conference championship game eliminates
+# non-participants WITHIN each division's own pool, and must not leak across divisions.
+# ---------------------------------------------------------------------------
+def test_played_ccg_eliminates_non_participants_without_leaking_across_divisions():
+    """East's App State (CCG loser) and West's Troy (CCG champion) actually played the Sun Belt
+    title game. In EACH division, one bystander is tied EXACTLY on banked conf_wins with that
+    division's own participant (Coastal Carolina tied with App State in the East; Louisiana tied
+    with Troy in the West) -- the divisional analog of test 7's SEC shape, chosen the same way:
+    an exact tie is what the OLD B_T < nth_highest_other_w inequality (top_n=1 for a division
+    pool) never eliminates on its own, so only the override can be responsible for the result
+    asserted below. Georgia Southern/Georgia State/Arkansas State/South Alabama are plain
+    fillers, already eliminated by the ordinary inequality regardless of this fix -- present only
+    to satisfy min_members=4 per division.
+
+    Two things are checked: (1) each division's own bystander (Coastal Carolina, Louisiana) is
+    force-eliminated, proving the override actually fires; (2) both real participants (App
+    State, Troy) survive it, proving the `if t not in participants` guard is applied rather than
+    dropped or inverted. NOT proof of "no leak across divisions" as a distinct property from
+    conference-wide scoping: pools partition a conference's teams and `ccg_participants` is keyed
+    by conference, so per-pool application and conference-wide application over that SAME
+    conference's participant set are mathematically identical here -- there is no cross-division
+    leak for this fixture, or any fixture shaped like it, to actually catch.
+
+    BUGGY (pre-fix) result: Coastal Carolina and Louisiana are each B_t == nth_highest_other_w
+    (6 == 6), so the old inequality alone leaves both 'possible' forever, in exactly the pattern
+    test 7 pins for the flat-conference case.
+    """
+    records = {
+        # East: App State is the CCG LOSER (participant). Coastal Carolina is tied with it
+        # exactly on banked wins, with nothing left to play -- the tie the fix must resolve.
+        # _record(conference, conf_wins, conf_losses, conf_games_remaining) -- conf_losses is
+        # not read by this function's math and is set to an arbitrary-but-plausible value.
+        "App State": _record(SUN_BELT, 6, 2, 0),
+        "Coastal Carolina": _record(SUN_BELT, 6, 2, 0),
+        "Georgia Southern": _record(SUN_BELT, 2, 6, 0),
+        "Georgia State": _record(SUN_BELT, 1, 7, 0),
+        # West: Troy is the CCG CHAMPION (participant). Louisiana is tied with it exactly on
+        # banked wins via its best case (0 banked + 6 remaining == Troy's 6 banked) -- the
+        # boundary-exact "still possible under the old rule" shape used elsewhere in this file.
+        "Troy": _record(SUN_BELT, 6, 2, 0),
+        "Louisiana": _record(SUN_BELT, 0, 2, 6),
+        "Arkansas State": _record(SUN_BELT, 2, 6, 0),
+        "South Alabama": _record(SUN_BELT, 1, 7, 0),
+    }
+    ccg_participants = {SUN_BELT: {"App State", "Troy"}}
+
+    result = compute_conference_championship_status(
+        records, divisions=SUN_BELT_DIVISIONS, ccg_participants=ccg_participants
+    )
+
+    assert result["Coastal Carolina"]["status"] == "eliminated", result["Coastal Carolina"]
+    assert result["Louisiana"]["status"] == "eliminated", result["Louisiana"]
+    # Both participants survive the override -- proof the `if t not in participants` guard is
+    # actually applied (an override that dropped it, or was somehow inverted, would catch these
+    # too). NOT proof of per-pool (per-division) vs. per-conference scoping: pools partition a
+    # conference's teams and `ccg_participants` is keyed by conference, so applying the override
+    # per pool and applying it conference-wide over the SAME conference's participant set are the
+    # same function here -- there is no cross-division leak for a fixture like this one to catch.
+    assert result["App State"]["status"] != "eliminated", result["App State"]
+    assert result["Troy"]["status"] != "eliminated", result["Troy"]
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):
