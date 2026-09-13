@@ -28,7 +28,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import pandas as pd  # type: ignore
 from dotenv import load_dotenv  # type: ignore
@@ -1831,21 +1831,61 @@ def build_schedule_payload(
     # :914 vs :911) -- so its result is available for the post-hoc conf_record exclusion right
     # below. This reorder is inert on its own: the only statement previously between the two
     # call sites was the unrelated fbs_team_names assignment, simply moved down with it.
+    #
+    # T2/K3/K4: identify_army_navy_game and _resolve_conference_championship_outcomes are ALSO
+    # moved up here, above compute_standings, for the same underlying reason as T1/K2 -- but one
+    # step further: both now feed compute_standings ITSELF (as excluded_conference_game_ids and
+    # ccg_participants below), not just a post-hoc adjustment of its output, so they must exist
+    # BEFORE that call rather than merely before some later display step. Both depend only on
+    # rows/season (and, for the CCG outcomes, champ_games_by_conf, identified one line above) --
+    # nothing either needs is computed any later than this point.
     champ_games_by_conf = identify_conference_championship_games(rows, season)
     champ_game_ids = set(champ_games_by_conf.values())
+    # T2/K4: the identified game's actual winner and loser (absent for a conference with no
+    # identified game, or one that hasn't been played yet) -- see
+    # _resolve_conference_championship_outcomes.
+    conference_champions, conference_ccg_losers = _resolve_conference_championship_outcomes(champ_games_by_conf, rows, season)
+    # T2/R3: fold winner+loser into one participant set per conference, for
+    # compute_conference_championship_status's played-CCG-eliminates-everyone-else override
+    # (schedule_standings.py:272). A conference is a key here (with 1 or, almost always, 2
+    # members) only when _resolve_conference_championship_outcomes actually found a win/loss row
+    # for it -- i.e. only when its championship game has been PLAYED, which is exactly the gate
+    # R3 requires: an identified-but-unplayed game contributes to neither dict, so it never
+    # reaches this loop at all and changes nothing (test_identified_but_unplayed_championship_
+    # game_does_not_change_status).
+    ccg_participants_by_conf: Dict[str, Set[str]] = {}
+    for conf, team in conference_champions.items():
+        ccg_participants_by_conf.setdefault(conf, set()).add(team)
+    for conf, team in conference_ccg_losers.items():
+        ccg_participants_by_conf.setdefault(conf, set()).add(team)
 
-    standings = schedule_standings.compute_standings(rows, season, divisions=divisions)
+    # T2/R2/K3: Army-Navy must be stripped from the AAC conference tally BEFORE compute_standings
+    # runs -- the OPPOSITE ordering from the championship-game exclusion just below, and
+    # deliberately so. That exclusion runs AFTER compute_standings because removing an unplayed
+    # title game would wrongly shrink conf_games_remaining for BOTH participants during
+    # championship week (see _exclude_championship_games_from_conf_records's docstring). Army-
+    # Navy has no such hazard: it is a rivalry game with no bearing on either team's title
+    # eligibility, so there is nothing a pre-standings exclusion could wrongly shrink mid-race --
+    # which is what makes doing it early both SAFE and NECESSARY here. A post-hoc fix, mirroring
+    # the CCG path, would only correct the DISPLAYED conf_record and leave the status math
+    # (clinch/eliminate) computed against the inflated tally -- exactly the defect R2 exists to
+    # close. schedule_standings.py never learns this is "Army-Navy" -- it receives an opaque
+    # game_id set (excluded_conference_game_ids below), honoring its stated no-team-name-
+    # knowledge, no-I/O boundary (see that module's docstring).
+    army_navy_game_id = identify_army_navy_game(rows, season)
+    excluded_conference_game_ids = {army_navy_game_id} if army_navy_game_id is not None else None
+
+    standings = schedule_standings.compute_standings(
+        rows, season, divisions=divisions,
+        excluded_conference_game_ids=excluded_conference_game_ids,
+        ccg_participants=ccg_participants_by_conf,
+    )
     # T1/K1: compute_standings above ran on UNMODIFIED rows, so championship_status is safe (see
     # _exclude_championship_games_from_conf_records's docstring). Only the conf_record that gets
     # DISPLAYED is adjusted, here, afterward.
     _exclude_championship_games_from_conf_records(standings, rows, season, champ_game_ids)
-    # T2/K3/K4: the identified game's actual winner and loser (absent for a conference with no
-    # identified game, or one that hasn't been played yet) -- see
-    # _resolve_conference_championship_outcomes.
-    conference_champions, conference_ccg_losers = _resolve_conference_championship_outcomes(champ_games_by_conf, rows, season)
 
     fbs_team_names = set(teams_meta.keys())
-    army_navy_game_id = identify_army_navy_game(rows, season)
     canonical_columns = build_canonical_columns(rows, season, champ_game_ids, army_navy_game_id)
     week_slot_ids_sorted = [slot_id for slot_id, _label in canonical_columns if slot_id.startswith("week-")]
     team_slot_rows = _build_team_slot_rows(rows, fbs_team_names, champ_game_ids, army_navy_game_id, week_slot_ids_sorted)

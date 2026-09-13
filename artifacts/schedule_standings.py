@@ -30,7 +30,7 @@ T4b uses those for its own JSON shaping.
 
 import logging
 from collections import Counter, defaultdict
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set
 
 # Reuse the same logger name main.py configures via utils.setup_logging (see
 # artifacts/rankings.py for the identical convention), so warnings surface
@@ -192,7 +192,11 @@ MIN_QUALIFYING_MEMBERS = 4
 INDEPENDENT_CONFERENCE_VALUE = "FBS Independents"
 
 
-def compute_team_records(rows: Iterable[Dict[str, Any]], season: int) -> Dict[str, Dict[str, Any]]:
+def compute_team_records(
+    rows: Iterable[Dict[str, Any]],
+    season: int,
+    excluded_conference_game_ids: Optional[Set[Any]] = None,
+) -> Dict[str, Dict[str, Any]]:
     """
     Tally each team's overall record, conference record, and remaining
     conference-game count from schedule_grid rows, for one season.
@@ -204,6 +208,17 @@ def compute_team_records(rows: Iterable[Dict[str, Any]], season: int) -> Dict[st
               function does its own season filtering rather than trusting
               the caller pre-filtered).
         season: the season to compute records for.
+        excluded_conference_game_ids: opaque game_id values to drop from the
+              CONFERENCE tally only (conf_wins/conf_losses/conf_games_remaining)
+              -- the overall `wins`/`losses` tally above is untouched, since the
+              game still happened. This module has no notion of WHY a game is
+              excluded (see the module docstring's I/O/no-team-name-knowledge
+              boundary) -- the caller (artifacts/schedule.py) is the one that
+              knows, for example, that Army-Navy is conference_game=true in the
+              data but is a rivalry game the conference itself does not count.
+              Optional and defaults to "exclude nothing," so every existing
+              caller (and every test that calls this function positionally)
+              keeps tallying exactly as before.
 
     Returns:
         Dict keyed by team name:
@@ -230,6 +245,7 @@ def compute_team_records(rows: Iterable[Dict[str, Any]], season: int) -> Dict[st
                                                  # Independents).
             }
     """
+    excluded_conference_game_ids = excluded_conference_game_ids or set()
     by_team_rows: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for row in rows:
         if row.get("season") != season:
@@ -244,10 +260,16 @@ def compute_team_records(rows: Iterable[Dict[str, Any]], season: int) -> Dict[st
         conference_counts = Counter(r["conference"] for r in team_rows if r.get("conference"))
         conference = conference_counts.most_common(1)[0][0] if conference_counts else None
 
+        # Overall record counts every row regardless of exclusion -- an excluded game (e.g.
+        # Army-Navy) is real and still happened; only its CONFERENCE-tally weight is stripped
+        # below, per excluded_conference_game_ids's docstring above.
         wins = sum(1 for r in team_rows if r.get("status") == "win")
         losses = sum(1 for r in team_rows if r.get("status") == "loss")
 
-        conf_rows = [r for r in team_rows if r.get("conference_game")]
+        conf_rows = [
+            r for r in team_rows
+            if r.get("conference_game") and r.get("game_id") not in excluded_conference_game_ids
+        ]
         is_independent = conference is None or conference == INDEPENDENT_CONFERENCE_VALUE
         if is_independent:
             conf_wins: Optional[int] = None
@@ -275,6 +297,7 @@ def compute_conference_championship_status(
     min_members: int = MIN_QUALIFYING_MEMBERS,
     divisions: Optional[Dict[str, Optional[str]]] = None,
     divisional_conferences: Optional[Dict[str, str]] = None,
+    ccg_participants: Optional[Dict[str, Set[str]]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Compute conference-championship status (possible/eliminated/clinched)
@@ -335,6 +358,29 @@ def compute_conference_championship_status(
     the counting rules above; this function never tries to resolve 3+-way
     ties, and never models any published tiebreaker.
 
+    PLAYED-CHAMPIONSHIP-GAME OVERRIDE (T2/R3): the ELIMINATED test above is a
+    projection over W/R/B/L and, on its own, never eliminates a team merely
+    TIED on conf_wins with a team that actually played in (and lost) the
+    title game -- e.g. Ole Miss and Texas A&M, tied with Alabama at 7 wins,
+    both stayed "possible" forever after the 2025 SEC title game despite the
+    season being over. `ccg_participants` supplies the missing FACT: once a
+    conference's game has been PLAYED (not merely identified/scheduled), it
+    is no longer a projection question who else is out -- everyone in that
+    pool who did not play in it is eliminated, full stop. Applied PER POOL,
+    inside the same per-pool loop the W/R/B/L math runs in, straight onto
+    that pool's `statuses` dict before it is recorded -- pool["teams"]
+    already scopes a divisional conference's two pools to their own
+    division's members, so a Sun Belt East pool only ever sees its own
+    division's participant (if any) in `ccg_participants`; the West
+    participant simply never appears in the East pool's `teams` and cannot
+    leak across. The two participants' own statuses are left exactly as
+    computed above (untouched by this override) -- their actual game result
+    is rendered elsewhere (T4b's own game-result display, keyed off the
+    identified game_id), not through this status field, and this function
+    has no notion of "won" or "lost" the title game to render correctly
+    even if it tried. Does NOT touch either inequality above (K5): this is
+    a known fact layered on top, not a loosening of the projection.
+
     CONDITIONAL_OPPONENT: the still-"possible" teams of a pool get
     conditional_opponent set to the name of the team that has already
     clinched the OTHER title-game slot, when exactly one team has:
@@ -378,6 +424,17 @@ def compute_conference_championship_status(
             DIVISIONAL conferences; defaults to the module-level
             DIVISIONAL_CHAMPIONSHIP_CONFERENCES constant. Overridable for the
             same reason as qualifying_conferences.
+        ccg_participants: optional Dict[conference name -> {winner, loser}],
+            injected by the caller, for conferences whose championship game
+            has actually been PLAYED this season -- see the PLAYED-
+            CHAMPIONSHIP-GAME OVERRIDE section above. This module has no
+            notion of "championship game" or how to identify/resolve one
+            (that is artifacts/schedule.py's job, from schedule_grid rows);
+            it only knows what to DO with the fact once handed it, same as
+            `divisions` above. A conference absent from this dict, or passed
+            as None/empty, is completely unaffected -- covers both "no
+            championship game exists for this conference" and "one was
+            identified but has not been played yet."
 
     Returns:
         Dict keyed by team name, present ONLY for teams belonging to a
@@ -399,6 +456,8 @@ def compute_conference_championship_status(
         divisional_conferences = DIVISIONAL_CHAMPIONSHIP_CONFERENCES
     if divisions is None:
         divisions = {}
+    if ccg_participants is None:
+        ccg_participants = {}
 
     flat_by_conference: Dict[str, List[str]] = defaultdict(list)
     divisional_by_conference: Dict[str, Dict[Optional[str], List[str]]] = defaultdict(
@@ -536,6 +595,18 @@ def compute_conference_championship_status(
                 statuses[t] = "clinched"
             else:
                 statuses[t] = "possible"
+
+        # T2/R3: see the PLAYED-CHAMPIONSHIP-GAME OVERRIDE section of this function's
+        # docstring. `participants` is looked up by THIS pool's own conference and filtered
+        # implicitly by THIS pool's own `teams` list below -- a divisional conference's other
+        # division's participant is never a member of `teams` here, so it can never leak into
+        # this pool's forcing loop.
+        participants = ccg_participants.get(pool["conference"])
+        if participants:
+            for t in teams:
+                if t not in participants:
+                    statuses[t] = "eliminated"
+
         statuses_by_pool.append(statuses)
 
     clinched_by_pool = [
@@ -608,6 +679,8 @@ def compute_standings(
     rows: Iterable[Dict[str, Any]],
     season: int,
     divisions: Optional[Dict[str, Optional[str]]] = None,
+    excluded_conference_game_ids: Optional[Set[Any]] = None,
+    ccg_participants: Optional[Dict[str, Set[str]]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Top-level convenience entry point tying the three computations above
@@ -625,6 +698,13 @@ def compute_standings(
             Belt to get any championship status at all; omitting it leaves
             those teams' championship_status None, exactly as before
             divisions were supported.
+        excluded_conference_game_ids: passed straight through to
+            compute_team_records -- see that function's docstring. Optional,
+            defaults to "exclude nothing."
+        ccg_participants: passed straight through to
+            compute_conference_championship_status -- see that function's
+            docstring (PLAYED-CHAMPIONSHIP-GAME OVERRIDE). Optional, defaults
+            to "no conference has a played championship game."
 
     Returns:
         Dict keyed by team name:
@@ -640,8 +720,8 @@ def compute_standings(
         not in a qualifying conference (see compute_conference_championship_status) --
         this is the deliberate blank fallback, not a guessed "possible".
     """
-    records = compute_team_records(rows, season)
-    championship = compute_conference_championship_status(records, divisions=divisions)
+    records = compute_team_records(rows, season, excluded_conference_game_ids=excluded_conference_game_ids)
+    championship = compute_conference_championship_status(records, divisions=divisions, ccg_participants=ccg_participants)
     bowl = compute_bowl_eligibility(records)
 
     combined: Dict[str, Dict[str, Any]] = {}
