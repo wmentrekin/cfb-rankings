@@ -402,14 +402,20 @@ def compute_conference_championship_status(
     teams the way the conference's own standings do, and the team a
     conference actually sent to its title game is never one this function has
     already locked out. Two known things break that premise:
-      1. UNEVEN COUNTED GAME COUNTS. artifacts/schedule.py strips the
-         Army-Navy game from the AAC's conference tallies (R2), permanently
-         leaving Army and Navy one counted conference game -- and so up to
-         one banked win -- short of every other AAC member, while the
-         conference's own standings still count that game. An Army that wins
-         the AAC's real tiebreaker on a record INCLUDING it can therefore
-         carry fewer counted wins here than the non-participants it beat out,
-         and one of those non-participants can compute "clinched".
+      1. UNEVEN COUNTED GAME COUNTS. If a pool's members have played
+         different numbers of counted conference games -- a conference game
+         cancelled and never made up, a mid-season schedule change -- then
+         banked wins stop ranking teams the way the conference's own
+         standings do, and a team the conference does send to its title game
+         can trail a non-participant here on raw counted wins.
+         NOT a source of unevenness: R2's Army-Navy exclusion, despite the
+         obvious suspicion that it is one. Army and Navy each play EIGHT AAC
+         conference opponents, the same as all fourteen members; CFBD tags
+         the Army-Navy game conference_game=true ON TOP of that slate, which
+         would give the two of them a ninth. Stripping it RESTORES parity at
+         eight rather than opening a deficit. Verified against the published
+         2025 payload: every AAC member, Army and Navy included, shows
+         exactly eight conference opponents.
       2. TITLE-GAME INELIGIBILITY. A team barred from the title game
          (postseason sanctions, an in-progress FBS reclassification) can win
          its pool outright and still not play in it -- the 2012 Big Ten
@@ -675,7 +681,7 @@ def compute_conference_championship_status(
             # requires at most top_n - 1 OTHER teams to be able to reach its win floor, and
             # both real participants normally can. (Rarely, not never -- see GUARD PREMISE in
             # this function's docstring for the two known shapes, uneven counted game counts
-            # after the AAC's Army-Navy exclusion and title-game ineligibility, where a
+            # and title-game ineligibility, where a
             # genuine non-participant DOES clinch and this guard fires on a correct
             # participant set. Both fail safe: the pool keeps its under-eliminating W/R/B/L
             # statuses.) So a non-participant that already
