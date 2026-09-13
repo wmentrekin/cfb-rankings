@@ -47,14 +47,14 @@ branching:
     origin/main per the merged-PR rule. Flagged to the user at the pre-execution checkpoint.
 
 summary:
-  current_focus: "Execution batch 1: T1 (sort win-count term) then T2 (Army-Navy exclusion + played-CCG elimination)."
-  last_completed: "Discovery complete: all three root causes located and evidenced; requirements + plan written."
+  current_focus: "Execution complete (475 passing). Opening PR, then verification."
+  last_completed: "T1, T2, T3 complete; 10 new tests, 11 mutations, no survivors."
   current_blocker: ""
 
 artifacts:
   requirements: "docs/standings-gaps/requirements.yaml"
   plan: "docs/standings-gaps/plan.yaml"
-  implementation_report: null
+  implementation_report: "docs/standings-gaps/implementation-report.yaml"
 
 pr:
   number: null
