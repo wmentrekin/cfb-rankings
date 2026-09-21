@@ -34,8 +34,8 @@ supported; one source says 36).
 |---|---|---|---|---|
 | SEC | `citrus_then_office_pool` | CFP -> Citrus (best available) -> Pool of Six {ReliaQuest, Gator, Music City, Texas, Liberty, + Las Vegas (even) / Duke's Mayo (odd)} placed by the SEC office -> ESPN Events fills Birmingham / Gasparilla only if teams remain | "preferences expressed by the SEC's bowl eligible schools, input from the SEC's affiliated bowls, travel considerations, attention to previous matchups and additional relevant factors" (secsports.com) | high (structure) |
 | Big 12 | `numbered` | Alamo -> Pop-Tarts -> Texas -> Liberty -> Rate/Cactus -> Independence ("rough pecking order... Alamo first, Independence last"); bowls may skip to avoid regular-season or prior-bowl rematches; a bowl may take any eligible team regardless of record | big12sports.com Bowl Selection Central (2025-05-02, re-served for 2026); aggregator quotes | medium (order secondary-sourced) |
-| ACC | `tiered` (3 tiers; membership unpublished) | "geographic proximity, avoiding repeat appearances and matchups, regular-season won-loss records" (theacc.com 2026-06-03) | pending R7-ACC | medium |
-| Big Ten | `tiered` | Citrus first; remainder unpublished | pending R7-B1G | low |
+| ACC | `tiered` (2 or 3 tiers — sources conflict; membership unpublished) | 17 possible destinations for 2026-27 (theacc.com 2026-06-03). Tier 1 reportedly Gator, Duke's Mayo, Sun (blog, low reliability); Tier 2 Gasparilla, Birmingham, First Responder; a backfill band (Independence, Armed Forces, Frisco Football Classic listed in the 2026 release). Criteria: "geographic proximity, avoiding repeat appearances and matchups, regular-season won-loss records" (theacc.com 2019-07-11; echoed 2026). Notre Dame: may take a non-CFP ACC slot if within one win of, equal to, or ranked above the ACC team; never over an ACC team with 2+ more wins (Wikipedia "Bids to college bowl games"; BCS-era text, current applicability unconfirmed). Cal/Stanford: dual eligibility (ACC slate AND legacy pool) in 2026-27, the legacy arrangement's final season. | medium |
+| Big Ten | `numbered (inferred)` | No official order beyond Citrus. Observed 2025-26 (clean sample): Citrus > ReliaQuest > Music City > Pinstripe > Las Vegas > Rate/Cactus. Sixth bowl alternates: Las Vegas in ODD seasons, Duke's Mayo in EVEN (mirror of the SEC's rule; 2023 NW->LV, 2024 Minnesota->Mayo, 2025 Nebraska->LV). Norms (soft, sometimes broken): variety across years; avoid non-conference rematches; "don't pass over a team with 2 more wins" (2021 counter-example). | medium (order inferred from actuals) |
 | Sun Belt | `numbered + operator_pool` | 1/3/4 = ESPN Events flex pool (Boca Raton, Cure, Frisco, Myrtle Beach, Salute to Veterans; ESPN also places into Idaho Potato, First Responder, New Mexico); 2 = New Orleans; 5 = 68 Ventures; beyond = G6 free-for-all | sunbeltsports.org 2020-05-28 lineup (rolled forward) | medium-high |
 | AAC | `fixed_annual + operator_pool` | Annual: Armed Forces, Hawai'i, Military (vs ACC), Fenway (vs ACC). Then 4 of 8: Birmingham, Cure, Gasparilla, Boca Raton, Frisco, First Responder, New Mexico, Myrtle Beach. Secondary: Liberty (fired 2025: Navy), Quick Lane (defunct). No order. | theamerican.org "primary"/"secondary agreements" | medium-high |
 | CUSA | `guaranteed_count + operator_pool` | "guaranteed seven bowl appearances"; New Orleans (vs Sun Belt) standing; 2025 slate: Myrtle Beach, First Responder, Independence, Salute to Veterans, New Orleans, Xbox, 68 Ventures | conferenceusa.com 2025-12-07 | medium |
@@ -53,8 +53,8 @@ supported; one source says 36).
 | Music City | Liberty Mutual Music City | Nashville | Dec 30 | SEC pool | Big Ten | vs B1G all 3 years | high |
 | Texas | Kinder's Texas | Houston | Dec 31 | SEC pool | Big 12 #3 | LSU here 2024 AND 2025 (repeat) | high |
 | Liberty | AutoZone Liberty | Memphis | Dec/Jan | Big 12 #4 | SEC pool, AAC secondary | actual: AAC 2 of 3 (Memphis 2023, Navy 2025), SEC 1 of 3 | high |
-| Las Vegas | Las Vegas | Las Vegas | Dec 31 | Big Ten | Legacy Pac-12 group | SEC takes a side in EVEN seasons (2026: yes) -> three-way; encode candidates [SEC even p1, Big Ten p2] vs legacy | medium |
-| Duke's Mayo | Duke's Mayo | Charlotte | Dec 26 | ACC | SEC (odd seasons) / Big Ten (even, inferred) | 2026 even -> not SEC | medium |
+| Las Vegas | Las Vegas | Las Vegas | Dec 31 | SEC (even seasons) / Big Ten (odd seasons) | Legacy Pac-12 group | 2023 Northwestern v Utah; 2024 Texas A&M v USC (legacy); 2025 Nebraska v Utah. 2026 even -> SEC v legacy | high |
+| Duke's Mayo | Duke's Mayo | Charlotte | Dec 26 | ACC | SEC (odd) / Big Ten (even) | 2023 UNC v West Virginia (SEC short of teams; Big 12 backfill); 2024 Virginia Tech v Minnesota; 2025 Wake Forest v Mississippi State. 2026 even -> Big Ten | high |
 | Pop-Tarts | Pop-Tarts | Orlando | late Dec | Big 12 #2 | ACC | — | high |
 | Alamo | Valero Alamo | San Antonio | Dec | Big 12 #1 (12-team pool) | Legacy Pac-12 group | 2024 BYU v Colorado (both Big 12; Colorado via legacy slot) | high |
 | Rate / Cactus | Guaranteed Rate (name unresolved) | Phoenix | Dec 26 | Big 12 #5 | Big Ten | MWC backup; 2025 Minnesota v New Mexico (no Big 12: opt-outs) | medium |
@@ -69,7 +69,7 @@ supported; one source says 36).
 | Birmingham | JLab Birmingham | Birmingham | Dec | SEC residual (ESPN Events) | ACC / AAC pool | 2023 Duke v Troy; 2024 Vandy v GT; 2025 GaSo v App St (opt-out backfill, 5-7 pool) | medium |
 | Armed Forces | Lockheed Martin Armed Forces | Fort Worth | Dec 23 | AAC (annual; service academies when available) | open pool (MWC/Air Force, else Sun Belt/SEC) | 2023 Air Force v JMU; 2024 Oklahoma v Navy; 2025 Texas St v Rice | low |
 | First Responder | SERVPRO First Responder | Dallas | Dec/Jan | AAC (pool) | CUSA / Sun Belt (pool) | published ACC/Big 12/CUSA framing contradicted by all 3 actual games (AAC v CUSA/SBC) | medium |
-| Frisco | Scooter's Coffee Frisco | Frisco | Dec 23 | G6 operator pool | G6 operator pool | 2023 UTSA v Marshall; 2024 Memphis v West Virginia; 2025 UNLV v Ohio | medium |
+| Frisco | Scooter's Coffee Frisco | Frisco | Dec 23 | G6 operator pool | G6 operator pool (ACC access) | 2023 UTSA v Marshall; 2024 Memphis v West Virginia; 2025 UNLV v Ohio. The ACC's 2026 release also lists a "Frisco Football Classic" on Dec 15 — same date as the Xbox Bowl; likely the same game under another name (conflict) | medium |
 | Xbox | Xbox | Frisco | ~Dec 15 | CUSA | Sun Belt | 2025 Missouri St v Arkansas St | high |
 | New Orleans | R+L Carriers New Orleans | New Orleans | Dec | Sun Belt #2 | CUSA (standing) | 2023 Louisiana v Jax St; 2024 GaSo v Sam Houston; 2025 Southern Miss v WKU | high |
 | 68 Ventures | 68 Ventures | Mobile | Dec 26 | Sun Belt #5 | MAC / CUSA | 2023 S Alabama v E Michigan; 2024 Ark St v Bowling Green; 2025 Louisiana v Delaware (CUSA) | high |
@@ -115,6 +115,23 @@ supported; one source says 36).
   Bowling Green; Arizona Toledo. 2024 (7): Salute to Veterans W Michigan; Cure Ohio; Idaho Potato NIU;
   GameAbove Toledo; 68 Ventures Bowling Green; Arizona Miami OH; Bahamas Buffalo. 2025 (5): Myrtle
   Beach W Michigan; Boca Raton Toledo; Frisco Ohio; GameAbove Central Michigan; Arizona Miami OH.
+- Big Ten 2023: CFP Michigan; Cotton Ohio State; Peach Penn State; Citrus Iowa; ReliaQuest Wisconsin;
+  Music City Maryland; Pinstripe Rutgers; Las Vegas Northwestern (no B1G in Duke's Mayo/Holiday/Rate).
+  2024: CFP Ohio State, Oregon, Penn State, Indiana; Citrus Illinois; Duke's Mayo Minnesota; Pinstripe
+  Nebraska; Las Vegas USC (legacy side); Rate Rutgers; ReliaQuest/Music City teams unresolved.
+  2025: CFP Indiana, Oregon, Ohio State; Citrus Michigan (#18); ReliaQuest Iowa (#23); Music City
+  Illinois; Pinstripe Penn State; Las Vegas Nebraska; Rate Minnesota. Observed order tracks strength.
+- ACC 2023 (11): Orange Florida State; Pop-Tarts NC State; Gator Clemson; Duke's Mayo North Carolina
+  (v West Virginia); Holiday Louisville (v USC); Fenway Boston College (v SMU); Pinstripe Miami;
+  Gasparilla Georgia Tech; Boca Raton Syracuse; Birmingham Duke (v Troy); Virginia Tech Military? (v
+  Tulane — bowl name per ACC agent conflicts; Military Bowl 2023 was VT v Tulane).
+  2024 (13): CFP Clemson, SMU; Pop-Tarts Miami; Pinstripe Boston College; Birmingham Georgia Tech;
+  Military NC State; Fenway North Carolina (v UConn); Holiday Syracuse; Sun Louisville (v Washington);
+  LA Cal (v UNLV); GameAbove Pitt; Duke's Mayo Virginia Tech; Duke, Virginia unresolved.
+  2025 (11 + CFP): CFP Miami (QF), Duke (ACC champion, 5 losses); Gasparilla NC State; Boca Raton
+  Louisville; Hawai'i Cal; Military Pitt; Gator Virginia (#19); Duke's Mayo Wake Forest; Pop-Tarts
+  Georgia Tech (#22); Pinstripe Clemson (v Penn State); Holiday SMU (v Arizona). Repeat: Virginia Tech
+  in Duke's Mayo 2023 and 2024 (consecutive).
 - MWC / Pac-12 / legacy: 2023 LA UCLA v Boise; Holiday USC v Louisville; Alamo Arizona v Oklahoma; Sun
   Oregon St v Notre Dame. 2024 Holiday Wash St v Syracuse; LA Boise v Washington; Alamo Colorado
   (legacy slot). 2025 LA Boise v Washington; New Mexico SDSU; Idaho Potato Utah St v Wash St; Arizona
@@ -129,7 +146,10 @@ operator-pool bowls, not Sun Belt numbered picks. 68 Ventures' second side can b
 second side can be AAC. GameAbove/Detroit cancelled; NIU -> MWC; UMass -> MAC.
 
 ## 5. Still unresolved (needs a primary text or a fresh search session)
-Big Ten and ACC deep dives pending. Big Ten order beyond Citrus; ACC tier membership; Notre Dame's
+ACC tier count (2 vs 3) and membership; Big Ten official order (inferred only); legacy-pool
+carve-out vs Cal/Stanford "dual eligibility" (two sources disagree; encode as primary group =
+legacy, secondary = ACC, stand-in); legacy pool sunsets after the 2026 season (pressdemocrat) ->
+season_max 2026; Notre Dame's
 ACC access rule; Hawai'i second side; Armed Forces pool rule; Sun Belt pick 6; MAC Arizona vs Idaho
 Potato order; legacy-pool procedural carve-out (second source); Rate/Cactus 2026 name; AAC 9th
 team 2025; 2023-24 and 2024-25 AAC/CUSA/MWC full slates; records/ranks for most rows; NCAA

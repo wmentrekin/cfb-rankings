@@ -42,7 +42,7 @@ branching:
   note: "harness-pinned name; user accepted it in place of work/<feature-slug>"
 
 summary:
-  current_focus: "planning deepened at owner request: 8 conference/bowl deep dives running; selection-logic-spec.md v0.2 written; checkpoint re-presented after synthesis"
+  current_focus: "checkpoint re-presented: tie-ins v2 (all 8 deep dives folded), spec v0.3; search quota exhausted for this session"
   last_completed: "discovery: 4 research reports + G6 follow-up; research-notes.md, requirements.yaml, plan.yaml written"
   current_blocker: ""
 
@@ -190,7 +190,7 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done"
     stage: "planning"
     task: "SEC: procedure, 2026-27 lineup, 3 seasons of actual assignments"
     last_update: "2026-09-21"
@@ -205,7 +205,7 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done (partial: search quota)"
     stage: "planning"
     task: "Big Ten: same"
     last_update: "2026-09-21"
@@ -220,7 +220,7 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done (partial: search quota)"
     stage: "planning"
     task: "ACC (+ Notre Dame access): same"
     last_update: "2026-09-21"
@@ -235,7 +235,7 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done (partial: search quota)"
     stage: "planning"
     task: "Big 12: same, verify published order"
     last_update: "2026-09-21"
@@ -250,7 +250,7 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done (partial: search quota)"
     stage: "planning"
     task: "AAC + CUSA (+ Army/Navy, Armed Forces): same"
     last_update: "2026-09-21"
@@ -265,7 +265,7 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done (partial: search quota)"
     stage: "planning"
     task: "MAC + Sun Belt: same, pin the numbered draft"
     last_update: "2026-09-21"
@@ -280,7 +280,7 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done (partial: search quota)"
     stage: "planning"
     task: "Mountain West + rebuilt Pac-12 + legacy pools: same"
     last_update: "2026-09-21"
@@ -295,7 +295,7 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done (partial: search quota)"
     stage: "planning"
     task: "unresolved bowls' own rules + NCAA eligibility/5-7/opt-out rules"
     last_update: "2026-09-21"
@@ -318,7 +318,9 @@ checkpoint:
     - narrow_scope
     - stop
 
-blockers: []
+blockers:
+  - "session-wide WebSearch quota exhausted (200/200); no further external research possible in this session"
+  - "outbound page fetches blocked by the environment network policy"
 decisions:
   - "Outbound page fetches are blocked in this sandbox (verified with curl); external facts are search-snippet corroborated and tagged provisional until the owner supplies primary texts."
   - "Notre Dame top-12 guarantee is a real 2026 rule (2024 MOU); the owner's encoding is the default."
@@ -334,6 +336,6 @@ model_routing:
   unresolved_limitations:
     - "Per-subagent reasoning level is inherited from the main session, not independently enforceable"
 
-next_action: "synthesize 8 deep dives into bowl-tie-ins-draft.md v2 + per-conference selection models; reviewer pass on selection-logic-spec.md; re-present checkpoint"
+next_action: "owner: decisions D1-D10 + OQ1-OQ7; choose how to close remaining research gaps (raise search cap / fresh session / supply primary texts); planning-review loop cap (2) reached so a spec review needs owner direction"
 next_recommended_command: "$work"
-user_input_needed: false
+user_input_needed: true

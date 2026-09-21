@@ -128,7 +128,10 @@ Washington State) are tied as a group to the Alamo, Las Vegas, Holiday, Sun, Poi
 Independence bowls, ordered by OVERALL record, and are "not affiliated with the selection
 process for their current conferences". So:
 - `group(T)` = `affiliations.get(T, conference(T))`; every rule in §4.3-4.7 that says
-  "conference C" means "group C".
+  "conference C" means "group C". `affiliations[T]` may be `{primary, secondary}`: T is placed by
+  its primary group's walk; if unplaced there it becomes available to its secondary group's
+  fallback fill (§4.6) — the stand-in for the conflicting "carve-out" vs "dual eligibility" reports
+  on Cal/Stanford (tag `secondary_affiliation`).
 - A group's `selection.conferences[group]` entry may use `mode: pool_by_record` whose standing
   order is `(wins desc, losses asc, rank asc, name)` instead of a conference standing order.
 - CFP selection (§2) is unaffected: it uses real conference membership and champions.
@@ -252,7 +255,8 @@ stand-in is model rank, tag `apr_fill_by_rank`.
 
 ### 4.12 Parity rules
 A candidate with `parity` applies only in matching seasons (SEC: Las Vegas even, Duke's Mayo odd,
-per secsports.com). Because the SEC pool of six therefore has a different sixth bowl each year, the
+per secsports.com; Big Ten mirrors it: Duke's Mayo even, Las Vegas odd, inferred from 2023-25
+actuals). Because the SEC pool of six therefore has a different sixth bowl each year, the
 SEC's obligations list is built from the resolved slots (§4.2), never hard-coded.
 
 ### 4.9 Output
