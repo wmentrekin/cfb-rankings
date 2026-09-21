@@ -29,6 +29,7 @@ tagged in the output. Open decisions for the owner are collected in §9.
 | conference_order | {conference_raw: [team...]} | _sort_conference_teams per conference |
 | history | {team: [{season, bowl_root, opponent}]} | games rows, season_type=postseason, last H seasons |
 | regular_season_opponents | {team: set(team)} | games rows this season incl. CCG |
+| declined | set(team) | manual input / overrides file (teams that opted out of a bowl) |
 
 Validation on entry: every team in `ranking` exists in `teams`; every champion is a member of its
 conference this season; `conference_order[C]` is a permutation of C's members.
@@ -231,6 +232,29 @@ A penalty of all zeros always stops the scan (the best-standing clean team wins)
   a headline diagnostic (real seasons leave 0-3 out).
 - A conference with more obligations than eligible teams leaves its later slots to §4.6.
 
+### 4.10 Operator pools (ESPN Events) — Group of Six placement
+Evidence (bowl-tie-ins-draft.md §0.2): G6 placement is a few FIXED conference slots plus an
+operator-level flex pool, not per-conference numbered drafts. Encode `pools[operator_espn]` with
+`bowls: [...]` (declaration order = prestige/date order chosen by the owner or inferred by T5) and
+`conferences: [AAC, CUSA, MAC, Sun Belt, Mountain West, Pac-12]`. Walk: after §4.5 fills every
+fixed slot (SEC/Big Ten/ACC/Big 12 picks; Sun Belt #2 and #5; AAC annual bowls; CUSA New Orleans;
+Poinsettia champion; legacy group), the operator pool fills its bowls' empty slots in declaration
+order from unplaced eligible G6 teams ordered by `(rank, name)`, applying §4.7 penalties and a
+per-conference cap = that conference's `guaranteed_count` where published (CUSA 7; AAC "4 of 8" +
+4 annual). STAND-IN tag `operator_pool_by_rank` (real placement weighs geography and travel).
+
+### 4.11 Declines (opt-outs) and replacements
+Input `state.declined: set(team)` (2025-26: Kansas State, Iowa State). Declined teams are removed
+from every pool before §4.5 and listed in output `declined`. A slot that would have been theirs is
+filled by the normal walk. If, after §4.6, slots remain empty, §4.8 fills from 5-7 teams; the real
+rule draws replacements by APR rank (2024 Louisiana Tech; 2025 Birmingham Bowl backfill) — our
+stand-in is model rank, tag `apr_fill_by_rank`.
+
+### 4.12 Parity rules
+A candidate with `parity` applies only in matching seasons (SEC: Las Vegas even, Duke's Mayo odd,
+per secsports.com). Because the SEC pool of six therefore has a different sixth bowl each year, the
+SEC's obligations list is built from the resolved slots (§4.2), never hard-coded.
+
 ### 4.9 Output
 ```
 { bowls: [{bowl_root, name, city, date, provisional, slots: [{source_used, team, conference, record, rank, reasons: [...]}]}],
@@ -282,3 +306,5 @@ FCS-win metadata, so this cannot be modelled today. Config `eligibility_rule: wi
 - D6 history window H (3 recommended, matches "last 2-3 years").
 - D7 = OQ7 5-7 fill as APR stand-in.
 - D8 conference_order default (ASCII ascending) — only matters for same-round rematch visibility.
+- D9 operator-pool bowl order (declaration order supplied by owner vs inferred by T5).
+- D10 whether `declined` is a manual overrides file (like database/game_result_overrides.json) — recommended.
