@@ -44,44 +44,54 @@ supported; one source says 36).
 | Pac-12 (rebuilt) | `champion_slot` | Champion (if not CFP) -> Poinsettia; others via ESPN pool by availability | pressdemocrat 2026-08-16; SI 2026-08/09 | high |
 | Legacy Pac-12 group (12) | `pool_by_record` | Alamo, Las Vegas, Holiday, Sun, Poinsettia (10-team sub-pool excl. OSU/WSU), Independence; ordered by overall record; overflow -> ESPN pool | pressdemocrat 2026-08-16; sunbowl.org; sanantonioreport | high |
 
-## 2. Bowl table (35 non-CFP; slot A / slot B are the best-supported 2026-27 sources)
-| Root | 2026 name | City | Date | Slot A | Slot B | Notes | Conf. |
-|---|---|---|---|---|---|---|---|
-| Citrus | Cheez-It Citrus | Orlando | Jan 1 | SEC #1 | Big Ten #1 | — | high |
-| ReliaQuest | ReliaQuest | Tampa | Dec 31 | SEC pool | Big Ten | — | high |
-| Gator | TaxSlayer Gator | Jacksonville | Dec 30 | SEC pool | ACC | vs ACC all 3 years | high |
-| Music City | Liberty Mutual Music City | Nashville | Dec 30 | SEC pool | Big Ten | vs B1G all 3 years | high |
-| Texas | Kinder's Texas | Houston | Dec 31 | SEC pool | Big 12 #3 | LSU here 2024 AND 2025 (repeat) | high |
-| Liberty | AutoZone Liberty | Memphis | Dec/Jan | Big 12 #4 | SEC pool, AAC secondary | actual: AAC 2 of 3 (Memphis 2023, Navy 2025), SEC 1 of 3 | high |
-| Las Vegas | Las Vegas | Las Vegas | Dec 31 | SEC (even seasons) / Big Ten (odd seasons) | Legacy Pac-12 group | 2023 Northwestern v Utah; 2024 Texas A&M v USC (legacy); 2025 Nebraska v Utah. 2026 even -> SEC v legacy | high |
-| Duke's Mayo | Duke's Mayo | Charlotte | Dec 26 | ACC | SEC (odd) / Big Ten (even) | 2023 UNC v West Virginia (SEC short of teams; Big 12 backfill); 2024 Virginia Tech v Minnesota; 2025 Wake Forest v Mississippi State. 2026 even -> Big Ten | high |
-| Pop-Tarts | Pop-Tarts | Orlando | late Dec | Big 12 #2 | ACC | — | high |
-| Alamo | Valero Alamo | San Antonio | Dec | Big 12 #1 (12-team pool) | Legacy Pac-12 group | 2024 BYU v Colorado (both Big 12; Colorado via legacy slot) | high |
-| Rate / Cactus | Guaranteed Rate (name unresolved) | Phoenix | Dec 26 | Big 12 #5 | Big Ten | MWC backup; 2025 Minnesota v New Mexico (no Big 12: opt-outs) | medium |
-| Independence | Radiance Technologies Independence | Shreveport | Dec | CUSA anchor | Big 12 #6 / Legacy Pac-12 / Sun Belt fallback | actual: 2023 Texas Tech v Cal; 2024 Army v LA Tech (5-7 repl.); 2025 LA Tech v Coastal | low-medium |
-| Pinstripe | Bad Boy Mowers Pinstripe | Bronx | Dec 26 | Big Ten | ACC | — | high |
-| Holiday | Trust & Will Holiday | San Diego | Dec | ACC | Legacy Pac-12 group | Big Ten tie ended 2019; 2024 Syracuse v Wash St; 2025 SMU v Arizona | high (A) |
-| Sun | Tony the Tiger Sun | El Paso | Dec 31 | ACC | Legacy Pac-12 group | — | high |
-| Poinsettia | SDCCU Poinsettia (revived) | San Diego | Dec 23 | Pac-12 champion (if not CFP) | Legacy 10-team sub-pool | new 2026-27 | high |
-| Military | Go Bowling Military | Annapolis | Dec | ACC | AAC (annual) | — | high |
-| Fenway | Wasabi Fenway | Boston | Dec 26 | ACC (or Notre Dame) | AAC (annual) | 2025 Army v UConn (independent) -> ACC side can be filled by independents/pool | medium-high |
-| Gasparilla | Union Home Mortgage Gasparilla | Tampa | Dec 18 | AAC (pool) | rotating ACC/SEC/Big 12; SEC residual via ESPN Events | 2023 GT v UCF; 2024 Florida v Tulane; 2025 NC St v Memphis | high |
-| Birmingham | JLab Birmingham | Birmingham | Dec | SEC residual (ESPN Events) | ACC / AAC pool | 2023 Duke v Troy; 2024 Vandy v GT; 2025 GaSo v App St (opt-out backfill, 5-7 pool) | medium |
-| Armed Forces | Lockheed Martin Armed Forces | Fort Worth | Dec 23 | AAC (annual; service academies when available) | open pool (MWC/Air Force, else Sun Belt/SEC) | 2023 Air Force v JMU; 2024 Oklahoma v Navy; 2025 Texas St v Rice | low |
-| First Responder | SERVPRO First Responder | Dallas | Dec/Jan | AAC (pool) | CUSA / Sun Belt (pool) | published ACC/Big 12/CUSA framing contradicted by all 3 actual games (AAC v CUSA/SBC) | medium |
-| Frisco | Scooter's Coffee Frisco | Frisco | Dec 23 | G6 operator pool | G6 operator pool (ACC access) | 2023 UTSA v Marshall; 2024 Memphis v West Virginia; 2025 UNLV v Ohio. The ACC's 2026 release also lists a "Frisco Football Classic" on Dec 15 — same date as the Xbox Bowl; likely the same game under another name (conflict) | medium |
-| Xbox | Xbox | Frisco | ~Dec 15 | CUSA | Sun Belt | 2025 Missouri St v Arkansas St | high |
-| New Orleans | R+L Carriers New Orleans | New Orleans | Dec | Sun Belt #2 | CUSA (standing) | 2023 Louisiana v Jax St; 2024 GaSo v Sam Houston; 2025 Southern Miss v WKU | high |
-| 68 Ventures | 68 Ventures | Mobile | Dec 26 | Sun Belt #5 | MAC / CUSA | 2023 S Alabama v E Michigan; 2024 Ark St v Bowling Green; 2025 Louisiana v Delaware (CUSA) | high |
-| Myrtle Beach | Myrtle Beach | Myrtle Beach | Dec | G6 operator pool (SBC/CUSA/MAC/AAC) | same | 2023 GaSo v Ohio; 2024 Coastal v UTSA; 2025 Kennesaw St (CUSA) v W Michigan | medium |
-| Cure | StaffDNA Cure | Orlando | Dec | G6 operator pool | same | 2023 App St v Miami OH; 2024 Ohio v Jax St; 2025 ODU v USF | medium |
-| Boca Raton | Bush's Boca Raton | Boca Raton | Dec 18 | G6 operator pool (AAC/SBC/MAC) | same, ACC access | 2025 Toledo v Louisville (ACC) | medium |
-| Salute to Veterans | IS4S Salute to Veterans | Montgomery | Dec 15 | Sun Belt | MAC / CUSA | 2024 S Alabama v W Michigan; 2025 Troy v Jax St | medium-high |
-| New Mexico | Isleta New Mexico | Albuquerque | Dec 24 | Mountain West | CUSA / AAC (pool) | 2025 North Texas (AAC) v SDSU | medium-high |
-| Hawai'i | Sheraton Hawai'i | Honolulu | Dec 24 | Mountain West (Hawai'i home) | AAC annual / CUSA / other | 2025 Hawai'i v Cal (ACC) | low-medium |
-| Idaho Potato | Famous Idaho Potato | Boise | Dec 21 | MAC | Mountain West (+ Pac-12 overflow) | 2025 Utah St v Wash St | high |
-| Arizona | Snoop Dogg Arizona | Tucson | Dec | MAC | Mountain West | 2023 Toledo v Wyoming; 2025 Fresno St v Miami OH | high |
-| Puerto Rico | Puerto Rico (new) | Bayamón | Dec 22 | MAC | G6 operator pool | new 2026-27 | medium-high |
+## 2. Bowl table — 2026-27, THIS YEAR'S evidence (v3, 2026-09-21)
+Status: `2026` = confirmed by a 2026-dated source (bowl/conference release, Bowl Season list,
+2026-dated Wikipedia page, 2026 local coverage); `carry` = 2025 structure carried over with no
+2026-specific statement beyond the blanket carry-over; `open` = a 2026 fact still missing.
+Every non-CFP tie-in contract ends after this season (Arizona Bowl executive, tucson.com 2026)
+-> all entries `season_max: 2026`.
+
+| Root | 2026 name | City / venue | 2026 date | Slot A | Slot B | 2026 evidence | Status | Note |
+|---|---|---|---|---|---|---|---|---|
+| Citrus | Cheez-It Citrus | Orlando, Camping World | Jan 1 2027 (Jan 1 vs 2 unpinned) | SEC #1 | Big Ten #1 | Florida Citrus Sports 2026 page; Wikipedia | 2026 | — |
+| ReliaQuest | ReliaQuest | Tampa, Raymond James | Dec 31 2026 noon ET ESPN | SEC pool | Big Ten | Wikipedia 2026; Tampa Free Press | 2026 | — |
+| Gator | TaxSlayer Gator | Jacksonville, EverBank | Dec 30 2026 | SEC pool | ACC | Wikipedia 2026 (82nd) | 2026 | — |
+| Music City | Liberty Mutual Music City | Nashville, Nissan | Dec 30 2026 3pm ET ESPN | SEC pool | Big Ten | Wikipedia 2026 | 2026 | — |
+| Texas | Kinder's Texas | Houston, NRG | Dec 31 2026 7:30pm ET ESPN | SEC pool | Big 12 #3 | Wikipedia 2026 (20th) | 2026 | — |
+| Liberty | AutoZone Liberty | Memphis, Simmons Bank Liberty | Dec 2026 (date open) | Big 12 #4 | SEC pool primary / AAC secondary | CFN 2026-27 page | 2026 (structure) | which side fills B in 2026 unknowable until December |
+| Las Vegas | Las Vegas | Las Vegas, Allegiant | Dec 31 2026 12:45pm PT ESPN | SEC (even seasons) | Legacy Pac-12 group | Wikipedia 2026; news3lv; pressdemocrat 2026-08-16 | 2026 | Big Ten side in odd seasons |
+| Duke's Mayo | Duke's Mayo | Charlotte, Bank of America | Mon Dec 28 2026 3:30pm ET ABC (ACC release; Wikipedia's Dec 26 is stale) | ACC | Big Ten (even seasons) | theacc.com 2026-06-03; franchise page rule (B1G even / SEC odd; the other goes to Las Vegas) | 2026 | "2026 Duke's Mayo Bowl" Wikipedia page = the Jan 2 2026 game (2025 season), hence its "SEC" |
+| Pop-Tarts | Pop-Tarts | Orlando, Camping World | Dec 29 2026 5:30pm ET ESPN | Big 12 #2 | ACC #1 non-CFP (incl. Notre Dame) | Wikipedia 2026; poptartsbowl.com | 2026 | explicit "top ACC selection vs second Big 12 selection" |
+| Alamo | Valero Alamo | San Antonio, Alamodome | Dec 29 2026 8pm CT ESPN | Big 12 #1 (12-team pool) | Legacy Pac-12 12-team pool | Wikipedia 2026; alamobowl.com | 2026 | first-available from each pool by overall record |
+| Cactus | Cactus Bowl (rebranded from Rate, 2026-06-03) | Tempe, Mountain America Stadium | Dec 26 2026 5:30pm ABC | Big 12 #5 | Big Ten | azfamily 2026-06-03; statepress 2026-06 | 2026 | MWC backup if B1G/B12 cannot fill |
+| Independence | Radiance Technologies Independence | Shreveport | Dec 22 2026 8:30pm ET ESPN | Big 12 #6 (legacy Pac-12 backup) | CUSA anchor | Wikipedia 2026; SI/spokesman Pac-12 2026 | 2026 | primary/backup, not a conflict |
+| Pinstripe | Bad Boy Mowers Pinstripe | Bronx, Yankee Stadium | Dec 26 2026 noon ET ABC | Big Ten | ACC | Wikipedia 2026; theacc 2026-06-03 | 2026 | — |
+| Holiday | Trust & Will Holiday (47th) | San Diego, Snapdragon | Dec 28 2026 2pm PT FOX | ACC | Legacy Pac-12 group | holidaybowl.com 2026; kvia 2026-04-20 | 2026 | no Big Ten access |
+| Sun | Tony the Tiger Sun (Old El Paso sponsor per bowlseason.com 2026-09-17) | El Paso | Dec 31 2026 noon MT CBS | ACC | Legacy Pac-12 group | sunbowl.org; El Paso Times 2026-04-29; aol 2026 | 2026 | "traditionally the last Pac-12 bowl to select" |
+| Poinsettia | SDCCU Poinsettia (revived) | San Diego, Snapdragon | Dec 23 2026 5:30pm MT | Pac-12 champion (if not CFP) | Legacy 10-team sub-pool (excl. OSU/WSU) | SI 2026; on3; mwcconnection 2026 | 2026 | — |
+| Military | Freedom Mortgage Military | Annapolis | Dec 28 2026 2pm ET ESPN | ACC | AAC annual | theacc 2026-06-03 | 2026 | — |
+| Fenway | Wasabi Fenway | Boston, Fenway Park | Dec 26 2026 2pm ET ESPN | ACC (or Notre Dame, "close in record") | AAC annual | theacc 2026-06-03; Wikipedia 2026 | 2026 | ND numeric threshold only in older text |
+| Gasparilla | Union Home Mortgage Gasparilla | Tampa, Raymond James | Dec 18 2026 | AAC pool | rotating ACC/SEC (SEC residual via ESPN Events) | Wikipedia 2026; FanSided 2026 | 2026 | — |
+| Birmingham | JLab Birmingham (20th) | Birmingham, Protective | Dec 29 2026 | ACC/SEC/American three-way pool | same | Wikipedia 2026; wbrc 2026-06-04; FanSided | 2026 | SEC only if a team remains after Pool of Six |
+| Armed Forces | Lockheed Martin Armed Forces | Fort Worth, Amon G. Carter (venue carry) | Dec 23 2026 | American annual | CUSA (2026 list) | Wikipedia 2026; FanSided 2026 | 2026 | actual partners varied 2023-25 |
+| First Responder | SERVPRO First Responder | Dallas, Ford Stadium | Sat Jan 2 2027 | American pool | ACC / Big 12 / CUSA pool | firstresponderbowl.com 2026-06-03; FanSided | 2026 | actuals 2023-25 all AAC v CUSA/SBC |
+| Frisco Bowl | Frisco Bowl (9th) | Frisco, Ford Center | Dec 23 2026 8pm CT | G6 operator pool | G6 pool (ACC access) | thefriscobowl.com 2026 | 2026 | — |
+| Frisco Football Classic | Frisco Football Classic (= 2025 Xbox Bowl, renamed) | Frisco, Ford Center | Dec 15 2026 9pm ET | CUSA / Sun Belt pool (inherited) | same; ACC lists it as a destination | InForum 2026; theacc 2026-06-03; Wikipedia 2026-27 | 2026 | not a third Frisco game; bowl_names root must map both names |
+| New Orleans | R+L Carriers New Orleans (26th) | New Orleans, Caesars Superdome | Dec 23 2026 1pm CT | Sun Belt #2 | CUSA | crescentcitysports 2026 | 2026 | — |
+| 68 Ventures | 68 Ventures (28th) | Mobile, Hancock Whitney | Dec 26 2026 5:30pm ET | Sun Belt #5 | MAC | Wikipedia 2026 | 2026 | 2025 CUSA opponent was a one-off |
+| Myrtle Beach | Myrtle Beach (7th) | Conway SC, Brooks Stadium | Dec 21 2026 11am ET | G6 pool: any two of CUSA/MAC/Sun Belt | same | Wikipedia 2026; coastal.edu 2026-06-03 | 2026 | — |
+| Cure | Cure Bowl | Orlando, Exploria | Dec 22 2026 | G6 operator pool | ACC access | Wikipedia 2026 | 2026 (carry structure) | — |
+| Boca Raton | Bush's Boca Raton | Boca Raton, FAU Flagler CU Stadium | Dec 18 2026 11am ET ESPN | G6 pool (AAC/CUSA/MAC/SBC) | + MWC, select independents | bocaratontribune / tapinto 2026-06 | 2026 | — |
+| Salute to Veterans | IS4S Salute to Veterans | Montgomery, Cramton Bowl | Dec 15 2026 5:30pm ET ESPN | flat SBC/MAC/CUSA pool | same | wsfa etc 2026-06-03 | 2026 (date); anchor open | draft's "Sun Belt anchor" unconfirmed for 2026 |
+| New Mexico | Isleta New Mexico | Albuquerque | Dec 24 2026 11:30am MT ESPN | Mountain West | CUSA (2026 sources name CUSA; wider pool unconfirmed) | Wikipedia 2026; CFN 2026-27 | 2026 | 2025 actual was AAC |
+| Hawai'i | Sheraton Hawai'i | Honolulu, Ching Athletics Complex | Dec 24 2026 1pm HST ESPN | Mountain West (Hawai'i home; full MWC member from 2026-07-01) | AAC / CUSA pool | Wikipedia 2026; hawaii.edu 2026-06-03 | 2026 | — |
+| Idaho Potato | Famous Idaho Potato | Boise, Albertsons | Dec 21 2026 2:30pm MT ESPN | MAC | Mountain West | Wikipedia 2026 | 2026 | — |
+| Arizona | Arizona Bowl | Tucson, Arizona Stadium | date TBD | MAC | Mountain West | Wikipedia 2026; tucson.com 2026 | 2026 (tie-ins); date open | contract ends after this season |
+| Puerto Rico | Puerto Rico Bowl (new) | Bayamón, Juan Ramón Loubriel | Dec 22 2026 1:30pm ET ESPN | MAC anchor | G6 at-large — second side NOT YET ANNOUNCED | getsomemaction 2026-05-08; CFN | 2026 (MAC side); B open | provisional at_large candidate |
+
+Removed vs v2: "Xbox" (renamed Frisco Football Classic), "Rate" (renamed Cactus). Count stays 35.
+Summary: 35 rows; 32 have both sides 2026-confirmed; 3 have an open side (Liberty B, Salute to
+Veterans anchor, Puerto Rico B); 3 have an open date (Liberty, Arizona, Citrus day).
 
 ## 3. Actual assignments captured (evidence for tier inference; incomplete)
 - SEC 2023: Rose Alabama; Orange Georgia; Cotton Missouri; Peach Ole Miss; Citrus Tennessee; Texas
@@ -146,6 +156,9 @@ operator-pool bowls, not Sun Belt numbered picks. 68 Ventures' second side can b
 second side can be AAC. GameAbove/Detroit cancelled; NIU -> MWC; UMass -> MAC.
 
 ## 5. Still unresolved (needs a primary text or a fresh search session)
+(after the 2026-confirmation pass) Liberty 2026 slot B and date; Salute to Veterans anchor; Puerto
+Rico opponent side (not yet announced by anyone); Arizona Bowl date; Citrus Jan 1 vs 2; New Mexico
+wider pool; ND numeric threshold in a 2026 text;
 ACC tier count (2 vs 3) and membership; Big Ten official order (inferred only); legacy-pool
 carve-out vs Cal/Stanford "dual eligibility" (two sources disagree; encode as primary group =
 legacy, secondary = ACC, stand-in); legacy pool sunsets after the 2026 season (pressdemocrat) ->

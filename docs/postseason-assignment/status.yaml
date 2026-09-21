@@ -42,7 +42,7 @@ branching:
   note: "harness-pinned name; user accepted it in place of work/<feature-slug>"
 
 summary:
-  current_focus: "owner asked for THIS-YEAR-specific tie-ins: four 2026-confirmation agents running (35 bowls); Bowl Season 2026 affiliation list captured"
+  current_focus: "checkpoint re-presented: bowl table v3 with 2026 evidence on all 35 rows (32 fully confirmed)"
   last_completed: "discovery: 4 research reports + G6 follow-up; research-notes.md, requirements.yaml, plan.yaml written"
   current_blocker: ""
 
@@ -311,7 +311,7 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done"
     stage: "planning"
     task: "2026-confirmation pass, bowls 1-9 (Citrus..Pop-Tarts)"
     last_update: "2026-09-21"
@@ -326,7 +326,7 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done"
     stage: "planning"
     task: "2026-confirmation pass, bowls 10-18 (Alamo..Fenway)"
     last_update: "2026-09-21"
@@ -341,7 +341,7 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done"
     stage: "planning"
     task: "2026-confirmation pass, bowls 19-27 (Gasparilla..Myrtle Beach)"
     last_update: "2026-09-21"
@@ -356,7 +356,7 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done"
     stage: "planning"
     task: "2026-confirmation pass, bowls 28-35 + GameAbove status + 35/36 count"
     last_update: "2026-09-21"
@@ -399,4 +399,4 @@ model_routing:
 
 next_action: "owner: decisions D1-D10 + OQ1-OQ7; choose how to close remaining research gaps (raise search cap / fresh session / supply primary texts); planning-review loop cap (2) reached so a spec review needs owner direction"
 next_recommended_command: "$work"
-user_input_needed: false
+user_input_needed: true
