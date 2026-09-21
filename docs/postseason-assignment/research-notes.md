@@ -140,3 +140,21 @@ capable session before it is encoded.
 - BLOCKER: session-wide WebSearch quota exhausted (200/200) mid-task; other deep dives will be
   partial. Options: raise CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION (owner), fresh sessions, or
   owner-supplied primary texts (preferred).
+
+## 2026-dated affiliation list (orchestrator search, 2026-09-21)
+Bowl Season's 2026-27 affiliation list as reported by Yahoo Sports / FanSided / SpotlightNews
+("College football bowl tie-ins for 2026-27 after CFP uncertainty delays new conference
+connections", ~Aug 2026; LA Bowl noted as folded in February): Holiday ACC v Pac-12; Duke's Mayo
+ACC v SEC; Liberty Big 12 v SEC; Armed Forces American v CUSA; Las Vegas Big Ten v Pac-12; Citrus
+Big Ten v SEC; Sun ACC v Pac-12; ReliaQuest Big Ten v SEC; Alamo Big 12 v Pac-12; Music City Big
+Ten v SEC; Independence Big 12 v Pac-12; Birmingham ACC/SEC/American; Texas Big 12 v SEC; Gator ACC
+v SEC; New Mexico MWC v CUSA/AAC/Sun Belt/MAC; Arizona MWC v MAC; Pop-Tarts ACC v Big 12; Fenway ACC
+v American; Pinstripe ACC v Big Ten; Military ACC v American; First Responder American/ACC/Big 12;
+Rate Big 12 v Big Ten; GameAbove Big Ten v MAC (listed despite the Feb 2026 cancellation reports —
+conflict); Hawaii MWC v CUSA; Frisco AAC/CUSA/MAC/MWC/Sun Belt; New Orleans CUSA v Sun Belt; Puerto
+Rico MAC v at-large. Note: this list gives the CONTRACT sides; parity rules (Las Vegas / Duke's
+Mayo) and pool behaviour (Liberty's AAC secondary, Independence's CUSA anchor in practice) sit on
+top of it. collegefootballnews.com "College Football Bowl Tie-Ins 2026-2027" and mwcconnection.com
+"College Football Bowl Game 2026 Affiliations, Tie-Ins" are the two other 2026-dated full lists
+(not fetchable here). mwcconnection 2026: Sun Bowl "traditionally the last Pac-12 bowl to select".
+Four R9 agents are confirming each of the 35 bowls against 2026-dated sources.

@@ -42,7 +42,7 @@ branching:
   note: "harness-pinned name; user accepted it in place of work/<feature-slug>"
 
 summary:
-  current_focus: "checkpoint re-presented: tie-ins v2 (all 8 deep dives folded), spec v0.3; search quota exhausted for this session"
+  current_focus: "owner asked for THIS-YEAR-specific tie-ins: four 2026-confirmation agents running (35 bowls); Bowl Season 2026 affiliation list captured"
   last_completed: "discovery: 4 research reports + G6 follow-up; research-notes.md, requirements.yaml, plan.yaml written"
   current_blocker: ""
 
@@ -301,6 +301,67 @@ agents:
     last_update: "2026-09-21"
     blocker: ""
 
+  - id: "platform-researcher-13"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "planning"
+    task: "2026-confirmation pass, bowls 1-9 (Citrus..Pop-Tarts)"
+    last_update: "2026-09-21"
+    blocker: ""
+  - id: "platform-researcher-14"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "planning"
+    task: "2026-confirmation pass, bowls 10-18 (Alamo..Fenway)"
+    last_update: "2026-09-21"
+    blocker: ""
+  - id: "platform-researcher-15"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "planning"
+    task: "2026-confirmation pass, bowls 19-27 (Gasparilla..Myrtle Beach)"
+    last_update: "2026-09-21"
+    blocker: ""
+  - id: "platform-researcher-16"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "planning"
+    task: "2026-confirmation pass, bowls 28-35 + GameAbove status + 35/36 count"
+    last_update: "2026-09-21"
+    blocker: ""
+
 loops:
   planning_review:
     count: 2
@@ -319,7 +380,7 @@ checkpoint:
     - stop
 
 blockers:
-  - "session-wide WebSearch quota exhausted (200/200); no further external research possible in this session"
+  - "WebSearch quota: subagents reported 200/200 mid-task; the main session still searches, so quota appears per-agent — fresh agents spawned with a 25-search budget each"
   - "outbound page fetches blocked by the environment network policy"
 decisions:
   - "Outbound page fetches are blocked in this sandbox (verified with curl); external facts are search-snippet corroborated and tagged provisional until the owner supplies primary texts."
@@ -338,4 +399,4 @@ model_routing:
 
 next_action: "owner: decisions D1-D10 + OQ1-OQ7; choose how to close remaining research gaps (raise search cap / fresh session / supply primary texts); planning-review loop cap (2) reached so a spec review needs owner direction"
 next_recommended_command: "$work"
-user_input_needed: true
+user_input_needed: false
