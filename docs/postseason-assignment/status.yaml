@@ -42,13 +42,13 @@ branching:
   note: "harness-pinned name; user accepted it in place of work/<feature-slug>"
 
 summary:
-  current_focus: "planning: plan revised after review cycle 1; reviewer cycle 2 running; checkpoint next"
+  current_focus: "pre-execution checkpoint: awaiting owner decisions OQ1-OQ7 and branch retention"
   last_completed: "discovery: 4 research reports + G6 follow-up; research-notes.md, requirements.yaml, plan.yaml written"
   current_blocker: ""
 
 artifacts:
   requirements: "docs/postseason-assignment/requirements.yaml"
-  plan: "docs/postseason-assignment/plan.yaml (draft)"
+  plan: "docs/postseason-assignment/plan.yaml (reviewed, approved cycle 2)"
   implementation_report: null
 
 pr:
@@ -69,7 +69,7 @@ agents:
     escalation_count: 0
     status: "active"
     stage: "planning"
-    task: "await reviewer-1 critique; prepare checkpoint"
+    task: "checkpoint presented to owner"
     last_update: "2026-09-21"
     blocker: ""
   - id: "repo-researcher-1"
@@ -143,9 +143,9 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done"
     stage: "planning"
-    task: "cycle 2: confirm F1-F8 resolved in the revised plan"
+    task: "cycle 2: approved; F1-F8 resolved; two clarifications applied"
     last_update: "2026-09-21"
     blocker: ""
 
@@ -182,7 +182,7 @@ agents:
 
 loops:
   planning_review:
-    count: 1
+    count: 2
     max: 2
   execution_verification:
     count: 0
@@ -213,6 +213,6 @@ model_routing:
   unresolved_limitations:
     - "Per-subagent reasoning level is inherited from the main session, not independently enforceable"
 
-next_action: "reviewer cycle 2 verdict -> user checkpoint with OQ1-OQ7 + branch-retention question"
+next_action: "owner checkpoint: proceed (promote to large-initiative, start B1/B2 after P1-P3) | revise_plan | narrow_scope | stop"
 next_recommended_command: "$work"
-user_input_needed: false
+user_input_needed: true

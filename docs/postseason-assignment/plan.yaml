@@ -60,7 +60,7 @@ contracts:
       returns: "{ byes: [seeds 1..bye_count], first_round: [ {game, home_seed, away_seed, site: 'campus', date} ], quarterfinals: [ {bowl, date, feeds: {top_seed, r1_game}} ], semifinals: [...], championship: {site, date} }"
       algorithm:
         - "pairings from cfp_rules.first_round_pairings (5v12, 6v11, 7v10, 8v9) and cfp_rules.quarterfinal_feeds (1<-8/9, 2<-7/10, 3<-6/11, 4<-5/12)"
-        - "QF bowl assignment (KD7): for seed in 1..3: first bowl in cfp_rules.qf_preferences[conference_of(seed)] still available, else first available in cfp_rules.quarterfinal_hosts order; seed 4 takes the remainder. Semifinals: half A = {QF of seed 1, QF of seed 4} plays in cfp_rules.semifinal_hosts[0] unless cfp_rules.semifinal_choice_by_top_seed maps seed 1's QF pick to a named SF host; half B gets the other (OQ3)"
+        - "QF bowl assignment (KD7): for seed in 1..3: first bowl in cfp_rules.qf_preferences[conference_of(seed)] still available; if the conference has NO preference entry (G6 team, independent) or its list is exhausted, the first available bowl in cfp_rules.quarterfinal_hosts order, tagged stand_in 'qf_hosts_order'; seed 4 takes the remainder. Semifinals: half A = {QF of seed 1, QF of seed 4} plays in cfp_rules.semifinal_hosts[0] unless cfp_rules.semifinal_choice_by_top_seed maps seed 1's QF pick to a named SF host; half B gets the other (OQ3)"
     - name: "assign_bowls(state, cfp_field, tie_ins, policy) -> BowlSlate"
       returns: "{ bowls: [ {bowl_root, date, city, slots: [ {source: conf|pool|legacy_pool, team|None, reasons:[...]} ], provisional: bool} ], unplaced_eligible: [team...], filled_from_5_7: [team...] }"
       algorithm:
@@ -173,7 +173,7 @@ execution_batches:
         forbidden_scope: ["artifacts/*", "main.py"]
         dependencies: ["T2", "T3", "T4 (soft: empty history allowed; penalties 0)"]
         parallelizable: false
-        expected_validation: ["uv run pytest tests/test_postseason_bowls.py", "determinism: same state twice -> identical slate; reordering bowl_tie_ins.json entries WITHIN a pick round must not change the slate (only declaration order among equal-pick bowls may)"]
+        expected_validation: ["uv run pytest tests/test_postseason_bowls.py", "determinism: same state twice -> identical slate. Declaration order in bowl_tie_ins.json is the specified tiebreak among bowls with the SAME pick number and is the only reordering expected to change output; reordering bowls with different pick numbers must be a no-op"]
   - id: "B5"
     goal: "payload + publish + pipeline hook"
     tasks:
@@ -219,9 +219,10 @@ open_questions:
   - "OQ7 shortfall fill: when eligible teams run out, fill from 5-7 teams by model rank as a permanent stand-in for the APR order (APR data is not modelled and will not be) — recommend yes, labelled"
 
 review:
-  status: revised_after_cycle_1
-  loop_count: 1
+  status: approved_cycle_2
+  loop_count: 2
   notes:
+    - "cycle 2 (reviewer-1, Sonnet 5): approve; two clarifications applied (T6 determinism wording; KD7 fallback when a conference has no QF preference entry)"
     - "cycle 1 (reviewer-1, Sonnet 5): revise. F1 aq_mode per season (fixed); F2 champions_top4 seeding described (fixed); F3 deterministic round-by-pick walk with fixed conference order (fixed, KD8); F4 either/or slots as candidate lists with parity/priority (fixed, R8); F5 reuse _sort_conference_teams via SeasonEndState.conference_order (fixed, KD6); F6 T6 soft-depends on T4 (fixed); F7 office_pool stand-in named (fixed); F8 A5 promoted to OQ7 (fixed); F9/F10 wording (fixed)"
 
 checkpoint:
