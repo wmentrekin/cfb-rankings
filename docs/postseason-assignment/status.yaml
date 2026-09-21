@@ -42,7 +42,7 @@ branching:
   note: "harness-pinned name; user accepted it in place of work/<feature-slug>"
 
 summary:
-  current_focus: "pre-execution checkpoint: awaiting owner decisions OQ1-OQ7 and branch retention"
+  current_focus: "planning deepened at owner request: 8 conference/bowl deep dives running; selection-logic-spec.md v0.2 written; checkpoint re-presented after synthesis"
   last_completed: "discovery: 4 research reports + G6 follow-up; research-notes.md, requirements.yaml, plan.yaml written"
   current_blocker: ""
 
@@ -69,7 +69,7 @@ agents:
     escalation_count: 0
     status: "active"
     stage: "planning"
-    task: "checkpoint presented to owner"
+    task: "wrote selection-logic-spec.md; coordinating deep dives"
     last_update: "2026-09-21"
     blocker: ""
   - id: "repo-researcher-1"
@@ -180,6 +180,127 @@ agents:
     last_update: "2026-09-21"
     blocker: ""
 
+  - id: "platform-researcher-5"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "planning"
+    task: "SEC: procedure, 2026-27 lineup, 3 seasons of actual assignments"
+    last_update: "2026-09-21"
+    blocker: ""
+  - id: "platform-researcher-6"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "planning"
+    task: "Big Ten: same"
+    last_update: "2026-09-21"
+    blocker: ""
+  - id: "platform-researcher-7"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "planning"
+    task: "ACC (+ Notre Dame access): same"
+    last_update: "2026-09-21"
+    blocker: ""
+  - id: "platform-researcher-8"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "planning"
+    task: "Big 12: same, verify published order"
+    last_update: "2026-09-21"
+    blocker: ""
+  - id: "platform-researcher-9"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "planning"
+    task: "AAC + CUSA (+ Army/Navy, Armed Forces): same"
+    last_update: "2026-09-21"
+    blocker: ""
+  - id: "platform-researcher-10"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "planning"
+    task: "MAC + Sun Belt: same, pin the numbered draft"
+    last_update: "2026-09-21"
+    blocker: ""
+  - id: "platform-researcher-11"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "planning"
+    task: "Mountain West + rebuilt Pac-12 + legacy pools: same"
+    last_update: "2026-09-21"
+    blocker: ""
+  - id: "platform-researcher-12"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "planning"
+    task: "unresolved bowls' own rules + NCAA eligibility/5-7/opt-out rules"
+    last_update: "2026-09-21"
+    blocker: ""
+
 loops:
   planning_review:
     count: 2
@@ -213,6 +334,6 @@ model_routing:
   unresolved_limitations:
     - "Per-subagent reasoning level is inherited from the main session, not independently enforceable"
 
-next_action: "owner checkpoint: proceed (promote to large-initiative, start B1/B2 after P1-P3) | revise_plan | narrow_scope | stop"
+next_action: "synthesize 8 deep dives into bowl-tie-ins-draft.md v2 + per-conference selection models; reviewer pass on selection-logic-spec.md; re-present checkpoint"
 next_recommended_command: "$work"
-user_input_needed: true
+user_input_needed: false
