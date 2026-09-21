@@ -96,3 +96,29 @@ capable session before it is encoded.
 - pressdemocrat.com 2026-08-16 "Explaining 2026 tie-ins for legacy teams, newcomers"; mwcconnection
   tie-in breakdown
 - Notre Dame / CFP MOU coverage (ESPN 2024-03-15; On3 2026 Bevacqua statement)
+
+## CFP quarterfinal/semifinal placement (platform-researcher-4, 2026-09-21)
+- Since 2025-26 (CFP release 2025-05-22): seed 1 selects its QF bowl AND the SF bowl it advances
+  to; seeds 2 and 3 pick from the remaining QF sites in order (each pick fixes that half's SF
+  path); seed 4 is assigned the remaining QF. Done on Selection Sunday (2026-12-06 reported).
+  Stated factors: rank order, "current contract bowl relationships", geographic preference for
+  the 1 seed's semifinal. No documented opponent-proximity or TV constraint found.
+- Geometry: QF(1 vs 8/9) winner meets QF(4 vs 5/12) winner; QF(2 vs 7/10) meets QF(3 vs 6/11).
+  Which SF bowl each half uses is fixed by the 1 seed's pick, not by slot.
+- 2025-26 actual: 1 Indiana -> Rose (SF path Peach); 2 Ohio State -> Cotton (Fiesta); 3 Georgia ->
+  Sugar (Fiesta); 4 Texas Tech -> Orange (Peach). Semis: Peach (Indiana v Oregon), Fiesta (Miami v
+  Ole Miss).
+- 2024-25 actual (committee placed by contract relationships, no team choice): 1 Oregon Rose, 2
+  Georgia Sugar, 3 Boise State Fiesta, 4 Arizona State Peach. Semis: Cotton (Rose/Peach winners),
+  Orange (Fiesta/Sugar winners).
+- First round 2026-27: Fri Dec 18 one game 8pm ET; Sat Dec 19 three games; higher seed hosts;
+  day/window per pairing set on Selection Sunday (not pre-set by seed).
+- 2027-28 (CFP release 2026-07-09): QF Sugar Fri Dec 31 2027 + Fiesta/Peach/Rose Sat Jan 1 2028;
+  SF Orange Jan 13 + Cotton Jan 14 2028 (SF date pairing from a truncated snippet); NCG New
+  Orleans. 2028-29 NCG Tampa. Rotation: 25-26 QF Cotton/Orange/Rose/Sugar, SF Fiesta/Peach;
+  26-27 QF Fiesta/Cotton/Rose/Peach, SF Orange/Sugar; 27-28 QF Sugar/Fiesta/Peach/Rose, SF
+  Orange/Cotton.
+- Design consequence: QF stand-in = per-conference ordered NY6 preference list (legacy
+  relationships: B1G Rose; SEC Sugar; ACC Orange; B12 Fiesta/Cotton; others nearest/fallback),
+  seeds 1-3 take the first available in order, seed 4 gets the remainder; SF bowl per half follows
+  from the 1 seed's pick + config `semifinal_hosts`. Provenance "heuristic"; tagged stand_in.
