@@ -42,7 +42,7 @@ branching:
   note: "harness-pinned name; user accepted it in place of work/<feature-slug>"
 
 summary:
-  current_focus: "planning: reviewer critique + two gap-filling research passes (bowl table, CFP QF/SF placement) running"
+  current_focus: "planning: plan revised after review cycle 1; reviewer cycle 2 running; checkpoint next"
   last_completed: "discovery: 4 research reports + G6 follow-up; research-notes.md, requirements.yaml, plan.yaml written"
   current_blocker: ""
 
@@ -145,7 +145,7 @@ agents:
     escalation_count: 0
     status: "running"
     stage: "planning"
-    task: "critique requirements.yaml + plan.yaml against review-checklist.md"
+    task: "cycle 2: confirm F1-F8 resolved in the revised plan"
     last_update: "2026-09-21"
     blocker: ""
 
@@ -159,11 +159,11 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done"
     stage: "planning"
-    task: "complete bowl-by-bowl 2026-27 tie-in table (both slots, pick/tier, confidence) + conference lineup orders"
+    task: "complete bowl-by-bowl 2026-27 tie-in table (both slots, pick/tier, confidence) + conference lineup orders -> bowl-tie-ins-draft.md"
     last_update: "2026-09-21"
-    blocker: "page fetches blocked; search-only; owner may supply primary texts"
+    blocker: ""
   - id: "platform-researcher-4"
     role: "platform-researcher"
     task_profile: "research"
@@ -174,7 +174,7 @@ agents:
     actual_reasoning: "inherited"
     routing_enforced: true
     escalation_count: 0
-    status: "running"
+    status: "done"
     stage: "planning"
     task: "CFP bye-seed quarterfinal placement mechanics, QF->SF bracket geometry, 2025-26 evidence, 2027-28 hosts"
     last_update: "2026-09-21"
@@ -182,7 +182,7 @@ agents:
 
 loops:
   planning_review:
-    count: 0
+    count: 1
     max: 2
   execution_verification:
     count: 0
@@ -213,6 +213,6 @@ model_routing:
   unresolved_limitations:
     - "Per-subagent reasoning level is inherited from the main session, not independently enforceable"
 
-next_action: "fold reviewer-1 + R5/R6 findings into plan.yaml (QF placement + SF geometry become config fields; tie-in table becomes T3 seed data) -> user checkpoint"
+next_action: "reviewer cycle 2 verdict -> user checkpoint with OQ1-OQ7 + branch-retention question"
 next_recommended_command: "$work"
 user_input_needed: false
