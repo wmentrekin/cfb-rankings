@@ -1,0 +1,169 @@
+# Contract: live coordination artifact maintained by $work
+
+artifact: status
+feature: "postseason-assignment"
+mode: "investigation"
+stage: "discovery"
+owner_skill: work
+
+objective: >
+  Research and plan a postseason assignment engine: a pure function from a season end-state
+  (rankings, standings, champions, eligibility) to the CFP field + seeds and every bowl matchup.
+  This pass is research, ideation, and planning only -- no engine code, tests, or outputs.
+  Long-term home is a new page/tab in personal-site, not the Season Grid.
+
+repository_sync:
+  completed_before_work: true
+  checked_at: "2026-09-21"
+  repositories:
+    - path: "/home/user/cfb-rankings"
+      remote: "origin (wmentrekin/cfb-rankings)"
+      relevant_branch: "main"
+      local_commit_before: "19132ee (pinned branch, PR #20 already merged)"
+      remote_commit_after_fetch: "3644200"
+      local_commit_after: "3644200"
+      result: "updated"
+      notes: >
+        Pinned branch claude/georgia-tech-schedule-viz-aqy1ay restarted from origin/main because
+        its previous PR (#20) is merged. Working tree was clean before the reset.
+    - path: "/home/user/personal-site"
+      remote: "origin (wmentrekin/personal-site)"
+      relevant_branch: "main"
+      local_commit_before: "de4984f (pinned branch, PR #25 already merged)"
+      remote_commit_after_fetch: "0d4c097"
+      local_commit_after: "0d4c097"
+      result: "updated"
+      notes: >
+        Read-only for this pass (research on how a future page would consume the artifact).
+        Pinned branch restarted from origin/main; no site changes planned this pass.
+
+branching:
+  branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
+  note: "harness-pinned name; user accepted it in place of work/<feature-slug>"
+
+summary:
+  current_focus: "discovery: repo facts + current CFP/bowl rules + tie-in research"
+  last_completed: "repository sync; branch restart; feature dir created"
+  current_blocker: ""
+
+artifacts:
+  requirements: null
+  plan: null
+  implementation_report: null
+
+pr:
+  number: null
+  url: null
+  status: "not_opened"
+
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    task_profile: "orchestration"
+    requested_model_tier: "frontier"
+    requested_reasoning: "high"
+    requested_provider_model: "Claude Fable 5.1 (session model)"
+    actual_model: "claude-fable-5-1"
+    actual_reasoning: "high"
+    routing_enforced: false
+    escalation_count: 0
+    status: "active"
+    stage: "discovery"
+    task: "coordinate discovery; synthesize into requirements + draft plan"
+    last_update: "2026-09-21"
+    blocker: ""
+  - id: "repo-researcher-1"
+    role: "repo-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "discovery"
+    task: "cfb-rankings: inputs/assets an assignment engine can consume; postseason data already in the pipeline"
+    last_update: "2026-09-21"
+    blocker: ""
+  - id: "repo-researcher-2"
+    role: "repo-researcher"
+    task_profile: "research"
+    requested_model_tier: "fast"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Haiku 4.5"
+    actual_model: "haiku (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "discovery"
+    task: "personal-site: how artifacts are consumed and how a new page/tab would be added"
+    last_update: "2026-09-21"
+    blocker: ""
+  - id: "platform-researcher-1"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "discovery"
+    task: "CFP 2026-27 format: field, seeding, champion rule, Notre Dame, bowl rotation"
+    last_update: "2026-09-21"
+    blocker: ""
+  - id: "platform-researcher-2"
+    role: "platform-researcher"
+    task_profile: "research"
+    requested_model_tier: "balanced"
+    requested_reasoning: "medium"
+    requested_provider_model: "Claude Sonnet 5"
+    actual_model: "sonnet (Agent tool alias)"
+    actual_reasoning: "inherited"
+    routing_enforced: true
+    escalation_count: 0
+    status: "running"
+    stage: "discovery"
+    task: "2026-27 bowl slate, conference tie-ins, and each conference's selection procedure"
+    last_update: "2026-09-21"
+    blocker: ""
+
+loops:
+  planning_review:
+    count: 0
+    max: 2
+  execution_verification:
+    count: 0
+    max: 2
+
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: pending
+  options:
+    - proceed
+    - revise_plan
+    - narrow_scope
+    - stop
+
+blockers: []
+decisions:
+  - "Mode is investigation with requirements.yaml + a draft plan.yaml, because the user asked for research and planning only; promote to large-initiative when build work starts."
+  - "Assignment engine is a pure function of an end-state; the 'what state to feed it' question (if-ended-today vs simulated) is deferred and out of scope for the engine itself."
+  - "Subagents are read-only, never execute against the live database or R2, and never seek credentials."
+
+model_routing:
+  provider: "Claude Code / Anthropic"
+  provider_map_verified_at: "2026-09-07 (.agents/references/provider-model-map.md)"
+  substitutions:
+    - "Agent tool exposes aliases sonnet/opus/haiku/fable; tiers resolved frontier->opus, balanced->sonnet, fast->haiku"
+  unresolved_limitations:
+    - "Per-subagent reasoning level is inherited from the main session, not independently enforceable"
+
+next_action: "wait for four discovery agents; synthesize into requirements.yaml; draft plan.yaml; reviewer critique; user checkpoint"
+next_recommended_command: "$work"
+user_input_needed: false
