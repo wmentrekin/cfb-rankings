@@ -30,7 +30,9 @@ approach:
     - "KD3: where the real process is a human choice, the engine applies a named deterministic stand-in and tags the placement `stand_in: <name>` so the page can show it"
     - "KD4: mid-season the champion of a conference is the current standings leader (per the existing standings order) and is tagged `projected_champion`; once the CCG is played, the real champion replaces it"
     - "KD5: unverified tie-ins are loadable but tagged provenance `provisional`; the payload surfaces the tag so the page can render them as such"
-    - "KD6: within a conference, teams are ordered for bowl picks by the Season Grid standings order (win count, then model rating) — pending OQ2"
+    - "KD6: within a conference, teams are ordered for bowl picks by the Season Grid's real standings order, produced by artifacts/schedule.py::_sort_conference_teams (conf win pct -> per-conference tiebreaker engine -> placement pct -> model rank -> name, champions pinned first); the artifacts-side state builder calls it and stores the result in SeasonEndState.conference_order so the engine never re-implements it — pending OQ2"
+    - "KD7: the QF placement stand-in models the real 'seeds 1-3 choose' process: each seed takes the first available QF bowl from its conference's ordered NY6 preference list (legacy relationships, provenance 'heuristic'); seed 4 gets the remainder; the semifinal bowl of each half follows the 1 seed's pick + cfp_rules.semifinal_hosts; placements tagged stand_in 'qf_conference_preference'"
+    - "KD8: bowl assignment walks in ROUNDS by pick number: round k fills every conference's pick-k slot, conferences in cfp/bowl config `selection.conference_order` (fixed list), bowls within a round in bowl_tie_ins.json declaration order; office_pool conferences use their pool's declaration order as pick numbers (stand_in 'office_pool_declaration_order'); either/or slots resolve to the first candidate applicable to the season with an eligible team; this makes the slate a function of (state, config) and never of dict iteration"
 
 contracts:
   interfaces:
@@ -38,7 +40,8 @@ contracts:
       fields:
         - "season: int"
         - "as_of_week: int | None  (None = final)"
-        - "teams: {team: {conference_raw, is_independent, wins, losses, conf_wins, conf_losses, bowl_status}}  <- compute_standings + teams table"
+        - "teams: {team: {conference_raw, is_independent, wins, losses, conf_wins, conf_losses, bowl_status}}  <- adapter over compute_standings output (nested record/conf_record dicts flattened; is_independent = conference_raw == 'FBS Independents') + teams table for membership"
+        - "conference_order: {conference_raw: [team...]}  <- _sort_conference_teams(entries, rows, season, champ_game_ids, tiebreak) per conference, computed by the artifacts-side builder (KD6)"
         - "ranking: [ {rank, team} ]  strict order, no ties  <- rankings artifact or get_ratings_with_conference + compute_rank_and_delta"
         - "champions: {conference_raw: {team, status: 'actual'|'projected'}}  <- _resolve_conference_champions, else standings leader"
         - "history: {team: [ {season, bowl_root, opponent} ]}  <- postseason game rows, last N seasons"
@@ -46,36 +49,40 @@ contracts:
     - name: "select_cfp_field(state, cfp_rules) -> CFPField"
       returns: "{ field: [ {seed, team, path: 'aq_p4'|'aq_g6'|'at_large'|'independent_guarantee', conference_raw, reasons: [...]} ], bumped: [ {team, rank, reason} ], rules_applied: {...} }"
       algorithm:
-        - "1. AQ P4: for each conference in cfp_rules.aq_conferences take state.champions[conf].team (tag projected if so)"
-        - "2. AQ G6: g6_slot_rule == 'any_team' -> highest-ranked team whose conference is in cfp_rules.g6_conferences; 'champion' -> highest-ranked among those conferences' champions"
+        - "1. aq_mode == 'top_n_champions' (2024, 2025): the aq_count highest-ranked teams among state.champions.values(), any conference; nothing is named"
+        - "1'. aq_mode == 'named_plus_g6' (2026): for each conference in cfp_rules.aq_conferences take state.champions[conf].team (tag projected if so)"
+        - "2. only under 'named_plus_g6': G6 slot: g6_slot_rule == 'any_team' -> highest-ranked team whose conference is in cfp_rules.g6_conferences; 'champion' -> highest-ranked among those conferences' champions; a team already admitted in step 1' is skipped (no double counting)"
         - "3. Independent guarantee: for each entry in cfp_rules.independent_guarantees (team, max_rank): if rank <= max_rank and not already in, reserve one at-large slot"
         - "4. At-large: fill remaining slots (field_size - len(field)) with the highest-ranked teams not yet in"
-        - "5. Seed strictly by rank (seeding == 'straight'); record every team ranked above the last at-large that was left out, with the reason (AQ displacement / guarantee)"
+        - "5. seeding == 'straight' (2025+): seeds 1..N strictly by rank. seeding == 'champions_top4' (2024): seeds 1-4 = the four highest-ranked AQ champions in rank order (byes), seeds 5..N = every other admitted team in rank order (the 5th champion lands at its rank position among them, e.g. Clemson 12 in 2024)"
+        - "6. record every team ranked above the last admitted at-large that was left out, with the reason (AQ displacement / independent guarantee)"
     - name: "build_bracket(cfp_field, cfp_rules) -> Bracket"
       returns: "{ byes: [seeds 1..bye_count], first_round: [ {game, home_seed, away_seed, site: 'campus', date} ], quarterfinals: [ {bowl, date, feeds: {top_seed, r1_game}} ], semifinals: [...], championship: {site, date} }"
       algorithm:
         - "pairings from cfp_rules.first_round_pairings (5v12, 6v11, 7v10, 8v9) and cfp_rules.quarterfinal_feeds (1<-8/9, 2<-7/10, 3<-6/11, 4<-5/12)"
-        - "QF bowl assignment: stand_in 'qf_bowl_by_seed_order' -> seed 1 gets cfp_rules.quarterfinal_hosts[0], ... (OQ3)"
+        - "QF bowl assignment (KD7): for seed in 1..3: first bowl in cfp_rules.qf_preferences[conference_of(seed)] still available, else first available in cfp_rules.quarterfinal_hosts order; seed 4 takes the remainder. Semifinals: half A = {QF of seed 1, QF of seed 4} plays in cfp_rules.semifinal_hosts[0] unless cfp_rules.semifinal_choice_by_top_seed maps seed 1's QF pick to a named SF host; half B gets the other (OQ3)"
     - name: "assign_bowls(state, cfp_field, tie_ins, policy) -> BowlSlate"
       returns: "{ bowls: [ {bowl_root, date, city, slots: [ {source: conf|pool|legacy_pool, team|None, reasons:[...]} ], provisional: bool} ], unplaced_eligible: [team...], filled_from_5_7: [team...] }"
       algorithm:
         - "1. pool = eligible teams (bowl_status == 'eligible') minus CFP field"
-        - "2. per conference: ordered list of eligible teams by KD6; ordered list of its slot obligations from tie_ins (numbered picks where published; tier order otherwise; inferred order tagged)"
-        - "3. walk each conference's slots in order; for slot k take the best remaining team T that minimises the soft-constraint penalty: repeat_bowl(T, bowl, last N) , rematch(T, other slot's team) , repeat_matchup(T, opponent, last N); ties -> KD6 order"
-        - "4. bowls with both slots 'pool'/'at-large' and any unfilled conference slot: fill from the cross-conference pool by rank, same penalties"
+        - "2. per conference: ordered eligible teams = state.conference_order[conf] filtered to eligible and not in CFP (KD6); ordered slot obligations from tie_ins: numbered picks as published; tiered -> tier then declaration order; office_pool -> pool declaration order (stand_in); inferred orders tagged. Either/or slots (candidates with parity/priority) resolve BEFORE the walk to the first candidate applicable to the season that has at least one eligible team"
+        - "3. rounds (KD8): for k in 1..max_pick: for conf in selection.conference_order: slot = conf's pick-k obligation (skip if none/already filled); choose the remaining team T minimising penalty = w_repeat_bowl*repeat_bowl(T, bowl, last N) + w_rematch*rematch(T, team already in the bowl's other slot) + w_repeat_matchup*repeat_matchup(T, that team, last N); ties -> KD6 order. Penalties are 0 when state.history is empty (B3 not yet landed), so the walk degrades to pure pick order"
+        - "4. after all rounds: slots whose source is pool/at_large, plus conference slots left unfilled, are filled from the cross-conference pool in state.ranking order with the same penalties, bowls in declaration order"
         - "5. shortfall: if eligible teams run out, fill from 5-7 teams by rank (stand_in 'apr_fill_by_rank'); remaining empty slots stay None with reason"
         - "6. every placement records reasons: pick number/tier, penalties considered, stand-ins used"
   schemas:
     - name: "postseason/cfp_rules.json"
-      shape: "{schema_version, rules: [ {season_min, season_max, provenance, source, notes, field_size, bye_count, seeding: 'straight'|'champions_top4', aq_conferences: [...], g6_conferences: [...], g6_slot_rule: 'any_team'|'champion', independent_guarantees: [ {team, max_rank} ], first_round_pairings, quarterfinal_feeds, first_round: {dates, site: 'campus'}, quarterfinal_hosts: [ {bowl_root, date} ], semifinal_hosts: [...], championship: {site, city, date}, qf_bowl_stand_in: 'by_seed_order'} ] }"
-      seeds: "2024 (champions_top4, no guarantee), 2025 (straight, no guarantee), 2026 (straight, guarantee ND<=12, g6 any_team default)"
+      shape: "{schema_version, rules: [ {season_min, season_max, provenance, source, notes, field_size, bye_count, aq_mode: 'top_n_champions'|'named_plus_g6', aq_count, aq_conferences: [...], g6_conferences: [...], g6_slot_rule: 'any_team'|'champion', seeding: 'straight'|'champions_top4', independent_guarantees: [ {team, max_rank} ], first_round_pairings, quarterfinal_feeds, first_round: {dates, site: 'campus'}, quarterfinal_hosts: [ {bowl_root, date} ], semifinal_hosts: [ {bowl_root, date} ], semifinal_choice_by_top_seed: {qf_bowl_root: sf_bowl_root} | null, qf_preferences: {conference_raw: [bowl_root...]} (provenance heuristic), championship: {site, city, date}} ] }"
+      seeds: "2024 (top_n_champions 5, champions_top4, no guarantee), 2025 (top_n_champions 5, straight, no guarantee), 2026 (named_plus_g6, straight, guarantee ND<=12, g6 any_team default pending OQ1), 2027 (hosts already announced; rules copied from 2026 pending)"
     - name: "postseason/bowl_tie_ins.json"
-      shape: "{schema_version, bowls: [ {bowl_root, season_min, season_max, provenance: 'primary_source'|'secondary'|'provisional'|'inferred', source, notes, city, date, cfp_host: bool, slots: [ {source_type: 'conference'|'pool'|'legacy_pool'|'at_large', conference?, pool_id?, pick?: int, tier?: int} ] } ], pools: { pool_id: {conferences|teams, order_rule} }, selection: { conference: {mode: 'numbered'|'tiered'|'office_pool', order: [...], criteria: [...] , provenance, source} } }"
+      shape: "{schema_version, bowls: [ {bowl_root, season_min, season_max, provenance: 'primary_source'|'secondary'|'provisional'|'inferred', source, notes, city, date, cfp_host: bool, slots: [ {candidates: [ {source_type: 'conference'|'pool'|'legacy_pool'|'at_large', conference?, pool_id?, pick?: int, tier?: int, parity?: 'even'|'odd'|null, priority: int} ]} ] } ], pools: { pool_id: {conferences|teams, order_rule} }, selection: { conference_order: [conference_raw...], conferences: { conference_raw: {mode: 'numbered'|'tiered'|'office_pool', order: [...], criteria: [...], provenance, source} } }, penalties: {w_repeat_bowl, w_rematch, w_repeat_matchup, history_seasons: 3} }"
+      notes: "a slot is a candidate LIST so 'Big Ten or ACC, alternating' is [{conference: Big Ten, parity: even, priority: 1}, {conference: ACC, parity: odd, priority: 1}] and 'CUSA or at-large' is [{conference: CUSA, priority: 1}, {source_type: at_large, priority: 2}]; a slot whose candidates are unknown is encoded as a single provisional at_large candidate, never as a guessed conference"
       validation: "copy tiebreaker_rules.py: strict keys, season overlap per bowl_root, every referenced pool/conference known, every cfp_host bowl also present in cfp_rules hosts for that season"
     - name: "R2 artifact postseason/{season}/week-NN.json + latest.json + index.json"
       shape: "{season, week, generated_at_utc, snapshot: 'if_ended_today'|'final', ranking_source: {season, week}, cfp: {field, bracket, bumped}, bowls: BowlSlate, provenance_summary: {provisional_count, stand_ins_used, projected_champions}, rules_version}"
   config_changes:
     - "main.py: publish_postseason_artifact(year, week) after publish_schedule_artifact, own try/except, gated `if not args.staging`"
+    - "artifacts/r2.py helpers are hard-coded to the rankings/ prefix; T7 writes parallel functions (upload_json is the only reusable piece), it does not import build_index/refresh_index"
     - "new R2 prefix postseason/; personal-site fetch script gains a third loop (separate feature)"
 
 branching:
@@ -164,9 +171,9 @@ execution_batches:
         model_routing: {task_profile: implementation, uncertainty: medium, consequence: medium, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", routing_enforced: true, escalation_tier: frontier, escalation_condition: "penalty ordering produces a cycle or non-determinism"}
         owned_scope: ["postseason/bowls.py", "tests/test_postseason_bowls.py"]
         forbidden_scope: ["artifacts/*", "main.py"]
-        dependencies: ["T2", "T3"]
+        dependencies: ["T2", "T3", "T4 (soft: empty history allowed; penalties 0)"]
         parallelizable: false
-        expected_validation: ["uv run pytest tests/test_postseason_bowls.py", "determinism: same state twice -> identical slate"]
+        expected_validation: ["uv run pytest tests/test_postseason_bowls.py", "determinism: same state twice -> identical slate; reordering bowl_tie_ins.json entries WITHIN a pick round must not change the slate (only declaration order among equal-pick bowls may)"]
   - id: "B5"
     goal: "payload + publish + pipeline hook"
     tasks:
@@ -195,6 +202,8 @@ risks:
   - "R5: mid-season projected champions mislead -> tag + label (KD4)"
   - "R6: name drift (CFBD school renames, sponsor-heavy notes) -> bowl_names roots already handle sponsors; unmatched names pass through whole and count as 'unmatched' in T4's report"
   - "R7: soft-constraint penalties are a design choice, not a published rule -> documented in methodology; weights in config"
+  - "R8: either/or and alternating tie-in slots -> candidate lists with parity/priority (schema); an unknown slot is a provisional at_large candidate, never a guessed conference"
+  - "R9: the AQ mechanic differs between 2024-25 (top-5 champions, any conference) and 2026 (named P4 + G6 slot) -> aq_mode per season; 2024/2025 fixtures replay under their own mode"
 
 model_routing_notes:
   - "orchestration frontier (session model); implementation balanced; history builder fast; tier inference balanced (open-ended synthesis)"
@@ -203,15 +212,17 @@ model_routing_notes:
 open_questions:
   - "OQ1 G6 slot rule default (recommend any_team)"
   - "OQ2 within-conference pick order (recommend standings order)"
-  - "OQ3 QF bowl stand-in (recommend by seed order, labelled)"
+  - "OQ3 QF bowl stand-in (recommend KD7: per-conference NY6 preference lists seeded from legacy relationships, labelled heuristic)"
   - "OQ4 cadence (recommend weekly from week 1, labelled)"
   - "OQ5 primary sources supplied by owner (recommend yes; blocks final provenance only)"
   - "OQ6 tab vs route on the site (defer)"
+  - "OQ7 shortfall fill: when eligible teams run out, fill from 5-7 teams by model rank as a permanent stand-in for the APR order (APR data is not modelled and will not be) — recommend yes, labelled"
 
 review:
-  status: draft
-  loop_count: 0
-  notes: []
+  status: revised_after_cycle_1
+  loop_count: 1
+  notes:
+    - "cycle 1 (reviewer-1, Sonnet 5): revise. F1 aq_mode per season (fixed); F2 champions_top4 seeding described (fixed); F3 deterministic round-by-pick walk with fixed conference order (fixed, KD8); F4 either/or slots as candidate lists with parity/priority (fixed, R8); F5 reuse _sort_conference_teams via SeasonEndState.conference_order (fixed, KD6); F6 T6 soft-depends on T4 (fixed); F7 office_pool stand-in named (fixed); F8 A5 promoted to OQ7 (fixed); F9/F10 wording (fixed)"
 
 checkpoint:
   required_before_execution: true

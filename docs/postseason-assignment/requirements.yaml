@@ -59,10 +59,10 @@ constraints:
 
 assumptions:
   - "A1: 2026-27 CFP is 12 teams; field size and every bracket date/site are config, not constants"
-  - "A2: within a conference, bowl pick order among eligible teams follows the Season Grid's standings order (win count first, then model rating) unless the owner chooses model rank only"
+  - "A2: within a conference, bowl pick order among eligible teams follows the Season Grid's real standings order (artifacts/schedule.py::_sort_conference_teams, which runs the per-conference tiebreaker engine) unless the owner chooses model rank only"
   - "A3: 2026-27 non-CFP tie-ins carry over from 2025-26 plus the reported deltas (Puerto Rico +, Poinsettia +, LA Bowl -, GameAbove/Detroit -)"
   - "A4: historical bowl appearances can be derived from games rows with season_type='postseason' once 2023-2025 are confirmed present in the DB"
-  - "A5: bowl eligibility stays the existing 6-win rule for v1; a shortfall of eligible teams is filled from 5-7 teams by rank as a stated stand-in for the APR order"
+  - "A5: bowl eligibility stays the existing 6-win rule; a shortfall of eligible teams is filled from 5-7 teams by rank as a labelled, permanent stand-in for the APR order (see OQ7)"
 
 repository_sync:
   source: "docs/postseason-assignment/status.yaml"
@@ -97,7 +97,8 @@ research:
     - "bowl_names.py roots are display-only; there is no tie-in data anywhere in the repo"
     - "tiebreaker config/loader is a copy-ready pattern for a season-scoped, source-cited bowl_tie_ins.json"
   platform_findings:
-    - "12 teams for 2026; 4 named P4 champions + 1 G6 slot; 7 at-large; AQ first then at-large"
+    - "12 teams for 2026; 4 named P4 champions + 1 G6 slot; 7 at-large; AQ first then at-large. 2024 and 2025 instead used 'the 5 highest-ranked champions of any conference' (different mechanic; 2024 also seeded the top 4 champions first)"
+    - "seeds 1-3 choose their QF bowl (and thereby their SF path) since 2025-26; seed 4 takes the remainder; halves are {1,4} and {2,3}; 2027-28 hosts already announced"
     - "G6 slot for 2026 = highest-ranked G6 team, champion or not (5 outlets; primary unverified; reversal push unadopted)"
     - "Notre Dame guarantee at final rank <= 12 (<= 13 in a 14-team field), effective 2026, per 2024 MOU"
     - "straight seeding; top 4 byes; no re-seeding; no conference-mate/rematch avoidance"
@@ -123,6 +124,7 @@ open_questions:
   - "OQ4: publish cadence: weekly if-ended-today snapshots from week 1 (labelled) vs gate until a minimum week? Recommendation: weekly from week 1, labelled"
   - "OQ5: primary sources: owner supplies the tie-in/selection pages as text (as with the SEC tiebreakers) vs a fetch-capable session pulls them? Recommendation: owner supplies; provenance pattern already expects it"
   - "OQ6: site surface: third tab vs separate route? Defer to the site feature; artifact contract works for both"
+  - "OQ7: shortfall fill from 5-7 teams by model rank as a permanent APR stand-in? Recommendation: yes, labelled on the page"
 
 ready_for_planning: true
 planning_blockers: []
