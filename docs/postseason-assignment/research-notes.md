@@ -158,3 +158,11 @@ top of it. collegefootballnews.com "College Football Bowl Tie-Ins 2026-2027" and
 "College Football Bowl Game 2026 Affiliations, Tie-Ins" are the two other 2026-dated full lists
 (not fetchable here). mwcconnection 2026: Sun Bowl "traditionally the last Pac-12 bowl to select".
 Four R9 agents are confirming each of the 35 bowls against 2026-dated sources.
+- Wikipedia "2026–27 NCAA football bowl games" (via search, 2026-09-21): season Dec 12 (Celebration)
+  to Jan 25 (NCG), 46 games; "two bowl games were dropped (LA Bowl, GameAbove Sports Bowl) and two
+  added (Puerto Rico Bowl Dec 22, Poinsettia)". 46 = 35 non-CFP + 11 CFP games -> count is 35;
+  the Bowl Season affiliation list naming GameAbove is stale on that row. ESPN/NCAA.com/fbschedules
+  carry the same 46-game schedule.
+- Yahoo "Bowl tie-ins will be more complicated in 2026": Pac-affiliated bowls "prioritize the former
+  teams (if they provide better matchups), but the new teams exist as well"; 4 MWC slots + 8 Pac-12
+  slots (Poinsettia has two) = 12 for up to 28 teams.
