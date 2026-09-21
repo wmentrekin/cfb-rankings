@@ -1,0 +1,128 @@
+# Contract: durable task-definition handoff created by $work when the selected mode needs explicit requirements
+
+artifact: requirements
+feature: "postseason-assignment"
+mode: "investigation"
+status: draft
+owner_skill: work
+
+summary:
+  problem: >
+    The project ranks teams objectively from outcomes but has no postseason view. A bowl or CFP
+    projection normally mixes rules (who qualifies, who is seeded where, which bowl picks whom)
+    with prediction (who will win the remaining games). The owner does not want prediction baked
+    into the product.
+  motivation: >
+    Split the problem: an ASSIGNMENT ENGINE that maps a season end-state to a full postseason
+    (CFP field + seeds + bracket, and every bowl matchup) is a pure function of outcomes and
+    published rules, so it stays consistent with the rankings' philosophy. What state is fed to
+    it (if-the-season-ended-today vs any hypothetical) is a separate, later decision.
+  requested_outcome: >
+    This pass: research, ideation, and a reviewed plan for the engine, its rule/tie-in config, the
+    data it needs (including ~3 seasons of bowl history to avoid repeats and to infer bowl tiers),
+    and its artifact contract. No engine code, tests, or outputs yet. Long-term home is a new
+    page or tab in personal-site, not the Season Grid.
+
+goals:
+  - "G1: define SeasonEndState, the engine's only input, buildable from data the pipeline already has"
+  - "G2: define the CFP selection + seeding + bracket function with every 2026-27 rule as per-season config"
+  - "G3: define the bowl assignment function driven by a season-scoped, source-cited tie-in config"
+  - "G4: define how ~3 seasons of bowl history feed repeat-avoidance and tier inference"
+  - "G5: define the published artifact contract a future personal-site page consumes"
+  - "G6: every assignment carries an explanation chain (which rule placed this team here and why)"
+  - "G7: execution plan with bounded tasks, domains, routing, and the data verification the owner must run"
+
+non_goals:
+  - "predicting outcomes of unplayed games, simulation, win probabilities"
+  - "writing engine code, tests, configs, or artifacts in this pass"
+  - "the personal-site page itself (separate feature once the artifact exists)"
+  - "matching real-world bowl selections; the target is a stated rule applied consistently"
+  - "modelling human factors (fan travel, TV) except as explicit, published, deterministic tiebreaks"
+
+constraints:
+  technical:
+    - "pure functions over plain dicts, mirroring artifacts/schedule_standings.py; no I/O in the engine"
+    - "no new dependencies (uv sync --frozen)"
+    - "config pattern copies artifacts/conference_tiebreakers.json + tiebreaker_rules.py: schema_version, season_min/season_max, provenance/source/notes per entry, strict unknown-key rejection, overlap check, one error class"
+    - "teams keyed by CFBD school string; conference membership per season from the teams table; independents are raw 'FBS Independents'"
+    - "rankings input is the ranked list (rank, team, raw conference); source is the DB query or the published rankings artifact, never fetched inside the engine"
+    - "artifact publishing mirrors artifacts/r2.py: pure build_*_payload, exception-safe publish, self-healing index from bucket listing"
+    - "outbound page fetches are blocked in this sandbox; primary rule/tie-in texts must be supplied by the owner or fetched from a session with a wider network policy"
+  product:
+    - "objectivity: the engine applies published rules to actual outcomes; where a rule is a human choice (SEC pool placement, seeds 1-3 choosing a quarterfinal bowl) the engine uses a stated deterministic stand-in and labels it"
+    - "a wrong value on a public page is worse than an absent one: unverified tie-ins render as provisional, never silently as fact"
+    - "mid-season output is an 'if the season ended today' snapshot and is labelled as such"
+  process:
+    - "feature branch + PR; agents never merge; independent review before handoff"
+    - "subagents never execute against the live DB or R2 and never seek credentials"
+    - "docs/postseason-assignment/ is ephemeral and deleted before merge"
+
+assumptions:
+  - "A1: 2026-27 CFP is 12 teams; field size and every bracket date/site are config, not constants"
+  - "A2: within a conference, bowl pick order among eligible teams follows the Season Grid's standings order (win count first, then model rating) unless the owner chooses model rank only"
+  - "A3: 2026-27 non-CFP tie-ins carry over from 2025-26 plus the reported deltas (Puerto Rico +, Poinsettia +, LA Bowl -, GameAbove/Detroit -)"
+  - "A4: historical bowl appearances can be derived from games rows with season_type='postseason' once 2023-2025 are confirmed present in the DB"
+  - "A5: bowl eligibility stays the existing 6-win rule for v1; a shortfall of eligible teams is filled from 5-7 teams by rank as a stated stand-in for the APR order"
+
+repository_sync:
+  source: "docs/postseason-assignment/status.yaml"
+  repositories_confirmed:
+    - "/home/user/cfb-rankings @ 3644200 (origin/main, updated)"
+    - "/home/user/personal-site @ 0d4c097 (origin/main, updated; read-only this pass)"
+  accepted_unverified_states: []
+
+repo_context:
+  relevant_paths:
+    - "artifacts/schedule_standings.py (compute_standings, compute_bowl_eligibility)"
+    - "artifacts/schedule.py (_resolve_conference_champions, identify_conference_championship_games, _bucket_cfp_slot, publish_schedule_artifact)"
+    - "artifacts/rankings.py (CONFERENCE_DISPLAY_NAMES, compute_rank_and_delta, build_payload)"
+    - "artifacts/conference_tiebreakers.json, artifacts/tiebreaker_rules.py (config pattern)"
+    - "artifacts/bowl_names.py, tests/test_postseason_slots.py (bowl root names)"
+    - "artifacts/r2.py, scripts/publish_season_schedule_artifact.py (publishing pattern)"
+    - "database/get_games.py, database/migrations/0002, 0005, 0006 (stored postseason fields)"
+    - "main.py L440-461 (publish hook point), .github/workflows/weekly-update.yml"
+    - "personal-site: scripts/fetch-rankings-data.mjs, src/pages/projects/cfb-rankings/index.astro, src/lib/conferences.ts"
+  systems_in_scope:
+    - "cfb-rankings pipeline (engine, config, artifact)"
+    - "Cloudflare R2 (new artifact prefix)"
+  prior_artifacts:
+    - "docs/postseason-assignment/research-notes.md"
+
+research:
+  repo_findings:
+    - "standings module is pure and already yields conference record, championship status, and bowl status per team"
+    - "champion-per-conference dict exists but fills only once the CCG is played; an if-ended-today snapshot needs a stand-in (current standings leader per conference) and must label it"
+    - "no rankings function is DB-free; the engine takes the ranked list as input"
+    - "postseason game rows carry the bowl name in notes; seeds are schema-only; which seasons are ingested beyond 2025-26 is unverified"
+    - "bowl_names.py roots are display-only; there is no tie-in data anywhere in the repo"
+    - "tiebreaker config/loader is a copy-ready pattern for a season-scoped, source-cited bowl_tie_ins.json"
+  platform_findings:
+    - "12 teams for 2026; 4 named P4 champions + 1 G6 slot; 7 at-large; AQ first then at-large"
+    - "G6 slot for 2026 = highest-ranked G6 team, champion or not (5 outlets; primary unverified; reversal push unadopted)"
+    - "Notre Dame guarantee at final rank <= 12 (<= 13 in a 14-team field), effective 2026, per 2024 MOU"
+    - "straight seeding; top 4 byes; no re-seeding; no conference-mate/rematch avoidance"
+    - "2026-27: R1 Dec 18-19 campus; QF Fiesta Dec 30 + Cotton/Rose/Peach Jan 1; SF Orange Jan 14 + Sugar Jan 15; NCG Jan 25 Las Vegas; seeds 1-3 choose QF bowl"
+    - "all six NY6 host CFP games every year; none is in the ordinary tie-in pool"
+    - "non-CFP tie-ins carry over from 2025-26 with four deltas; partial table provisional; Pac-12/MWC split unsettled"
+    - "SEC: Citrus then Pool of Six placed by the office; ACC: three tiers + 'avoid repeat appearances and matchups'; Sun Belt: numbered draft; Big Ten/Big 12 orders on unfetchable pages; AAC/MAC/CUSA/MWC unpublished"
+    - "no published hard 'one fewer win' or 'no consecutive-year' rule found; soft constraints only"
+
+acceptance_criteria:
+  - "AC1: requirements + plan reviewed by an independent reviewer; findings resolved or recorded"
+  - "AC2: the plan names the SeasonEndState fields and where each comes from in the repo"
+  - "AC3: every CFP rule found in research is represented as a config field with its default and provenance status"
+  - "AC4: the bowl assignment algorithm is specified step by step with its tiebreaks and soft constraints, and states what it does when a conference cannot fill its slots"
+  - "AC5: the plan lists the exact primary-source documents the owner must supply and the live-DB checks the owner must run, with the existing scripts to use"
+  - "AC6: the artifact contract is specified well enough for the future personal-site page to be planned from it"
+  - "AC7: open product decisions are listed with a recommendation each, for the checkpoint"
+
+open_questions:
+  - "OQ1: G6 automatic slot: any G6 team (as reported) or champion only (owner's prior)? Recommendation: any_team, config flag either way"
+  - "OQ2: within-conference pick order: standings order (win count then rating, as the Season Grid sorts) or model rank only? Recommendation: standings order"
+  - "OQ3: quarterfinal bowl stand-in for seeds 1-3 choosing: config-listed order by seed (simple, labelled) vs venue proximity (needs stadium coordinates)? Recommendation: config-listed order for v1"
+  - "OQ4: publish cadence: weekly if-ended-today snapshots from week 1 (labelled) vs gate until a minimum week? Recommendation: weekly from week 1, labelled"
+  - "OQ5: primary sources: owner supplies the tie-in/selection pages as text (as with the SEC tiebreakers) vs a fetch-capable session pulls them? Recommendation: owner supplies; provenance pattern already expects it"
+  - "OQ6: site surface: third tab vs separate route? Defer to the site feature; artifact contract works for both"
+
+ready_for_planning: true
+planning_blockers: []

@@ -1,0 +1,218 @@
+# Contract: durable execution plan created by $work when the selected mode needs explicit planning
+# DRAFT for the checkpoint. Nothing in execution_batches runs this pass.
+
+artifact: plan
+feature: "postseason-assignment"
+mode: "investigation"   # promote to large-initiative when execution is approved
+status: draft
+owner_skill: work
+based_on: "docs/postseason-assignment/requirements.yaml"
+
+objective: >
+  A postseason assignment engine: pure functions that map a SeasonEndState to (a) the CFP field,
+  seeds, and bracket and (b) every bowl matchup, driven entirely by per-season, source-cited
+  config, with an explanation chain on every placement, published as a new R2 artifact kind.
+
+approach:
+  summary: >
+    New top-level package `postseason/` beside `model/` and `artifacts/`, with no I/O inside it.
+    Three layers: (1) STATE — a builder in artifacts/ assembles SeasonEndState from the rows and
+    rankings the pipeline already has; (2) RULES — `cfp_rules.json` and `bowl_tie_ins.json`,
+    season-scoped, validated on load exactly like conference_tiebreakers.json; (3) ENGINE —
+    `select_cfp_field`, `build_bracket`, `assign_bowls`, each returning plain dicts with a
+    `reasons` list per placement. A payload builder + publisher mirrors artifacts/r2.py and hooks
+    into main.py after the schedule publish. Bowl history (last 3 seasons) is derived from stored
+    postseason game rows and feeds both repeat-avoidance and an offline tier-inference analysis
+    whose results land in the tie-in config with provenance "inferred".
+  key_decisions:
+    - "KD1: the engine never fetches; SeasonEndState is the only input and is serialisable (so a future what-if or simulation layer feeds it the same way)"
+    - "KD2: rules are data. Every CFP rule that changed between 2024, 2025, and 2026 is a config field with season_min/season_max, so 2024 and 2025 can be replayed as regression fixtures"
+    - "KD3: where the real process is a human choice, the engine applies a named deterministic stand-in and tags the placement `stand_in: <name>` so the page can show it"
+    - "KD4: mid-season the champion of a conference is the current standings leader (per the existing standings order) and is tagged `projected_champion`; once the CCG is played, the real champion replaces it"
+    - "KD5: unverified tie-ins are loadable but tagged provenance `provisional`; the payload surfaces the tag so the page can render them as such"
+    - "KD6: within a conference, teams are ordered for bowl picks by the Season Grid standings order (win count, then model rating) — pending OQ2"
+
+contracts:
+  interfaces:
+    - name: "SeasonEndState (postseason/state.py, frozen dataclass or TypedDict)"
+      fields:
+        - "season: int"
+        - "as_of_week: int | None  (None = final)"
+        - "teams: {team: {conference_raw, is_independent, wins, losses, conf_wins, conf_losses, bowl_status}}  <- compute_standings + teams table"
+        - "ranking: [ {rank, team} ]  strict order, no ties  <- rankings artifact or get_ratings_with_conference + compute_rank_and_delta"
+        - "champions: {conference_raw: {team, status: 'actual'|'projected'}}  <- _resolve_conference_champions, else standings leader"
+        - "history: {team: [ {season, bowl_root, opponent} ]}  <- postseason game rows, last N seasons"
+        - "regular_season_opponents: {team: set(team)}  <- rows (for rematch avoidance)"
+    - name: "select_cfp_field(state, cfp_rules) -> CFPField"
+      returns: "{ field: [ {seed, team, path: 'aq_p4'|'aq_g6'|'at_large'|'independent_guarantee', conference_raw, reasons: [...]} ], bumped: [ {team, rank, reason} ], rules_applied: {...} }"
+      algorithm:
+        - "1. AQ P4: for each conference in cfp_rules.aq_conferences take state.champions[conf].team (tag projected if so)"
+        - "2. AQ G6: g6_slot_rule == 'any_team' -> highest-ranked team whose conference is in cfp_rules.g6_conferences; 'champion' -> highest-ranked among those conferences' champions"
+        - "3. Independent guarantee: for each entry in cfp_rules.independent_guarantees (team, max_rank): if rank <= max_rank and not already in, reserve one at-large slot"
+        - "4. At-large: fill remaining slots (field_size - len(field)) with the highest-ranked teams not yet in"
+        - "5. Seed strictly by rank (seeding == 'straight'); record every team ranked above the last at-large that was left out, with the reason (AQ displacement / guarantee)"
+    - name: "build_bracket(cfp_field, cfp_rules) -> Bracket"
+      returns: "{ byes: [seeds 1..bye_count], first_round: [ {game, home_seed, away_seed, site: 'campus', date} ], quarterfinals: [ {bowl, date, feeds: {top_seed, r1_game}} ], semifinals: [...], championship: {site, date} }"
+      algorithm:
+        - "pairings from cfp_rules.first_round_pairings (5v12, 6v11, 7v10, 8v9) and cfp_rules.quarterfinal_feeds (1<-8/9, 2<-7/10, 3<-6/11, 4<-5/12)"
+        - "QF bowl assignment: stand_in 'qf_bowl_by_seed_order' -> seed 1 gets cfp_rules.quarterfinal_hosts[0], ... (OQ3)"
+    - name: "assign_bowls(state, cfp_field, tie_ins, policy) -> BowlSlate"
+      returns: "{ bowls: [ {bowl_root, date, city, slots: [ {source: conf|pool|legacy_pool, team|None, reasons:[...]} ], provisional: bool} ], unplaced_eligible: [team...], filled_from_5_7: [team...] }"
+      algorithm:
+        - "1. pool = eligible teams (bowl_status == 'eligible') minus CFP field"
+        - "2. per conference: ordered list of eligible teams by KD6; ordered list of its slot obligations from tie_ins (numbered picks where published; tier order otherwise; inferred order tagged)"
+        - "3. walk each conference's slots in order; for slot k take the best remaining team T that minimises the soft-constraint penalty: repeat_bowl(T, bowl, last N) , rematch(T, other slot's team) , repeat_matchup(T, opponent, last N); ties -> KD6 order"
+        - "4. bowls with both slots 'pool'/'at-large' and any unfilled conference slot: fill from the cross-conference pool by rank, same penalties"
+        - "5. shortfall: if eligible teams run out, fill from 5-7 teams by rank (stand_in 'apr_fill_by_rank'); remaining empty slots stay None with reason"
+        - "6. every placement records reasons: pick number/tier, penalties considered, stand-ins used"
+  schemas:
+    - name: "postseason/cfp_rules.json"
+      shape: "{schema_version, rules: [ {season_min, season_max, provenance, source, notes, field_size, bye_count, seeding: 'straight'|'champions_top4', aq_conferences: [...], g6_conferences: [...], g6_slot_rule: 'any_team'|'champion', independent_guarantees: [ {team, max_rank} ], first_round_pairings, quarterfinal_feeds, first_round: {dates, site: 'campus'}, quarterfinal_hosts: [ {bowl_root, date} ], semifinal_hosts: [...], championship: {site, city, date}, qf_bowl_stand_in: 'by_seed_order'} ] }"
+      seeds: "2024 (champions_top4, no guarantee), 2025 (straight, no guarantee), 2026 (straight, guarantee ND<=12, g6 any_team default)"
+    - name: "postseason/bowl_tie_ins.json"
+      shape: "{schema_version, bowls: [ {bowl_root, season_min, season_max, provenance: 'primary_source'|'secondary'|'provisional'|'inferred', source, notes, city, date, cfp_host: bool, slots: [ {source_type: 'conference'|'pool'|'legacy_pool'|'at_large', conference?, pool_id?, pick?: int, tier?: int} ] } ], pools: { pool_id: {conferences|teams, order_rule} }, selection: { conference: {mode: 'numbered'|'tiered'|'office_pool', order: [...], criteria: [...] , provenance, source} } }"
+      validation: "copy tiebreaker_rules.py: strict keys, season overlap per bowl_root, every referenced pool/conference known, every cfp_host bowl also present in cfp_rules hosts for that season"
+    - name: "R2 artifact postseason/{season}/week-NN.json + latest.json + index.json"
+      shape: "{season, week, generated_at_utc, snapshot: 'if_ended_today'|'final', ranking_source: {season, week}, cfp: {field, bracket, bumped}, bowls: BowlSlate, provenance_summary: {provisional_count, stand_ins_used, projected_champions}, rules_version}"
+  config_changes:
+    - "main.py: publish_postseason_artifact(year, week) after publish_schedule_artifact, own try/except, gated `if not args.staging`"
+    - "new R2 prefix postseason/; personal-site fetch script gains a third loop (separate feature)"
+
+branching:
+  strategy: "single-branch"
+  branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
+  worktrees: []
+
+owner_prerequisites:   # things only the repo owner can do; block the batches that list them
+  - id: "P1"
+    what: "confirm postseason games rows exist for seasons 2023, 2024, 2025 in the live DB; backfill any gap with scripts/backfill_games.py --season N --week W --apply (season_type postseason)"
+    blocks: ["B3", "B4"]
+  - id: "P2"
+    what: "supply primary texts (paste or file) for: 2026-27 slate table, SEC/ACC/Big Ten/Big 12 selection pages, Sun Belt/AAC/MAC/CUSA/MWC/Pac-12 tie-in announcements, CFP 2026 format + ND MOU statements (list in research-notes.md)"
+    blocks: ["B2 (final provenance)", "B1 (cfp_rules provenance upgrade)"]
+  - id: "P3"
+    what: "decide OQ1-OQ5 at the checkpoint"
+    blocks: ["B1", "B4"]
+
+execution_batches:
+  - id: "B1"
+    goal: "CFP selection + bracket, config-driven, with 2024/2025/2026 fixtures"
+    tasks:
+      - id: "T1"
+        title: "postseason/ package, SeasonEndState, cfp_rules.json + loader"
+        objective: "state model, rules schema + strict loader (tiebreaker_rules pattern), 2024/2025/2026 rule entries with provenance"
+        assigned_domain: "generalist-developer"
+        model_routing: {task_profile: implementation, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", routing_enforced: true, escalation_tier: frontier, escalation_condition: "rule semantics cannot be encoded without a product guess"}
+        owned_scope: ["postseason/__init__.py", "postseason/state.py", "postseason/rules.py", "postseason/cfp_rules.json", "tests/test_postseason_rules.py"]
+        forbidden_scope: ["artifacts/*", "main.py", "database/*"]
+        dependencies: ["P3"]
+        parallelizable: false
+        expected_validation: ["uv run pytest tests/test_postseason_rules.py", "loader rejects unknown keys / overlapping seasons"]
+      - id: "T2"
+        title: "select_cfp_field + build_bracket"
+        objective: "implement the two functions per contracts.interfaces with reasons + bumped list; fixtures: 2024 Clemson/Alabama displacement, 2025 ND #11 out, 2026 ND guarantee bumping the lowest at-large, G6 flag both ways, champion outside top 12 seeded at rank"
+        assigned_domain: "generalist-developer"
+        model_routing: {task_profile: implementation, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", routing_enforced: true, escalation_tier: frontier, escalation_condition: "fixture disagrees with a rule and the rule text is ambiguous"}
+        owned_scope: ["postseason/cfp.py", "tests/test_postseason_cfp.py"]
+        forbidden_scope: ["artifacts/*", "main.py"]
+        dependencies: ["T1"]
+        parallelizable: false
+        expected_validation: ["uv run pytest tests/test_postseason_cfp.py", "mutation check: flip g6_slot_rule and confirm the fixture fails"]
+  - id: "B2"
+    goal: "bowl tie-in config + loader for 2026-27"
+    tasks:
+      - id: "T3"
+        title: "bowl_tie_ins.json schema, loader, 2026-27 entries"
+        objective: "encode the slate from owner-supplied primary sources; anything not primary-sourced is provenance 'provisional'; selection modes per conference; pools (G5 at-large, Pac-12 legacy)"
+        assigned_domain: "data-engineer"
+        model_routing: {task_profile: implementation, uncertainty: high, consequence: medium, scope_size: bounded, determinism: deterministic, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", routing_enforced: true, escalation_tier: frontier, escalation_condition: "sources conflict on a slot and no provenance rule resolves it"}
+        owned_scope: ["postseason/bowl_tie_ins.json", "postseason/tie_ins.py", "tests/test_postseason_tie_ins.py"]
+        forbidden_scope: ["postseason/cfp.py", "artifacts/*"]
+        dependencies: ["P2 (partial: proceed with provisional tags)"]
+        parallelizable: true
+        expected_validation: ["uv run pytest tests/test_postseason_tie_ins.py", "every cfp_host bowl cross-checks against cfp_rules for the season"]
+  - id: "B3"
+    goal: "bowl history + tier inference"
+    tasks:
+      - id: "T4"
+        title: "history builder from stored postseason rows"
+        objective: "artifacts-side builder producing SeasonEndState.history and regular_season_opponents from games rows (notes -> bowl_root via bowl_names); last N=3 seasons"
+        assigned_domain: "data-engineer"
+        model_routing: {task_profile: implementation, uncertainty: low, consequence: medium, scope_size: bounded, determinism: deterministic, requested_tier: fast, requested_reasoning: medium, provider_model: "Claude Haiku 4.5", routing_enforced: true, escalation_tier: balanced, escalation_condition: "notes strings do not map to bowl roots for a season"}
+        owned_scope: ["artifacts/postseason_state.py", "tests/test_postseason_state.py"]
+        forbidden_scope: ["postseason/*.json"]
+        dependencies: ["P1"]
+        parallelizable: true
+        expected_validation: ["uv run pytest tests/test_postseason_state.py"]
+      - id: "T5"
+        title: "tier inference analysis (offline)"
+        objective: "for conferences without a published order, infer pick order/tiers from 3 seasons: for each bowl, the conference-standing position of the team sent; write results into bowl_tie_ins.json with provenance 'inferred' + the evidence table in notes"
+        assigned_domain: "data-scientist"
+        model_routing: {task_profile: research, uncertainty: high, consequence: low, scope_size: bounded, determinism: open_ended, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", routing_enforced: true, escalation_tier: frontier, escalation_condition: "three seasons give contradictory orders for a conference"}
+        owned_scope: ["scripts/infer_bowl_tiers.py", "postseason/bowl_tie_ins.json (inferred entries only)"]
+        forbidden_scope: ["postseason/cfp.py", "postseason/bowls.py"]
+        dependencies: ["T3", "T4"]
+        parallelizable: false
+        expected_validation: ["script is idempotent and dry-run by default; inferred entries validate under the loader"]
+  - id: "B4"
+    goal: "bowl assignment engine"
+    tasks:
+      - id: "T6"
+        title: "assign_bowls"
+        objective: "implement per contracts.interfaces with penalties, pools, shortfall stand-in, reasons; fixtures: numbered draft (Sun Belt), tiered (ACC), office pool (SEC), repeat-bowl avoidance, rematch avoidance, Pac-12 legacy pool, conference short of eligible teams"
+        assigned_domain: "generalist-developer"
+        model_routing: {task_profile: implementation, uncertainty: medium, consequence: medium, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", routing_enforced: true, escalation_tier: frontier, escalation_condition: "penalty ordering produces a cycle or non-determinism"}
+        owned_scope: ["postseason/bowls.py", "tests/test_postseason_bowls.py"]
+        forbidden_scope: ["artifacts/*", "main.py"]
+        dependencies: ["T2", "T3"]
+        parallelizable: false
+        expected_validation: ["uv run pytest tests/test_postseason_bowls.py", "determinism: same state twice -> identical slate"]
+  - id: "B5"
+    goal: "payload + publish + pipeline hook"
+    tasks:
+      - id: "T7"
+        title: "build_postseason_payload + publish_postseason_artifact + main.py hook"
+        objective: "pure payload builder; R2 keys postseason/{season}/week-NN.json, latest.json, index.json (self-healing); exception-safe publish; main.py hook; a scripts/publish_postseason_artifact.py with dry-run default + round-trip verify"
+        assigned_domain: "data-engineer"
+        model_routing: {task_profile: implementation, uncertainty: low, consequence: medium, scope_size: bounded, determinism: deterministic, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", routing_enforced: true, escalation_tier: frontier, escalation_condition: "hook ordering risks the existing publishes"}
+        owned_scope: ["artifacts/postseason.py", "scripts/publish_postseason_artifact.py", "main.py (hook block only)", "tests/test_postseason_publish.py"]
+        forbidden_scope: ["postseason/*"]
+        dependencies: ["T6"]
+        parallelizable: false
+        expected_validation: ["uv run pytest", "dry-run publish prints the payload; no live R2 in tests"]
+
+ordering_notes:
+  - "B1 and B2 can run in parallel (different domains, disjoint scope) -> worktrees per branch-and-pr-workflow.md"
+  - "B3 waits on P1 (owner DB check); T5 waits on T3+T4"
+  - "B4 after B1+B2; B5 last; the personal-site page is a separate feature after B5 publishes a real artifact"
+  - "each batch is its own PR-ready increment; the engine is useful (CLI dry-run) after B1+B2+B4 even before publishing"
+
+risks:
+  - "R1: tie-in facts are snippet-corroborated; encoding them as fact would put wrong matchups on a public page -> provenance tags + provisional rendering (KD5) + P2"
+  - "R2: G6 rule may be reversed mid-cycle -> config flag with season scoping"
+  - "R3: field expansion for 2027 -> field_size/bye_count/pairings are config; the guarantee lapses above 14 by config too"
+  - "R4: historical rows missing for 2023/2024 -> P1 first; T5 degrades to 'published orders only'"
+  - "R5: mid-season projected champions mislead -> tag + label (KD4)"
+  - "R6: name drift (CFBD school renames, sponsor-heavy notes) -> bowl_names roots already handle sponsors; unmatched names pass through whole and count as 'unmatched' in T4's report"
+  - "R7: soft-constraint penalties are a design choice, not a published rule -> documented in methodology; weights in config"
+
+model_routing_notes:
+  - "orchestration frontier (session model); implementation balanced; history builder fast; tier inference balanced (open-ended synthesis)"
+  - "subagents inherit reasoning level; routing_enforced true only for the model alias"
+
+open_questions:
+  - "OQ1 G6 slot rule default (recommend any_team)"
+  - "OQ2 within-conference pick order (recommend standings order)"
+  - "OQ3 QF bowl stand-in (recommend by seed order, labelled)"
+  - "OQ4 cadence (recommend weekly from week 1, labelled)"
+  - "OQ5 primary sources supplied by owner (recommend yes; blocks final provenance only)"
+  - "OQ6 tab vs route on the site (defer)"
+
+review:
+  status: draft
+  loop_count: 0
+  notes: []
+
+checkpoint:
+  required_before_execution: true
+  status: pending
