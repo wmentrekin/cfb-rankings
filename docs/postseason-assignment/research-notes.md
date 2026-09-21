@@ -122,3 +122,21 @@ capable session before it is encoded.
   relationships: B1G Rose; SEC Sugar; ACC Orange; B12 Fiesta/Cotton; others nearest/fallback),
   seeds 1-3 take the first available in order, seed 4 gets the remainder; SF bowl per half follows
   from the 1 seed's pick + config `semifinal_hosts`. Provenance "heuristic"; tagged stand_in.
+
+## Mountain West / rebuilt Pac-12 / legacy pool (platform-researcher-11, partial: search quota hit)
+- Legacy Pac-12 group (12 schools incl. Cal, Stanford, Oregon St, Wash St) tied to Alamo, Las
+  Vegas, Holiday, Sun, Poinsettia, Independence; ordered by overall record; "won't be affiliated
+  with the selection process for their current conferences" (pressdemocrat.com 2026-08-16; sunbowl.org
+  release). Overflow -> ESPN bowl pool by availability. Poinsettia second slot = 10-team sub-pool
+  excluding Oregon St / Wash St. Alamo: Big 12 12-team pool vs legacy 12-team pool, overall record.
+- Holiday 2026-27: ACC vs legacy (mwcconnection); Las Vegas: Big Ten vs legacy; Sun: ACC vs legacy;
+  Independence: legacy vs Big 12 (returns to Pac-12 rotation).
+- Mountain West 2026-27 bowls (medium): Boca Raton, Idaho Potato, Puerto Rico, Armed Forces, Frisco,
+  New Mexico, Hawai'i; Cactus/Rate = MWC backup when Big Ten/Big 12 cannot fill.
+- Actuals captured: 2023-24 LA UCLA v Boise, Holiday USC v Louisville, Alamo Arizona v Oklahoma, Sun
+  Oregon St v Notre Dame; 2024-25 Holiday Wash St v Syracuse, LA Boise v Washington; 2025-26 LA Boise
+  v Washington, New Mexico SDSU v North Texas, Idaho Potato Utah St v Wash St, Arizona Fresno St v
+  Miami (OH). Unknown: full MWC slates 2023-25, Oregon St 2024-26, residual MWC membership, counts.
+- BLOCKER: session-wide WebSearch quota exhausted (200/200) mid-task; other deep dives will be
+  partial. Options: raise CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION (owner), fresh sessions, or
+  owner-supplied primary texts (preferred).

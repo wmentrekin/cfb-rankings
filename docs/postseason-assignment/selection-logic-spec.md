@@ -118,6 +118,26 @@ assign(4, available[0], stand_in="qf_remainder")
 
 ## 4. Bowl assignment — `assign_bowls(state, cfp_field, tie_ins, policy)`
 
+### 4.0 Bowl affiliation is not conference membership
+For bowl purposes a team belongs to an AFFILIATION GROUP, which defaults to its conference but
+can be overridden per season in `tie_ins.affiliations: {team: group_id}`. 2026-27 evidence
+(pressdemocrat.com 2026-08-16; sunbowl.org release): the 12 legacy Pac-12 schools (Arizona,
+Arizona State, Cal, Colorado, Oregon, Oregon State, Stanford, UCLA, USC, Utah, Washington,
+Washington State) are tied as a group to the Alamo, Las Vegas, Holiday, Sun, Poinsettia, and
+Independence bowls, ordered by OVERALL record, and are "not affiliated with the selection
+process for their current conferences". So:
+- `group(T)` = `affiliations.get(T, conference(T))`; every rule in §4.3-4.7 that says
+  "conference C" means "group C".
+- A group's `selection.conferences[group]` entry may use `mode: pool_by_record` whose standing
+  order is `(wins desc, losses asc, rank asc, name)` instead of a conference standing order.
+- CFP selection (§2) is unaffected: it uses real conference membership and champions.
+- Overflow from a group with more eligible teams than obligations follows §4.6/§4.8 (the 2026-27
+  legacy group's overflow goes to the ESPN pool by availability, per the same source); the
+  Cactus/Rate Bowl names the Mountain West as its backup source when Big Ten/Big 12 cannot fill.
+- Poinsettia's second slot uses a 10-team sub-pool that EXCLUDES Oregon State and Washington
+  State (they are the current-Pac-12 side); encode as a separate `pools` entry.
+Owner prerequisite P2 should include a second procedural source confirming the carve-out.
+
 ### 4.1 Slate for the season
 `bowls = [b for b in tie_ins.bowls if b.season_min <= season <= b.season_max and not b.cfp_host]`,
 kept in DECLARATION ORDER (this is the only place file order is semantic; see §4.4).
@@ -243,7 +263,7 @@ g6_slot_rule, seeding, independent_guarantees[{team,max_rank}], first_round_pair
 quarterfinal_feeds, first_round{dates}, quarterfinal_hosts[{bowl_root,date}],
 semifinal_hosts[...], semifinal_choice_by_top_seed{}, qf_preferences{conf:[...]},
 championship{site,city,date}.
-bowl_tie_ins: bowls[...] (§4.1-4.2 shapes), pools{id:{conferences|teams, order_rule}},
+bowl_tie_ins: bowls[...] (§4.1-4.2 shapes), pools{id:{conferences|teams, order_rule}}, affiliations{team: group_id} (§4.0),
 selection{conference_order, conferences{C:{mode, order, criteria, provenance, source}}}.
 policy (global, versioned): penalty_order, history_seasons (H), win_window, apr_fill: bool.
 
