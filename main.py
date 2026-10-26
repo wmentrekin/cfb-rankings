@@ -237,6 +237,29 @@ INGEST_FAILURE_MARKER = "INGEST_FAILURE"
 _SCHEMA_ERRORS = (CompileError, ProgrammingError)
 
 
+def _log_ingest_fetch_failure(logger, label, exc, *, stops_run):
+    """An ingest that failed for a reason other than schema -- in practice CFBD unavailable.
+
+    Added after the 2026-10-25 run: a 504 on the week 8 /games request was caught by the
+    generic handler below, logged as "they may already be loaded", and the run went on to rate
+    the previous week's games, label the result week 8, and publish it, with every step green.
+    The "may already be loaded" reading is only true when the games ARE loaded; nothing here can
+    know that, and the cost of guessing wrong is a wrong public ranking. So a failure that
+    survived the fetch retries is now loud.
+    """
+    outcome = (
+        "Refusing to continue, because the alternative is rating and publishing stale games "
+        "under this week's label."
+        if stops_run else
+        "Continuing, because this slate does not gate the week being published, but the job is "
+        "marked failed so the gap is not silent."
+    )
+    logger.error(
+        "%s: %s ingest failed after retries (CFBD unavailable or returned an error). %s Exception: %s",
+        INGEST_FAILURE_MARKER, label, outcome, exc,
+    )
+
+
 def _log_ingest_schema_failure(logger, label, exc):
     logger.error(
         "%s: %s ingest could not run because the database schema does not match what the code "
@@ -355,7 +378,8 @@ def main():
         _log_ingest_schema_failure(logger, "Regular-season", e)
         return
     except Exception as e:
-        logger.warning("Games loading raised an exception (they may already be loaded). Continuing. Exception: %s", e)
+        _log_ingest_fetch_failure(logger, "Regular-season", e, stops_run=True)
+        return
 
     # PULL POSTSEASON DATA
     # Postseason week numbers are a different, colliding numbering scheme from
@@ -370,7 +394,7 @@ def main():
         _log_ingest_schema_failure(logger, "Postseason", e)
         return
     except Exception as e:
-        logger.warning("Postseason games loading raised an exception (they may already be loaded). Continuing. Exception: %s", e)
+        _log_ingest_fetch_failure(logger, "Postseason", e, stops_run=False)
 
     # APPLY MANUAL RESULT OVERRIDES
     # Re-asserts every checked-in override (database/game_result_overrides.json) for this

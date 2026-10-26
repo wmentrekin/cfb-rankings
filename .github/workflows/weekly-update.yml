@@ -101,10 +101,12 @@ jobs:
             grep "OVERRIDE_FAILURE" output.log
             exit 1
           fi
-          # Separate token, same reasoning: a schema mismatch stops ingest dead, and main.py's
-          # own exit code cannot be seen from here because the run step ends in `|| true`.
+          # Separate token, same reasoning: a failed ingest -- a schema mismatch, or CFBD
+          # unavailable after the fetch retries -- stops the run (or, for the postseason slate,
+          # is flagged), and main.py's own exit code cannot be seen from here because the run
+          # step ends in `|| true`.
           if grep -q "INGEST_FAILURE" output.log; then
-            echo "::error::Ingest could not run -- database schema does not match the code (unapplied migration?):"
+            echo "::error::Ingest failed -- unapplied migration, or CFBD unavailable after retries (rankings were NOT published from stale games):"
             grep "INGEST_FAILURE" output.log
             exit 1
           fi

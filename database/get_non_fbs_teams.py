@@ -1,4 +1,4 @@
-import requests # type: ignore
+from database.cfbd_http import cfbd_get
 import pandas as pd # type: ignore
 from dotenv import load_dotenv # type: ignore
 import os
@@ -34,8 +34,7 @@ def get_non_fbs_teams_by_year(year):
     url = f"{BASE_URL}/teams"
     headers = {"Authorization": f"Bearer {API_KEY}"}
     params = {"year": year}
-    response = requests.get(url, headers=headers, params=params)
-    response.raise_for_status()
+    response = cfbd_get(url, headers=headers, params=params)
     teams = response.json()
 
     columns = [

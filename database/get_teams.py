@@ -1,4 +1,4 @@
-import requests # type: ignore
+from database.cfbd_http import cfbd_get
 import pandas as pd # type: ignore
 from dotenv import load_dotenv # type: ignore
 import os
@@ -17,8 +17,7 @@ def get_fbs_teams_by_year(year, week=None):
     BASE_URL = "https://api.collegefootballdata.com"
     url = f"{BASE_URL}/teams/fbs?year={year}"
     headers = {"Authorization": f"Bearer {API_KEY}"}
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
+    response = cfbd_get(url, headers=headers)
     teams = response.json()
     data = []
     for team in teams:
