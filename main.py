@@ -237,8 +237,50 @@ INGEST_FAILURE_MARKER = "INGEST_FAILURE"
 _SCHEMA_ERRORS = (CompileError, ProgrammingError)
 
 
+# From this display week on, the postseason slate is part of what the published rankings are
+# built from (Army-Navy, then the bowls and CFP; model/process_data reads rankings_games with no
+# season_type filter), so a postseason fetch failure there would publish rankings that are
+# missing the newest results under the current label. Earlier in the season the slate is empty
+# or irrelevant to the week, so a failure only alarms.
+POSTSEASON_GATES_FROM_WEEK = 15
+
+
+def regular_week_has_games(year, week) -> bool:
+    """True if the games table holds at least one regular-season game for this CFBD week.
+
+    The fetch-failure handling only catches an ingest that RAISES. CFBD answering `[]` for the
+    week (mid-outage) is not an exception: the ingest "succeeds" with nothing, the model rates
+    the previous week's rows, and the result is published under this week's label -- the same
+    failure the retries and the handler exist to prevent. Every real regular-season week has
+    games, and the date-derived week is already required to (resolve_week_from_starts).
+
+    Returns True when the check itself cannot run: a database problem will surface at the next
+    step with its own error, and this guard must never be the thing that blocks a healthy run.
+    """
+    engine = None
+    try:
+        load_dotenv()
+        db_url = (
+            f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+            f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+            "?sslmode=require"
+        )
+        engine = create_engine(db_url)
+        count_df = pd.read_sql_query(
+            f"SELECT COUNT(*) AS n FROM games WHERE season = {int(year)} "
+            f"AND season_type = 'regular' AND week = {int(week)};",
+            engine,
+        )
+        return int(count_df["n"].iloc[0]) > 0
+    except Exception:
+        return True
+    finally:
+        if engine is not None:
+            engine.dispose()
+
+
 def _log_ingest_fetch_failure(logger, label, exc, *, stops_run):
-    """An ingest that failed for a reason other than schema -- in practice CFBD unavailable.
+    """An ingest that failed for a reason other than schema -- CFBD unavailable, or the database.
 
     Added after the 2026-10-25 run: a 504 on the week 8 /games request was caught by the
     generic handler below, logged as "they may already be loaded", and the run went on to rate
@@ -255,8 +297,8 @@ def _log_ingest_fetch_failure(logger, label, exc, *, stops_run):
         "marked failed so the gap is not silent."
     )
     logger.error(
-        "%s: %s ingest failed after retries (CFBD unavailable or returned an error). %s Exception: %s",
-        INGEST_FAILURE_MARKER, label, outcome, exc,
+        "%s: %s ingest failed (CFBD fetch failed after retries, or a database error). %s Exception: %s: %s",
+        INGEST_FAILURE_MARKER, label, outcome, type(exc).__name__, exc,
     )
 
 
@@ -381,6 +423,15 @@ def main():
         _log_ingest_fetch_failure(logger, "Regular-season", e, stops_run=True)
         return
 
+    if not regular_week_has_games(args.year, args.week):
+        logger.error(
+            "%s: Regular-season ingest returned no games for year=%s week=%s. Refusing to continue, "
+            "because the alternative is rating and publishing the previous week's games under "
+            "this week's label.",
+            INGEST_FAILURE_MARKER, args.year, args.week,
+        )
+        return
+
     # PULL POSTSEASON DATA
     # Postseason week numbers are a different, colliding numbering scheme from
     # the regular-season pipeline-week cursor (args.week) -- always fetch the
@@ -394,7 +445,11 @@ def main():
         _log_ingest_schema_failure(logger, "Postseason", e)
         return
     except Exception as e:
-        _log_ingest_fetch_failure(logger, "Postseason", e, stops_run=False)
+        _log_ingest_fetch_failure(
+            logger, "Postseason", e, stops_run=args.week >= POSTSEASON_GATES_FROM_WEEK,
+        )
+        if args.week >= POSTSEASON_GATES_FROM_WEEK:
+            return
 
     # APPLY MANUAL RESULT OVERRIDES
     # Re-asserts every checked-in override (database/game_result_overrides.json) for this

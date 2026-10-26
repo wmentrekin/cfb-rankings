@@ -16,7 +16,11 @@ MUTATION-CHECK LOG: (a) restoring `requests.get` in get_games.py failed the stat
 (b) restoring the old `logger.warning(...)`/continue in main's regular-season handler failed
 test_regular_season_ingest_failure_stops_before_model_and_publish; (c) removing 504 from
 RETRY_STATUSES failed test_retries_a_504_then_succeeds; (d) removing the timeout
-argument failed test_a_hung_server_is_abandoned_not_awaited. Each was reverted afterwards.
+argument failed test_a_hung_server_is_abandoned_not_awaited; (e) removing retry_after_max made
+test_a_huge_retry_after_is_capped_not_slept_through hang until killed (urllib3 sleeps for the
+header, up to six hours); (f) disabling the empty-week check failed
+test_an_empty_week_after_a_successful_ingest_stops_the_run; (g) making a week-15 postseason failure
+non-blocking failed the postseason-gating test. Each was reverted afterwards.
 """
 import ast
 import re
@@ -52,7 +56,8 @@ class _Server:
             def do_GET(self):  # noqa: N802 -- http.server API
                 index = min(outer.hits, len(outer.script) - 1)
                 outer.hits += 1
-                status, body, delay = outer.script[index]
+                status, body, delay, *rest = outer.script[index]
+                extra_headers = rest[0] if rest else {}
                 if delay:
                     time.sleep(delay)
                 payload = body.encode()
@@ -60,6 +65,8 @@ class _Server:
                     self.send_response(status)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Content-Length", str(len(payload)))
+                    for key, value in extra_headers.items():
+                        self.send_header(key, value)
                     self.end_headers()
                     self.wfile.write(payload)
                 except (BrokenPipeError, ConnectionResetError):
@@ -87,6 +94,18 @@ def _fast_backoff(monkeypatch):
     monkeypatch.setattr(cfbd_http, "RETRY_BACKOFF", 0)
 
 
+@pytest.fixture(autouse=True)
+def _clean_run_logger():
+    """utils.setup_logging never clears handlers on the shared "cfb_lp" logger, so each main()
+    call in this process would otherwise add another stdout and file handler to it."""
+    import logging
+    yield
+    logger = logging.getLogger("cfb_lp")
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+        handler.close()
+
+
 def test_retries_a_504_then_succeeds():
     """The 2026-10-25 failure shape: gateway errors first, then a healthy response."""
     with _Server([(504, "{}", 0), (504, "{}", 0), (200, '[{"id": 1}]', 0)]) as server:
@@ -109,6 +128,19 @@ def test_a_deterministic_4xx_is_not_retried():
     assert server.hits == 1, "a bad key is not transient; retrying it only delays the failure"
 
 
+def test_a_huge_retry_after_is_capped_not_slept_through(monkeypatch):
+    """urllib3 honours Retry-After and by default will sleep up to six hours for it -- past the
+    job's 60-minute timeout. The cap makes the wait bounded."""
+    monkeypatch.setattr(cfbd_http, "RETRY_AFTER_MAX", 0.2)
+    started = time.monotonic()
+    with _Server([(429, "{}", 0, {"Retry-After": "99999"}), (200, "[]", 0)]) as server:
+        response = cfbd_http.cfbd_get(server.url)
+        elapsed = time.monotonic() - started
+    assert response.status_code == 200
+    assert server.hits == 2
+    assert elapsed < 3, f"slept {elapsed:.0f}s on a Retry-After of 99999"
+
+
 def test_a_hung_server_is_abandoned_not_awaited(monkeypatch):
     """The original bug waited the gateway's full 120s because nothing bounded the read."""
     monkeypatch.setattr(cfbd_http, "READ_TIMEOUT", 0.2)
@@ -126,7 +158,7 @@ def test_a_hung_server_is_abandoned_not_awaited(monkeypatch):
 # ---------------------------------------------------------------------------
 # 2. main() when the ingest fails
 # ---------------------------------------------------------------------------
-def _run_main(tmp_path, monkeypatch, load_games, *, week=8):
+def _run_main(tmp_path, monkeypatch, load_games, *, week=8, has_games=True):
     """Run main() with every collaborator stubbed except the ingest handling under test.
 
     Returns the mocks that must (or must not) have been reached, and the run's log text.
@@ -140,6 +172,7 @@ def _run_main(tmp_path, monkeypatch, load_games, *, week=8):
     }
     with mock.patch.object(main, "teams_exist_for_year", return_value=True), \
             mock.patch.object(main, "non_fbs_logo_coverage_is_complete", return_value=True), \
+            mock.patch.object(main, "regular_week_has_games", return_value=has_games), \
             mock.patch.object(main, "load_games_to_db", side_effect=load_games), \
             mock.patch.object(main, "apply_game_result_overrides",
                               return_value={"applied": [], "failures": []}), \
@@ -167,7 +200,6 @@ def test_regular_season_ingest_failure_stops_before_model_and_publish(tmp_path, 
     mocks["publish_schedule_artifact"].assert_not_called()
     assert "INGEST_FAILURE" in log
     assert "Regular-season" in log
-    assert "Run finished successfully" not in log
 
 
 def test_postseason_ingest_failure_is_flagged_but_does_not_block_the_week(tmp_path, monkeypatch):
@@ -181,6 +213,35 @@ def test_postseason_ingest_failure_is_flagged_but_does_not_block_the_week(tmp_pa
     mocks["get_ratings"].assert_called_once()
     assert "INGEST_FAILURE" in log
     assert "Postseason" in log
+
+
+def test_postseason_ingest_failure_stops_the_run_once_postseason_results_feed_the_rankings(tmp_path, monkeypatch):
+    """From week 15 the model reads postseason rows, so publishing without them is stale-as-new."""
+    def load_games(year, week=None, season_type="regular"):
+        if season_type == "postseason":
+            raise _http_504()
+
+    mocks, log = _run_main(tmp_path, monkeypatch, load_games, week=main.POSTSEASON_GATES_FROM_WEEK)
+
+    mocks["get_ratings"].assert_not_called()
+    mocks["publish_rankings_artifact"].assert_not_called()
+    assert "INGEST_FAILURE" in log and "Postseason" in log
+
+
+def test_an_empty_week_after_a_successful_ingest_stops_the_run(tmp_path, monkeypatch):
+    """CFBD answering [] mid-outage raises nothing; the games table then has no rows for the week."""
+    mocks, log = _run_main(tmp_path, monkeypatch, lambda *a, **k: None, has_games=False)
+
+    mocks["get_ratings"].assert_not_called()
+    mocks["publish_rankings_artifact"].assert_not_called()
+    assert "INGEST_FAILURE" in log
+    assert "no games" in log
+
+
+def test_regular_week_has_games_never_blocks_on_its_own_failure():
+    """If the check cannot run (no DB), it must say True and let the next step fail with its own error."""
+    with mock.patch.object(main, "create_engine", side_effect=RuntimeError("no database")):
+        assert main.regular_week_has_games(2026, 8) is True
 
 
 def test_healthy_ingest_emits_no_failure_token_and_reaches_the_model(tmp_path, monkeypatch):

@@ -26,14 +26,20 @@ from urllib3.util.retry import Retry  # type: ignore
 CONNECT_TIMEOUT = 10
 READ_TIMEOUT = 60
 
-# Retries after the first attempt, i.e. up to 5 attempts in total. Backoff sleeps
-# factor * 2**(n-1) seconds before retry n (urllib3 skips the first), so the sleeps total about
-# 28s with the default factor of 2; the worst case for one call is therefore a few minutes,
-# well inside the workflow's 60-minute job timeout. Honours a Retry-After header when CFBD
-# sends one with a 429/503.
+# Retries after the first attempt, i.e. up to 5 attempts in total. Backoff sleeps 0, 4, 8, 16s
+# before retries 1-4 (28s total at the default factor of 2). The read timeout applies to each
+# socket read, not the whole response, so a slow-drip reply can outlast it; assuming each
+# attempt uses the full 60s, one call is bounded at roughly 5.5 minutes, and the four CFBD calls
+# in a run at roughly 22 minutes, inside the workflow's 60-minute job timeout. A 120s gateway
+# 504 like the one that caused the incident now surfaces as a ReadTimeout at 60s, and is retried.
 RETRY_TOTAL = 4
 RETRY_BACKOFF = 2.0
 RETRY_STATUSES = (429, 500, 502, 503, 504)
+
+# urllib3 honours a Retry-After header on 413/429/503 and, left alone, will sleep up to SIX HOURS
+# for it -- past the job's timeout, which would cancel the run mid-sleep with no log line. Cap
+# the wait: if CFBD wants longer than this, retrying sooner just fails again and we give up.
+RETRY_AFTER_MAX = 60
 
 
 def _build_session() -> requests.Session:
@@ -47,6 +53,7 @@ def _build_session() -> requests.Session:
         status_forcelist=RETRY_STATUSES,
         allowed_methods=frozenset({"GET"}),
         respect_retry_after_header=True,
+        retry_after_max=RETRY_AFTER_MAX,
         # Hand back the final response instead of raising MaxRetryError, so the caller's
         # raise_for_status() produces the same requests.HTTPError it always did.
         raise_on_status=False,

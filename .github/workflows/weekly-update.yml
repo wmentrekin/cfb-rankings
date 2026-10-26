@@ -106,7 +106,7 @@ jobs:
           # is flagged), and main.py's own exit code cannot be seen from here because the run
           # step ends in `|| true`.
           if grep -q "INGEST_FAILURE" output.log; then
-            echo "::error::Ingest failed -- unapplied migration, or CFBD unavailable after retries (rankings were NOT published from stale games):"
+            echo "::error::Ingest failed -- unapplied migration, CFBD unavailable after retries, or no games returned for the week (the run stopped before publishing):"
             grep "INGEST_FAILURE" output.log
             exit 1
           fi
