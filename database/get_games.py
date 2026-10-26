@@ -1,10 +1,10 @@
-import requests # type: ignore
 import pandas as pd # type: ignore
 from dotenv import load_dotenv # type: ignore
 import os
 from sqlalchemy import create_engine, Table, MetaData # type:ignore
 from sqlalchemy.dialects.postgresql import insert # type:ignore
 
+from database.cfbd_http import cfbd_get
 from database.game_derivations import compute_margin, compute_winner, compute_alpha
 
 load_dotenv()
@@ -65,8 +65,7 @@ def get_games_by_year_week(year, week=None, season_type='regular'):
     }
     if week:
         params["week"] = week
-    response = requests.get(url, headers=headers, params=params)
-    response.raise_for_status()
+    response = cfbd_get(url, headers=headers, params=params)
 
     games_data = response.json()
 
