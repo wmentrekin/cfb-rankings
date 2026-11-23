@@ -41,6 +41,19 @@ file re-run, change reverted; "caught" = the named tests failed):
   f' percentage clause of (f) dropped                          caught: test_a_short_schedule_team_that_could_out_rank_on_percentage_blocks_it
   complement elimination never applied                         caught (6 tests): ACC, Pac-12, division, title-game, wiring
   complement not skipped for a rejected participant set        caught: test_a_rejected_participant_set_also_blocks_the_complement_elimination
+  WIDER TIE DEFINITIONS (review F1; block = _clear_of_other_game_counts, condition f2 + complement fence):
+  f2 wins-range check removed                                  caught: test_clear_helper_wins_and_losses_ranges_each_block_on_their_own,
+                                                               test_clear_helper_cusa_and_unknown_widen_... (unit level only: in the two
+                                                               end-to-end counterexamples the losses range overlaps too, so it alone blocks)
+  f2 losses-range check removed                                caught: ACC counterexample (test_acc_alternate_games_tie_blocks_...),
+                                                               the helper unit test, the compute_standings and build_schedule_payload wiring tests
+  f2 CUSA widening removed (widen = 0 always)                  caught: test_clear_helper_cusa_and_unknown_widen_the_wins_range_by_one_but_acc_does_not
+                                                               (unit level: the widening is strictly redundant with the losses check for the
+                                                               real CUSA rule, which needs EQUAL losses -- it only adds conservatism)
+  unrecognised definition not treated as strictest             caught: same unit test; a name missing from a supplied mapping read as
+                                                               win_pct caught: test_unknown_tie_definition_is_read_as_the_strictest_case
+  whole f2 block removed                                       caught (5 tests): both counterexamples, unknown definition, both wiring tests
+  complement fence removed                                     caught: test_complement_is_skipped_when_a_clinched_team_is_not_clear_...
   a  "len(S) != top_n" weakened to "len(S) > top_n"            SURVIVES by construction (equivalent mutant): len(S) < top_n means the
                                                                wins-only test already clinched T, so the branch is never reached.
 
@@ -481,3 +494,161 @@ def test_build_schedule_payload_passes_the_conference_rules_through():
     assert ccg_status("Miami") == "clinched"
     assert ccg_status("Wake Forest") == "clinched"
     assert ccg_status("Louisville") == "eliminated"
+
+
+# ---------------------------------------------------------------------------
+# 8. Conference tie definitions wider than equal win percentage (review F1)
+# ---------------------------------------------------------------------------
+ACC_ALT = {ACC: "acc_alternate_games"}
+CUSA = "Conference USA"
+CUSA_DEF = {CUSA: "cusa_within_one_win"}
+
+# Clemson 6-2 on 8 games shares Wake Forest's possible loss count (7-2 worst case): under the
+# ACC's 2026 "same wins OR same losses" definition Clemson joins the tie, so it is 3-way.
+ACC_CX_SPEC = {
+    "Miami": (8, 0, 1), "Wake Forest": (7, 1, 1), "Louisville": (7, 2, 0),
+    "Clemson": (6, 2, 0), "Duke": (4, 5, 0),
+}
+# "Short" 5-2 on 7 games is within one win of Jacksonville State's 6-2 worst case, equal losses.
+CUSA_CX_SPEC = {
+    "Liberty": (8, 0, 0), "Jacksonville State": (6, 1, 1), "WKU": (6, 2, 0),
+    "Short": (5, 2, 0), "Other": (3, 5, 0),
+}
+CUSA_CX_H2H = _series(("Jacksonville State", "WKU"))
+
+
+def test_acc_alternate_games_tie_blocks_the_head_to_head_clinch():
+    series = _series(("Wake Forest", "Louisville"))
+    out = _statuses(_run(ACC, ACC_CX_SPEC, series, {ACC}, tie_definitions=ACC_ALT))
+    assert out["Wake Forest"] == "possible"
+    assert out["Miami"] == "clinched"
+    # same fixture under plain win percentage still clinches: the block is what stops it
+    assert _statuses(_run(ACC, ACC_CX_SPEC, series, {ACC}))["Wake Forest"] == "clinched"
+    assert _statuses(_run(ACC, ACC_CX_SPEC, series, {ACC}, tie_definitions={ACC: "win_pct"}))["Wake Forest"] == "clinched"
+
+
+def test_cusa_within_one_win_tie_blocks_the_head_to_head_clinch():
+    out = _statuses(_run(CUSA, CUSA_CX_SPEC, CUSA_CX_H2H, {CUSA}, tie_definitions=CUSA_DEF))
+    assert out["Jacksonville State"] == "possible"
+    assert _statuses(_run(CUSA, CUSA_CX_SPEC, CUSA_CX_H2H, {CUSA}))["Jacksonville State"] == "clinched"
+
+
+def test_unknown_tie_definition_is_read_as_the_strictest_case():
+    out = _statuses(_run(CUSA, CUSA_CX_SPEC, CUSA_CX_H2H, {CUSA}, tie_definitions={CUSA: "some_future_rule"}))
+    assert out["Jacksonville State"] == "possible"
+    # a conference missing from a supplied mapping is unknown too
+    out = _statuses(_run(CUSA, CUSA_CX_SPEC, CUSA_CX_H2H, {CUSA}, tie_definitions={"Other Conf": "win_pct"}))
+    assert out["Jacksonville State"] == "possible"
+
+
+def test_live_acc_still_clinches_under_the_acc_alternate_games_definition():
+    out = _statuses(_run(ACC, ACC_SPEC, ACC_H2H, {ACC}, tie_definitions=ACC_ALT))
+    assert out == {
+        "Miami": "clinched", "Wake Forest": "clinched", "Louisville": "eliminated", "SMU": "eliminated",
+        "Clemson": "eliminated", "Duke": "eliminated", "Pittsburgh": "eliminated", "Virginia": "eliminated",
+    }
+
+
+def test_pac12_fixture_is_unchanged_under_win_pct():
+    out = _statuses(_run(PAC12, PAC12_SPEC, PAC12_H2H, {PAC12}, tie_definitions={PAC12: "win_pct"}))
+    assert out == _statuses(_run(PAC12, PAC12_SPEC, PAC12_H2H, {PAC12}))
+    assert out["Boise State"] == out["San Diego State"] == "clinched"
+
+
+def _ranges(**teams):
+    """name -> (W, N, B) -> the W/B/N dicts the helper takes."""
+    return (
+        {t: v[0] for t, v in teams.items()}, {t: v[2] for t, v in teams.items()},
+        {t: v[1] for t, v in teams.items()},
+    )
+
+
+def test_clear_helper_wins_and_losses_ranges_each_block_on_their_own():
+    clear = schedule_standings._clear_of_other_game_counts
+    # T: wins [7, 8] of 9 (losses [1, 2]).
+    W, B, N = _ranges(T=(7, 9, 8), j=(8, 12, 8))      # wins [8,8] overlap; losses [4,4] clear
+    assert clear("T", ["T", "j"], W, B, N, "acc_alternate_games") is False
+    W, B, N = _ranges(T=(7, 9, 8), j=(2, 4, 2))       # wins [2,2] clear; losses [2,2] overlap
+    assert clear("T", ["T", "j"], W, B, N, "acc_alternate_games") is False
+    W, B, N = _ranges(T=(7, 9, 8), j=(5, 8, 5))       # wins [5,5]; losses [3,3]: clear both
+    assert clear("T", ["T", "j"], W, B, N, "acc_alternate_games") is True
+    # same game count is not examined at all
+    W, B, N = _ranges(T=(7, 9, 8), j=(8, 9, 8))
+    assert clear("T", ["T", "j"], W, B, N, "acc_alternate_games") is True
+
+
+def test_clear_helper_cusa_and_unknown_widen_the_wins_range_by_one_but_acc_does_not():
+    clear = schedule_standings._clear_of_other_game_counts
+    # T wins [7, 8], losses [1, 2]; j wins [6, 6] (adjacent), losses [4, 4] (no loss overlap).
+    W, B, N = _ranges(T=(7, 9, 8), j=(6, 10, 6))
+    assert clear("T", ["T", "j"], W, B, N, "acc_alternate_games") is True
+    assert clear("T", ["T", "j"], W, B, N, "cusa_within_one_win") is False
+    assert clear("T", ["T", "j"], W, B, N, "brand_new_rule") is False
+
+
+def test_complement_is_skipped_when_a_clinched_team_is_not_clear_of_other_game_counts(monkeypatch):
+    real = schedule_standings._clear_of_other_game_counts
+    calls = []
+
+    def fake(team, *args, **kwargs):
+        calls.append(team)
+        return False if team == "Miami" else real(team, *args, **kwargs)
+
+    monkeypatch.setattr(schedule_standings, "_clear_of_other_game_counts", fake)
+    out = _statuses(_run(ACC, ACC_SPEC, ACC_H2H, {ACC}, tie_definitions=ACC_ALT))
+    assert "Miami" in calls
+    assert out["Miami"] == "clinched" and out["Wake Forest"] == "clinched"
+    # the complement did not run: Louisville (the only team the wins-only math cannot eliminate)
+    # stays possible; SMU / Clemson are eliminated by the wins-only test itself (best case 6 < 7)
+    assert out["Louisville"] == "possible"
+    assert out["SMU"] == out["Clemson"] == "eliminated"
+
+
+def test_complement_is_not_fenced_for_win_pct(monkeypatch):
+    def boom(*args, **kwargs):
+        raise AssertionError("win_pct must not consult the wider-definition check")
+
+    monkeypatch.setattr(schedule_standings, "_clear_of_other_game_counts", boom)
+    out = _statuses(_run(ACC, ACC_SPEC, ACC_H2H, {ACC}, tie_definitions={ACC: "win_pct"}))
+    assert out["Louisville"] == "eliminated"
+
+
+def test_compute_standings_threads_tie_definitions_end_to_end():
+    rows = _rows(ACC_CX_SPEC, ACC, 2026, [("Wake Forest", "Louisville")])
+    on = compute_standings(rows, 2026, head_to_head_first_conferences={ACC}, tie_definitions=ACC_ALT)
+    legacy = compute_standings(rows, 2026, head_to_head_first_conferences={ACC})
+    assert on["Wake Forest"]["championship_status"] == "possible"
+    assert legacy["Wake Forest"]["championship_status"] == "clinched"
+
+
+def test_real_config_tie_definitions_reach_the_helper():
+    defs = schedule_module._tie_definitions({ACC, CUSA, SEC, PAC12, "Not A Conference"}, 2026)
+    assert defs == {
+        ACC: "acc_alternate_games", CUSA: "cusa_within_one_win", SEC: "win_pct", PAC12: "win_pct",
+    }
+    assert schedule_module._tie_definitions({ACC}, 2025) == {ACC: "win_pct"}  # pre-amendment era
+
+
+def test_a_config_that_failed_to_load_gives_no_tie_definitions(monkeypatch):
+    monkeypatch.setattr(schedule_module, "_tiebreaker_config", lambda: None)
+    assert schedule_module._tie_definitions({ACC}, 2026) == {}
+
+
+def test_build_schedule_payload_passes_the_tie_definitions_through(monkeypatch):
+    seen = {}
+    real = schedule_standings.compute_standings
+
+    def spy(*args, **kwargs):
+        seen.update(kwargs)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(schedule_standings, "compute_standings", spy)
+    rows = _rows(ACC_CX_SPEC, ACC, 2026, [("Wake Forest", "Louisville")])
+    for r in rows:
+        r.update(start_date="2026-10-17 19:00:00", home_away="home", neutral_site=False)
+    teams_meta = {t: {"conference": ACC, "division": None, "logos": None} for t in ACC_CX_SPEC}
+    payload = schedule_module.build_schedule_payload(rows, teams_meta, 2026)
+    assert seen["tie_definitions"][ACC] == "acc_alternate_games"
+    teams = {t["team"]: t for c in payload["conferences"] for t in c["teams"]}
+    slot = next(w for w in teams["Wake Forest"]["weeks"] if w["slot_id"] == "conf-championship")
+    assert slot["status"] != "clinched"

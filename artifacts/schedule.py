@@ -1336,6 +1336,22 @@ def _head_to_head_first_conferences(conferences: Iterable[str], season: int) -> 
     return result
 
 
+def _tie_definitions(conferences: Iterable[str], season: int) -> Dict[str, str]:
+    """{conference -> RuleSet.tie_definition} for `season`, for compute_standings's wider-tie
+    protections. Conferences with no rule set are omitted (the clinch is off for them anyway; if
+    a mapping is passed, an absent conference is read as the strictest definition). A config that
+    failed to load gives {} -- every conference then reads as strictest, the safe direction."""
+    config = _tiebreaker_config()
+    if config is None:
+        return {}
+    result: Dict[str, str] = {}
+    for conference in conferences:
+        rules = rules_for(config, conference, season)
+        if rules is not None:
+            result[conference] = rules.tie_definition
+    return result
+
+
 def _build_tiebreak_inputs(
     raw_conference: str,
     entries: List[Dict[str, Any]],
@@ -1825,47 +1841,24 @@ def _resolve_conference_champions(
 # Top-level payload assembly (pure -- no I/O, fully testable with synthetic
 # schedule_grid rows and a synthetic teams_meta dict)
 # ---------------------------------------------------------------------------
-def build_schedule_payload(
-    rows: List[Dict[str, Any]],
-    teams_meta: Dict[str, Dict[str, Any]],
-    season: int,
-    team_ranks: Optional[Dict[str, int]] = None,
-    non_fbs_logos: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """
-    Args:
-        rows: schedule_grid rows as dicts (all season_types) for `season`.
-        teams_meta: Dict[school -> {"conference": str|None, "division": str|None, "logos": list|None}]
-                    from the `teams` table for `season` -- the FBS team universe. `division` is
-                    populated for divisional conferences and null elsewhere. In 2026 the Sun Belt
-                    is the only one, but this is NOT a constant: eight conferences carry divisions
-                    in `teams` for seasons between 2014 and 2023, so republishing an older season
-                    will group those by division too, while the championship maths still treats
-                    them as flat top-2. Do not assume "Sun Belt only". It drives both the division grouping below and, injected into
-                    compute_standings(), the per-division championship status.
-        season: the season to build the artifact for.
-        team_ranks: Dict[school -> rank] from _fetch_team_ranks -- this season's current rank
-                    (1 = best), derived from the latest week with ratings for `season`. Optional
-                    and defaults to empty so this function stays callable with synthetic test
-                    input that carries no ratings at all. A team not present in this dict --
-                    including every team, when the season has no ratings rows whatsoever -- emits
-                    rank: null rather than raising or being silently omitted from the grid.
-        non_fbs_logos: Dict[school -> logos list|None] from the `non_fbs_teams` table -- the
-                    FCS/DII/DIII opponents that appear on FBS schedules but are deliberately
-                    absent from `teams`. Used for OPPONENT LOGOS ONLY and merged into
-                    logos_by_team below, never into teams_meta: teams_meta's KEYS define which
-                    teams get a Season Grid row and which conference each is grouped under
-                    (see fbs_team_names and member_teams below), so a non-FBS entry there would
-                    give every FCS opponent its own row in a fabricated conference. Optional and
-                    defaults to empty, which reproduces the pre-existing behavior exactly (a
-                    non-FBS opponent renders its name as text).
-    Returns:
-        The full Season Grid JSON payload per plan.yaml's contracts.interfaces.
-    """
-    team_ranks = team_ranks or {}
-    non_fbs_logos = non_fbs_logos or {}
-    non_fbs_team_names = _non_fbs_roster(non_fbs_logos)
-    # Division is injected into the standings computation rather than looked up there:
+@dataclass(frozen=True)
+class _SeasonStandings:
+    """What build_schedule_payload and playoffs.build_playoffs_payload both need before they
+    build anything of their own."""
+    standings: Dict[str, Dict[str, Any]]
+    champ_games_by_conf: Dict[str, Any]   # conference -> identified championship game id
+    champ_game_ids: Set[Any]
+    conference_champions: Dict[str, str]  # actual (title game PLAYED) winners only
+    conference_ccg_losers: Dict[str, str]
+    army_navy_game_id: Any
+
+
+def compute_season_standings(
+    rows: List[Dict[str, Any]], teams_meta: Dict[str, Dict[str, Any]], season: int
+) -> _SeasonStandings:
+    """The single standings prelude shared by the Season Grid and the playoffs artifact, so the
+    two can never drift (they once did: the playoffs copy skipped the championship-game
+    conf_record exclusion). Pure -- no I/O."""
     # schedule_standings does no DB I/O and schedule_grid carries no division column, so the
     # `teams`-sourced map has to come from here. It is what lets a divisional conference (the
     # Sun Belt today) get per-division championship statuses instead of a blank column; every
@@ -1930,11 +1923,71 @@ def build_schedule_payload(
         head_to_head_first_conferences=_head_to_head_first_conferences(
             {r["conference"] for r in rows if r.get("conference")}, season
         ),
+        tie_definitions=_tie_definitions(
+            {r["conference"] for r in rows if r.get("conference")}, season
+        ),
     )
     # T1/K1: compute_standings above ran on UNMODIFIED rows, so championship_status is safe (see
     # _exclude_championship_games_from_conf_records's docstring). Only the conf_record that gets
     # DISPLAYED is adjusted, here, afterward.
     _exclude_championship_games_from_conf_records(standings, rows, season, champ_game_ids)
+    return _SeasonStandings(
+        standings=standings,
+        champ_games_by_conf=champ_games_by_conf,
+        champ_game_ids=champ_game_ids,
+        conference_champions=conference_champions,
+        conference_ccg_losers=conference_ccg_losers,
+        army_navy_game_id=army_navy_game_id,
+    )
+
+
+def build_schedule_payload(
+    rows: List[Dict[str, Any]],
+    teams_meta: Dict[str, Dict[str, Any]],
+    season: int,
+    team_ranks: Optional[Dict[str, int]] = None,
+    non_fbs_logos: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Args:
+        rows: schedule_grid rows as dicts (all season_types) for `season`.
+        teams_meta: Dict[school -> {"conference": str|None, "division": str|None, "logos": list|None}]
+                    from the `teams` table for `season` -- the FBS team universe. `division` is
+                    populated for divisional conferences and null elsewhere. In 2026 the Sun Belt
+                    is the only one, but this is NOT a constant: eight conferences carry divisions
+                    in `teams` for seasons between 2014 and 2023, so republishing an older season
+                    will group those by division too, while the championship maths still treats
+                    them as flat top-2. Do not assume "Sun Belt only". It drives both the division grouping below and, injected into
+                    compute_standings(), the per-division championship status.
+        season: the season to build the artifact for.
+        team_ranks: Dict[school -> rank] from _fetch_team_ranks -- this season's current rank
+                    (1 = best), derived from the latest week with ratings for `season`. Optional
+                    and defaults to empty so this function stays callable with synthetic test
+                    input that carries no ratings at all. A team not present in this dict --
+                    including every team, when the season has no ratings rows whatsoever -- emits
+                    rank: null rather than raising or being silently omitted from the grid.
+        non_fbs_logos: Dict[school -> logos list|None] from the `non_fbs_teams` table -- the
+                    FCS/DII/DIII opponents that appear on FBS schedules but are deliberately
+                    absent from `teams`. Used for OPPONENT LOGOS ONLY and merged into
+                    logos_by_team below, never into teams_meta: teams_meta's KEYS define which
+                    teams get a Season Grid row and which conference each is grouped under
+                    (see fbs_team_names and member_teams below), so a non-FBS entry there would
+                    give every FCS opponent its own row in a fabricated conference. Optional and
+                    defaults to empty, which reproduces the pre-existing behavior exactly (a
+                    non-FBS opponent renders its name as text).
+    Returns:
+        The full Season Grid JSON payload per plan.yaml's contracts.interfaces.
+    """
+    team_ranks = team_ranks or {}
+    non_fbs_logos = non_fbs_logos or {}
+    non_fbs_team_names = _non_fbs_roster(non_fbs_logos)
+    # Division is injected into the standings computation rather than looked up there:
+    prelude = compute_season_standings(rows, teams_meta, season)
+    standings = prelude.standings
+    champ_game_ids = prelude.champ_game_ids
+    conference_champions = prelude.conference_champions
+    conference_ccg_losers = prelude.conference_ccg_losers
+    army_navy_game_id = prelude.army_navy_game_id
 
     fbs_team_names = set(teams_meta.keys())
     canonical_columns = build_canonical_columns(rows, season, champ_game_ids, army_navy_game_id)

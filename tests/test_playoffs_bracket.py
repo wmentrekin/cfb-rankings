@@ -10,6 +10,17 @@ MUTATION CHECK (run by hand; each mutant failed the named test, then reverted):
   - SF order by feeder QF index swapped (q // 2 -> 1 - q // 2) -> test_2025_games_follow_contract_geometry
   - SF/CH sides left in input order instead of by feeder  -> test_2025_games_follow_contract_geometry
   - winner flipped                                        -> test_2025_games_follow_contract_geometry
+
+MUTATION CHECK, 2026 projected -> actual switch (12-seed completeness gate in
+_complete_actual_bracket; one defect at a time, reverted):
+  - gate weakened to "at least 8 seeds known"             -> test_2026_first_round_rows_only_stays_projected
+  - gate removed (any CFP rows build the actual bracket)  -> test_2026_first_round_rows_only_stays_projected,
+                                                             test_2026_duplicate_seed_stays_projected_with_a_logged_reason,
+                                                             test_2026_participant_without_a_seed_stays_projected
+  - seed-problem check removed (duplicates / unseeded)    -> test_2026_duplicate_seed_stays_projected_with_a_logged_reason,
+                                                             test_2026_participant_without_a_seed_stays_projected
+  - seed-problem check removed from build_actual_bracket  -> test_actual_season_refuses_to_build_on_a_shared_seed,
+                                                             test_actual_season_refuses_to_build_on_an_unseeded_participant
 """
 import sys
 from datetime import datetime, timezone
@@ -45,13 +56,13 @@ _CONF = {
 }
 
 
-def _rows(games=_GAMES):
+def _rows(games=_GAMES, season=2025):
     rows = []
     for gid, slot, round_name, bowl, (away, aseed, ascore), (home, hseed, hscore), kickoff in games:
         start = datetime.fromisoformat(kickoff).replace(tzinfo=timezone.utc)
         played = ascore is not None
         base = dict(
-            game_id=gid, season=2025, season_type="postseason", start_date=start,
+            game_id=gid, season=season, season_type="postseason", start_date=start,
             playoff_round_name=round_name, playoff_bracket_slot=slot, playoff_bowl_name=bowl, notes=bowl,
             conference_game=False,
         )
@@ -216,3 +227,152 @@ def test_2026_projected_short_field_returns_none():
     teams_meta, ranks = _projected_league()
     short = dict(list(ranks.items())[:8])
     assert build_playoffs_payload([], teams_meta, 2026, short) is None
+
+
+# ---------------------------------------------------------------------------
+# Nits: bye count from the rules, refuse-to-build on bad seed data
+# ---------------------------------------------------------------------------
+def test_bye_flag_follows_the_season_rules_bye_count(monkeypatch):
+    monkeypatch.setitem(SEASON_RULES, 2025, dict(SEASON_RULES[2025], byes=2))
+    payload = build_playoffs_payload(_rows(), _teams_meta(), 2025, {})
+    assert [t["bye"] for t in payload["teams"]] == [True] * 2 + [False] * 10
+
+
+def test_actual_season_refuses_to_build_on_a_shared_seed(caplog):
+    games = [g for g in _GAMES]
+    # Tulane (11) is also given seed 10, which Miami holds, in every row it appears in.
+    games = [
+        g[:4] + ((g[4][0], 10, g[4][2]) if g[4][0] == "Tulane" else g[4], (g[5][0], 10, g[5][2]) if g[5][0] == "Tulane" else g[5]) + g[6:]
+        for g in games
+    ]
+    with caplog.at_level("ERROR", logger="cfb_lp"):
+        assert build_actual_bracket(_rows(games), 2025) is None
+        assert build_playoffs_payload(_rows(games), _teams_meta(), 2025, {}) is None
+    assert "seed 10 is shared" in caplog.text
+
+
+def test_actual_season_refuses_to_build_on_an_unseeded_participant(caplog):
+    rows = _rows()
+    for row in rows:
+        if row["team"] == "Tulane":
+            row["team_seed"] = None
+        if row["opponent"] == "Tulane":
+            row["opp_seed"] = None
+    with caplog.at_level("ERROR", logger="cfb_lp"):
+        assert build_actual_bracket(rows, 2025) is None
+        assert build_playoffs_payload(rows, _teams_meta(), 2025, {}) is None
+    assert "Tulane has no seed" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# 2026 configured "projected": switches to the actual bracket once all 12 seeds are stored
+# ---------------------------------------------------------------------------
+_SEED_OF = {team: seed for _g in _GAMES for team, seed, _s in (_g[4], _g[5])}
+_RANKS = {t: i for i, t in enumerate(_CONF, start=1)}
+
+
+def _selection_day_rows(first_round_final=False, qf_bye_rows=True, season=2026):
+    """First-round games between the 8 seeded teams (one row per perspective, unplayed unless
+    asked) plus one quarterfinal row per bye team with its opponent not yet known."""
+    games = []
+    for gid, slot, round_name, bowl, (away, aseed, _), (home, hseed, _), kickoff in _GAMES:
+        if round_name != "First Round":
+            continue
+        games.append((gid, slot, round_name, bowl, (away, aseed, 20 if first_round_final else None),
+                      (home, hseed, 10 if first_round_final else None), kickoff))
+    rows = _rows(games, season=season)
+    if qf_bye_rows:
+        for gid, bye in zip((11, 12, 13, 14), ("Indiana", "Texas Tech", "Ohio State", "Georgia")):
+            rows.append(dict(
+                game_id=gid, season=season, season_type="postseason", start_date=None,
+                playoff_round_name="Quarterfinal", playoff_bracket_slot=f"QF{gid - 10}", playoff_bowl_name=None,
+                notes=None, conference_game=False, team=bye, opponent=None, team_score=None, opp_score=None,
+                team_seed=_SEED_OF[bye], opp_seed=None, home_away="home", conference=_CONF[bye], status="upcoming",
+            ))
+    return rows
+
+
+def _payload_2026(rows):
+    return build_playoffs_payload(rows, _teams_meta(), 2026, _RANKS, as_of_week=12)
+
+
+def test_2026_no_cfp_rows_stays_projected():
+    payload = _payload_2026(_selection_day_rows()[:0])
+    assert payload["kind"] == "projected" and payload["as_of_week"] == 12
+    assert all(g["status"] == "projected" for g in payload["games"])
+
+
+def test_2026_first_round_rows_only_stays_projected(caplog):
+    with caplog.at_level("INFO", logger="cfb_lp"):
+        payload = _payload_2026(_selection_day_rows(qf_bye_rows=False))
+    assert payload["kind"] == "projected" and payload["as_of_week"] == 12
+    assert "staying on the projection" in caplog.text
+
+
+def test_2026_all_twelve_seeds_with_nothing_played_builds_the_actual_bracket():
+    payload = _payload_2026(_selection_day_rows())
+    assert payload["kind"] == "actual" and payload["as_of_week"] is None and payload["first_out"] == []
+    assert payload["season"] == 2026
+    assert [t["seed"] for t in payload["teams"]] == list(range(1, 13))
+    assert [t["bye"] for t in payload["teams"]] == [True] * 4 + [False] * 8
+    assert set(payload) == {"season", "kind", "as_of_week", "generated_at_utc", "teams", "rounds", "games", "first_out"}
+    games = _games_by_slot(payload)
+    assert len(payload["games"]) == 11 and all(g["status"] == "scheduled" and g["winner"] is None for g in payload["games"])
+    assert _brief(games["FR1"])[4:6] == ((8, "Oklahoma", None, None), (9, "Alabama", None, None))
+    assert _brief(games["FR2"])[4:6] == ((5, "Oregon", None, None), (12, "James Madison", None, None))
+    # byes on top of the quarterfinals, no `from` on them; the other side links to the first round
+    assert [(games[f"QF{q}"]["top"]["seed"], games[f"QF{q}"]["top"]["team"], games[f"QF{q}"]["top"]["from"],
+             games[f"QF{q}"]["bottom"]["from"]) for q in (1, 2, 3, 4)] == [
+        (1, "Indiana", None, "FR1"), (4, "Texas Tech", None, "FR2"), (2, "Ohio State", None, "FR3"), (3, "Georgia", None, "FR4"),
+    ]
+    assert games["SF1"]["top"]["from"] == "QF1" and games["SF1"]["bottom"]["from"] == "QF2"
+    assert games["CH"]["top"]["from"] == "SF1" and games["CH"]["bottom"]["from"] == "SF2"
+    # round labels still come from the 2026 config; no stored kickoff date exists for the byes
+    assert [r["dates_label"] for r in payload["rounds"]] == ["Dec 18-19", "Dec 30 - Jan 1", "Jan 14-15", "Jan 25"]
+    assert games["FR1"]["date"] == "2025-12-19"  # the row's own kickoff (fixture reuses the 2025 timestamps)
+    assert games["QF1"]["date"] is None
+
+
+def test_2026_partially_played_mixes_final_and_scheduled_games():
+    payload = _payload_2026(_selection_day_rows(first_round_final=True))
+    assert payload["kind"] == "actual"
+    games = _games_by_slot(payload)
+    assert [games[f"FR{i}"]["status"] for i in (1, 2, 3, 4)] == ["final"] * 4
+    assert games["FR1"]["winner"] is not None
+    assert [games[f"QF{i}"]["status"] for i in (1, 2, 3, 4)] == ["scheduled"] * 4
+    assert games["CH"]["status"] == "scheduled"
+    assert [r["dates_label"] for r in payload["rounds"]] == ["Dec 18-19", "Dec 30 - Jan 1", "Jan 14-15", "Jan 25"]
+
+
+def test_2026_duplicate_seed_stays_projected_with_a_logged_reason(caplog):
+    rows = _selection_day_rows()
+    for row in rows:  # Tulane (11) also claims seed 10, which Miami holds
+        if row["team"] == "Tulane":
+            row["team_seed"] = 10
+        if row["opponent"] == "Tulane":
+            row["opp_seed"] = 10
+    with caplog.at_level("WARNING", logger="cfb_lp"):
+        payload = _payload_2026(rows)
+    assert payload is not None and payload["kind"] == "projected"
+    assert "seed 10 is shared" in caplog.text and "staying on the projection" in caplog.text
+
+
+def test_2026_participant_without_a_seed_stays_projected(caplog):
+    rows = _selection_day_rows()
+    for row in rows:
+        if row["team"] == "Tulane":
+            row["team_seed"] = None
+        if row["opponent"] == "Tulane":
+            row["opp_seed"] = None
+    with caplog.at_level("WARNING", logger="cfb_lp"):
+        payload = _payload_2026(rows)
+    assert payload is not None and payload["kind"] == "projected"
+    assert "Tulane has no seed" in caplog.text
+
+
+def test_2026_actual_payload_never_returns_none_for_incomplete_rows():
+    rows = _selection_day_rows(qf_bye_rows=False)
+    for row in rows:
+        row["team_seed"] = None
+        row["opp_seed"] = None
+    assert _payload_2026(rows)["kind"] == "projected"

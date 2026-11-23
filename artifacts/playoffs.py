@@ -10,6 +10,14 @@ Two kinds of season, both driven by SEASON_RULES below:
                    set). Seeds, bowl names and scores are read from the rows.
   - "projected" -- "if the season ended today", computed from our model's rankings plus the
                    conference standings the Season Grid already shows.
+A season configured "projected" (2026) SWITCHES to the actual bracket once the stored postseason
+rows (playoff_round_name set) identify ALL field_size seeds, each seed on exactly one team, with no
+participant lacking a seed (selection day onward; bye teams are seeded through their quarterfinal
+rows). Anything less -- no CFP rows, a partial set of seeds, a duplicate seed, an unseeded
+participant -- stays on the projection with one logged reason; a half-known bracket is never
+published as "actual", and incomplete data never makes a projected season return None. A season
+configured "actual" (2025) always uses the stored bracket and REFUSES to build (None, logged at
+ERROR) on duplicate or missing seed data, since the payload's `teams` lookup would break.
 Any season not in SEASON_RULES gets no artifact (the publisher skips it, the builder returns
 None): the 2027 season moves to a 24-team format and every rule here is 12-team specific.
 
@@ -36,11 +44,8 @@ from artifacts.schedule import (
     _fetch_schedule_grid_rows,
     _fetch_team_ranks,
     _fetch_teams_meta,
-    _head_to_head_first_conferences,
-    _resolve_conference_championship_outcomes,
     _to_datetime,
-    identify_army_navy_game,
-    identify_conference_championship_games,
+    compute_season_standings,
 )
 from utils import football_day
 
@@ -77,9 +82,15 @@ ROUNDS: List[Tuple[str, str]] = [
 SEASON_RULES: Dict[int, Dict[str, Any]] = {
     2025: {
         "kind": "actual",
+        "field_size": 12,
+        "byes": 4,
         "round_notes": {ROUND_FIRST: "Campus Sites"},
     },
     2026: {
+        # "projected" until the stored CFP rows identify all 12 seeds, then the ACTUAL bracket is
+        # built instead (kind "actual"; see build_playoffs_payload). The round dates below keep
+        # labelling the rounds in both modes: stored games may carry no dates yet, and a label
+        # computed from a partial set of games would be wrong.
         "kind": "projected",
         "field_size": 12,
         "byes": 4,
@@ -150,6 +161,7 @@ def resolve_projected_champions(
     standings: Dict[str, Dict[str, Any]],
     actual_champions: Dict[str, str],
     conferences: Iterable[str],
+    title_game_pairs: Optional[Dict[str, Set[str]]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Champion (actual or projected) of each conference in `conferences` (RAW names).
@@ -157,9 +169,19 @@ def resolve_projected_champions(
     Owner's rule, taken literally:
       1. a conference whose title game has been PLAYED is decided: `actual_champions[conf]` wins
          outright, whatever the standings or ranks say;
-      2. otherwise the candidates are that conference's ranked teams. When exactly two of them
-         have CLINCHED a title-game berth (championship_status == "clinched") the candidates are
-         restricted to those two;
+      2. otherwise the field of contenders is NARROWED, in this order, BEFORE any rank filter:
+           a. the two participants of the conference's IDENTIFIED championship game, played or
+              not (`title_game_pairs[conf]`, from identify_conference_championship_games), when
+              exactly two teams are given, both are members of the conference's standings and
+              neither is already "eliminated" (an eliminated participant means the identified game
+              is a false positive -- see schedule.identify_conference_championship_games);
+           b. else the two teams that have CLINCHED (championship_status == "clinched"), when
+              exactly two have;
+           c. else every team in the conference.
+         Only then are the narrowed teams filtered to the RANKED ones. So when one of a narrowed
+         pair is unranked, the other is picked; when neither is, the conference gets no champion
+         (logged as a warning) -- the narrowing never silently falls away to the whole conference,
+         which could crown a team that is not in the title game;
       3. among the candidates, the best conference win percentage leads; ties at the top go to
          the team ranked highest by OUR model -- never head-to-head.
 
@@ -168,20 +190,35 @@ def resolve_projected_champions(
     Returns {raw conference -> {"team": str, "actual": bool}}; a conference with no actual
     champion and no ranked candidate is absent.
     """
+    title_game_pairs = title_game_pairs or {}
     result: Dict[str, Dict[str, Any]] = {}
     for conference in conferences:
         actual = actual_champions.get(conference)
         if actual:
             result[conference] = {"team": actual, "actual": True}
             continue
-        candidates = [
+        members = [
             team for team, st in standings.items()
-            if st.get("conference") == conference and st.get("conf_record") is not None and team in ranks
+            if st.get("conference") == conference and st.get("conf_record") is not None
         ]
-        clinched = [t for t in candidates if standings[t].get("championship_status") == "clinched"]
-        if len(clinched) == 2:
-            candidates = clinched
+        narrowed, narrowed_by = members, None
+        pair = title_game_pairs.get(conference) or set()
+        if (
+            len(pair) == 2 and pair <= set(members)
+            and not any(standings[t].get("championship_status") == "eliminated" for t in pair)
+        ):
+            narrowed, narrowed_by = sorted(pair), "identified title game"
+        else:
+            clinched = [t for t in members if standings[t].get("championship_status") == "clinched"]
+            if len(clinched) == 2:
+                narrowed, narrowed_by = clinched, "two clinched teams"
+        candidates = [t for t in narrowed if t in ranks]
         if not candidates:
+            if narrowed_by:
+                logger.warning(
+                    "playoffs: neither of the %s for %s (%s) is ranked; no champion projected for it.",
+                    narrowed_by, conference, sorted(narrowed),
+                )
             continue
         best_pct = max(_conference_win_pct(standings[t]["conf_record"]) for t in candidates)
         leaders = [t for t in candidates if _conference_win_pct(standings[t]["conf_record"]) == best_pct]
@@ -361,6 +398,60 @@ def _cfp_game_rows(rows: Iterable[Dict[str, Any]], season: int) -> Dict[Any, Dic
     return games
 
 
+def _cfp_seed_map(rows: Iterable[Dict[str, Any]], season: int) -> Tuple[Dict[str, int], List[str]]:
+    """({team: seed} from every CFP-bracket row, [problems]). Seeds come from team_seed/opp_seed on
+    either perspective of any round (a bye team is seeded through its quarterfinal row). Problems:
+    a team with two different seeds, two teams sharing a seed, and a participant with no seed on
+    any row -- each would break the payload's `teams` lookup, so callers refuse to build on them."""
+    seeds: Dict[str, int] = {}
+    problems: List[str] = []
+    participants: Set[str] = set()
+    for row in rows:
+        round_name = row.get("playoff_round_name")
+        if row.get("season") != season or not isinstance(round_name, str) or not round_name.strip():
+            continue
+        for team_key, seed_key in (("team", "team_seed"), ("opponent", "opp_seed")):
+            team, seed = row.get(team_key), _int_or_none(row.get(seed_key))
+            if not team:
+                continue
+            participants.add(team)
+            if seed is not None and seed in SEED_QUARTER:
+                if seeds.setdefault(team, seed) != seed:
+                    problems.append(f"{team} has conflicting seeds {seeds[team]} and {seed}")
+    for team in sorted(participants - set(seeds)):
+        problems.append(f"{team} has no seed on any row")
+    by_seed: Dict[int, List[str]] = {}
+    for team, seed in seeds.items():
+        by_seed.setdefault(seed, []).append(team)
+    for seed, teams in sorted(by_seed.items()):
+        if len(teams) > 1:
+            problems.append(f"seed {seed} is shared by {sorted(teams)}")
+    return seeds, problems
+
+
+def _complete_actual_bracket(rows: List[Dict[str, Any]], season: int, field_size: int) -> Optional[Dict[str, Any]]:
+    """The actual bracket for a season configured as projected, or None (with ONE logged reason)
+    when the stored rows do not yet identify the whole field: seeds 1..field_size each on exactly
+    one team and no participant without a seed. Never raises, never returns a partial bracket."""
+    if not _cfp_game_rows(rows, season):
+        logger.info("playoffs: no CFP rows stored for season=%s yet; staying on the projection.", season)
+        return None
+    seeds, problems = _cfp_seed_map(rows, season)
+    if problems:
+        logger.warning(
+            "playoffs: CFP rows for season=%s have bad seed data (%s); staying on the projection.",
+            season, "; ".join(problems),
+        )
+        return None
+    if sorted(seeds.values()) != list(range(1, field_size + 1)):
+        logger.info(
+            "playoffs: CFP rows for season=%s identify only seeds %s of %d; staying on the projection.",
+            season, sorted(seeds.values()), field_size,
+        )
+        return None
+    return build_actual_bracket(rows, season)
+
+
 def build_actual_bracket(rows: List[Dict[str, Any]], season: int) -> Optional[Dict[str, Any]]:
     """
     Reconstruct the real bracket from schedule_grid rows whose playoff_round_name is set.
@@ -391,15 +482,13 @@ def build_actual_bracket(rows: List[Dict[str, Any]], season: int) -> Optional[Di
     if not cfp_rows:
         return None
 
-    seeds: Dict[str, int] = {}
-    for row in rows:
-        if row.get("season") != season or not isinstance(row.get("playoff_round_name"), str):
-            continue
-        for team_key, seed_key in (("team", "team_seed"), ("opponent", "opp_seed")):
-            team, seed = row.get(team_key), _int_or_none(row.get(seed_key))
-            if team and seed is not None and seed in SEED_QUARTER:
-                if seeds.setdefault(team, seed) != seed:
-                    logger.warning("playoffs: %s has conflicting CFP seeds %s and %s", team, seeds[team], seed)
+    seeds, problems = _cfp_seed_map(rows, season)
+    if problems:
+        logger.error(
+            "playoffs: refusing to build the actual bracket for season=%s, bad CFP seed data: %s",
+            season, "; ".join(problems),
+        )
+        return None
     team_by_seed = {seed: team for team, seed in seeds.items()}
 
     built: Dict[Tuple[str, int], Dict[str, Any]] = {}
@@ -504,28 +593,20 @@ def _rounds_block(rules: Dict[str, Any], round_dates: Optional[Dict[str, List[st
     ]
 
 
-def _season_standings(
-    rows: List[Dict[str, Any]], teams_meta: Dict[str, Dict[str, Any]], season: int
-) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, str]]:
-    """(standings, actual conference champions), computed exactly as build_schedule_payload does
-    for the Season Grid (same Army-Navy exclusion, played-title-game override and head-to-head
-    clinch inputs), so the status and records used here are the ones the grid shows."""
-    champ_games = identify_conference_championship_games(rows, season)
-    champions, losers = _resolve_conference_championship_outcomes(champ_games, rows, season)
-    participants: Dict[str, Set[str]] = {}
-    for conference, team in list(champions.items()) + list(losers.items()):
-        participants.setdefault(conference, set()).add(team)
-    army_navy = identify_army_navy_game(rows, season)
-    standings = schedule_standings.compute_standings(
-        rows, season,
-        divisions={team: meta.get("division") for team, meta in teams_meta.items()},
-        excluded_conference_game_ids={army_navy} if army_navy is not None else None,
-        ccg_participants=participants,
-        head_to_head_first_conferences=_head_to_head_first_conferences(
-            {r["conference"] for r in rows if r.get("conference")}, season
-        ),
-    )
-    return standings, champions
+def _title_game_pairs(rows: List[Dict[str, Any]], champ_games_by_conf: Dict[str, Any]) -> Dict[str, Set[str]]:
+    """{conference -> the two teams of its IDENTIFIED championship game}, played or not, read off
+    the rows of the identified game ids. Conferences whose game does not show exactly two teams
+    are omitted."""
+    wanted = {game_id: conf for conf, game_id in champ_games_by_conf.items()}
+    teams: Dict[str, Set[str]] = {}
+    for row in rows:
+        conf = wanted.get(row.get("game_id"))
+        if conf is None:
+            continue
+        for key in ("team", "opponent"):
+            if row.get(key):
+                teams.setdefault(conf, set()).add(row[key])
+    return {conf: pair for conf, pair in teams.items() if len(pair) == 2}
 
 
 def build_playoffs_payload(
@@ -538,14 +619,16 @@ def build_playoffs_payload(
     """
     The `playoffs/{season}/latest.json` payload, or None when there is nothing to publish: a
     season outside SEASON_RULES, a projected season with too few ranked teams, or an actual
-    season with no stored CFP games. Pure -- no I/O.
+    season with no usable stored CFP games (none, or bad seed data). A projected-configured season
+    whose stored CFP rows identify all 12 seeds is built as the actual bracket instead. Pure.
     """
     rules = SEASON_RULES.get(season)
     if rules is None:
         logger.info("playoffs: season %s has no playoff rules configured; nothing built.", season)
         return None
     team_ranks = {t: r for t, r in (team_ranks or {}).items() if t in teams_meta}
-    standings, actual_champions = _season_standings(rows, teams_meta, season)
+    prelude = compute_season_standings(rows, teams_meta, season)
+    standings, actual_champions = prelude.standings, prelude.conference_champions
 
     def conference_raw(team: str) -> Optional[str]:
         st = standings.get(team)
@@ -558,14 +641,10 @@ def build_playoffs_payload(
             "seed": seed, "team": team, "rank": team_ranks.get(team), "record": record,
             "conference": _display_conference(conference_raw(team)),
             "logo_url": _resolve_logo(teams_meta.get(team, {}).get("logos")),
-            "bid": bid, "bid_label": bid_label, "bye": seed <= 4,
+            "bid": bid, "bid_label": bid_label, "bye": seed <= rules["byes"],
         }
 
-    if rules["kind"] == "actual":
-        bracket = build_actual_bracket(rows, season)
-        if bracket is None:
-            logger.warning("playoffs: no CFP games stored for season=%s; nothing built.", season)
-            return None
+    def actual_payload(bracket: Dict[str, Any]) -> Dict[str, Any]:
         teams = []
         for team, seed in sorted(bracket["seeds"].items(), key=lambda kv: kv[1]):
             conference = conference_raw(team)
@@ -585,7 +664,22 @@ def build_playoffs_payload(
             "games": bracket["games"], "first_out": [],
         }
 
-    champions = resolve_projected_champions(team_ranks, standings, actual_champions, rules["aq_conferences"])
+    if rules["kind"] == "actual":
+        bracket = build_actual_bracket(rows, season)
+        if bracket is None:
+            logger.warning("playoffs: no usable CFP games stored for season=%s; nothing built.", season)
+            return None
+        return actual_payload(bracket)
+
+    # Configured "projected": switch to the real bracket once the stored rows identify every seed.
+    bracket = _complete_actual_bracket(rows, season, rules["field_size"])
+    if bracket is not None:
+        return actual_payload(bracket)
+
+    champions = resolve_projected_champions(
+        team_ranks, standings, actual_champions, rules["aq_conferences"],
+        title_game_pairs=_title_game_pairs(rows, prelude.champ_games_by_conf),
+    )
     field = select_projected_field(
         team_ranks, {t: conference_raw(t) for t in team_ranks}, champions, rules
     )

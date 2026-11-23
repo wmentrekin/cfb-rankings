@@ -199,3 +199,86 @@ def test_resolver_ignores_unranked_and_missing_conferences():
     standings = {"A": _st("ACC", 5, 3), "Z": _st("ACC", 8, 0), "S": _st("SEC", 8, 0)}
     out = resolve_projected_champions(ranks, standings, {}, ["ACC", "SEC"])
     assert out == {"ACC": {"team": "A", "actual": False}}
+
+
+# ---------------------------------------------------------------------------
+# Champion resolver: the IDENTIFIED title game narrows candidates (review F2)
+# ---------------------------------------------------------------------------
+def test_resolver_identified_pair_never_lets_a_third_tied_team_win():
+    ranks = {"A": 8, "B": 6, "C": 1}
+    standings = {"A": _st("ACC", 7, 2), "B": _st("ACC", 7, 2), "C": _st("ACC", 7, 2)}
+    out = resolve_projected_champions(ranks, standings, {}, ["ACC"], title_game_pairs={"ACC": {"A", "B"}})
+    assert out["ACC"] == {"team": "B", "actual": False}
+    # without the identified game the best-ranked of the three would have been picked
+    assert resolve_projected_champions(ranks, standings, {}, ["ACC"])["ACC"]["team"] == "C"
+
+
+def test_resolver_identified_pair_beats_a_different_clinched_pair():
+    ranks = {"A": 5, "B": 6, "C": 1, "D": 2}
+    standings = {
+        "A": _st("ACC", 6, 2), "B": _st("ACC", 6, 2), "C": _st("ACC", 7, 1, "clinched"), "D": _st("ACC", 7, 1, "clinched"),
+    }
+    out = resolve_projected_champions(ranks, standings, {}, ["ACC"], title_game_pairs={"ACC": {"A", "B"}})
+    assert out["ACC"]["team"] == "A"
+
+
+def test_resolver_actual_champion_still_beats_the_identified_pair():
+    ranks = {"A": 1, "B": 2, "C": 3}
+    standings = {t: _st("ACC", 7, 2) for t in ranks}
+    out = resolve_projected_champions(ranks, standings, {"ACC": "C"}, ["ACC"], title_game_pairs={"ACC": {"A", "B"}})
+    assert out["ACC"] == {"team": "C", "actual": True}
+
+
+def test_resolver_pair_with_one_unranked_team_picks_the_ranked_one_not_an_eliminated_third():
+    standings = {
+        "A": _st("ACC", 6, 2, "clinched"), "B": _st("ACC", 7, 1, "clinched"), "C": _st("ACC", 8, 0, "eliminated"),
+    }
+    ranks = {"A": 10, "C": 1}  # B (the better record of the clinched pair) is unranked
+    out = resolve_projected_champions(ranks, standings, {}, ["ACC"])
+    assert out["ACC"] == {"team": "A", "actual": False}
+    out = resolve_projected_champions(ranks, standings, {}, ["ACC"], title_game_pairs={"ACC": {"A", "B"}})
+    assert out["ACC"] == {"team": "A", "actual": False}
+
+
+def test_resolver_pair_with_neither_team_ranked_gives_no_champion_and_warns(caplog):
+    standings = {
+        "A": _st("ACC", 6, 2, "clinched"), "B": _st("ACC", 7, 1, "clinched"), "C": _st("ACC", 8, 0),
+    }
+    with caplog.at_level("WARNING", logger="cfb_lp"):
+        out = resolve_projected_champions({"C": 1}, standings, {}, ["ACC"])
+        assert "ACC" not in out
+        out = resolve_projected_champions({"C": 1}, standings, {}, ["ACC"], title_game_pairs={"ACC": {"A", "B"}})
+        assert "ACC" not in out
+    assert caplog.text.count("neither of the") == 2 and "ACC" in caplog.text
+
+
+def test_resolver_falls_back_to_the_whole_conference_without_a_usable_pair():
+    ranks = {"A": 9, "B": 8, "C": 1}
+    standings = {t: _st("ACC", 7, 2) for t in ranks}
+    assert resolve_projected_champions(ranks, standings, {}, ["ACC"])["ACC"]["team"] == "C"
+    assert resolve_projected_champions(ranks, standings, {}, ["ACC"], title_game_pairs={"ACC": set()})["ACC"]["team"] == "C"
+    # a pair naming a team outside the conference's standings is not trusted
+    out = resolve_projected_champions(ranks, standings, {}, ["ACC"], title_game_pairs={"ACC": {"A", "Zed"}})
+    assert out["ACC"]["team"] == "C"
+    # nor one containing an already-eliminated team (a false-positive identified game)
+    standings["B"] = _st("ACC", 2, 7, "eliminated")
+    out = resolve_projected_champions(ranks, standings, {}, ["ACC"], title_game_pairs={"ACC": {"A", "B"}})
+    assert out["ACC"]["team"] == "C"
+
+
+def test_title_game_pairs_reads_the_teams_of_the_identified_game_ids():
+    from artifacts.playoffs import _title_game_pairs
+
+    rows = [
+        {"game_id": 7, "team": "A", "opponent": "B"}, {"game_id": 7, "team": "B", "opponent": "A"},
+        {"game_id": 8, "team": "A", "opponent": "X"},
+        {"game_id": 9, "team": "P", "opponent": "Q"}, {"game_id": 9, "team": "R", "opponent": "Q"},
+    ]
+    assert _title_game_pairs(rows, {"ACC": 7, "SEC": 9, "Big Ten": 10}) == {"ACC": {"A", "B"}}
+
+
+def test_build_playoffs_payload_uses_one_shared_standings_prelude(monkeypatch):
+    from artifacts import playoffs, schedule
+
+    assert playoffs.compute_season_standings is schedule.compute_season_standings
+    assert not hasattr(playoffs, "_season_standings")

@@ -15,8 +15,9 @@ Shared by both repos for this pass. cfb-rankings PRODUCES it; personal-site CONS
   5. seeds 1-12 strictly by rank; seeds 1-4 get byes.
   Undecided champion: an actual champion (title game played) wins outright. Otherwise the team
   first in that conference's standings; when several teams are tied on conference record at the
-  top, the one ranked highest by the model. Once a title game is set (two teams clinched), the
-  same rule applies among those two.
+  top, the one ranked highest by the model. Once a title game is set (identified in the stored games, played or not, else two teams clinched), the
+  same rule applies among those two (ranked ones only).
+  After selection day (stored CFP rows identify all 12 seeds) the 2026 file switches to `kind: "actual"`.
 - 2025 = the ACTUAL bracket and results from stored postseason games (seeds, bowl names, scores
   are populated in `games`; verified 2026-11-23: 11 games, FR1-4, QF1-4, SF1-2, CH).
 - Season Grid: no CFP-specific columns. The postseason column is "Bowls"; a playoff team's Bowls
