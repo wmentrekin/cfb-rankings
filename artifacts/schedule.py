@@ -28,7 +28,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import pandas as pd  # type: ignore
 from dotenv import load_dotenv  # type: ignore
@@ -1330,6 +1330,27 @@ def _tiebreaker_config():
     return _TIEBREAKER_CONFIG
 
 
+def _head_to_head_first_conferences(conferences: Iterable[str], season: int) -> Set[str]:
+    """Conferences whose first two-team tiebreak step for `season` is an unconditional
+    head_to_head, for compute_standings's head-to-head clinch.
+
+    A conference with no rule set (or no config at all, e.g. a config that failed to load) is
+    left out, which keeps the clinch rule off for it: this is the safe direction, never a guess.
+    """
+    config = _tiebreaker_config()
+    if config is None:
+        return set()
+    result: Set[str] = set()
+    for conference in conferences:
+        rules = rules_for(config, conference, season)
+        if rules is None or not rules.two_team:
+            continue
+        first = rules.two_team[0]
+        if first.step == "head_to_head" and first.when is None:
+            result.add(conference)
+    return result
+
+
 def _build_tiebreak_inputs(
     raw_conference: str,
     entries: List[Dict[str, Any]],
@@ -1921,6 +1942,9 @@ def build_schedule_payload(
         rows, season, divisions=divisions,
         excluded_conference_game_ids=excluded_conference_game_ids,
         ccg_participants=ccg_participants_by_conf,
+        head_to_head_first_conferences=_head_to_head_first_conferences(
+            {r["conference"] for r in rows if r.get("conference")}, season
+        ),
     )
     # T1/K1: compute_standings above ran on UNMODIFIED rows, so championship_status is safe (see
     # _exclude_championship_games_from_conf_records's docstring). Only the conf_record that gets
