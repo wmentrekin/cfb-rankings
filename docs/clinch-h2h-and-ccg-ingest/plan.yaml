@@ -1,0 +1,45 @@
+artifact: plan
+feature: "clinch-h2h-and-ccg-ingest"
+mode: "bounded-feature"
+status: draft
+based_on: "docs/clinch-h2h-and-ccg-ingest/requirements.yaml"
+objective: "Head-to-head clinch rule, top_n-clinched elimination, upcoming-weeks ingest, plus the one-off data steps."
+approach:
+  key_decisions:
+    - "KD1 H2H rule. With S = {i != T : B_i >= L_T}: if |S| == top_n, and some i in S has B_i == L_T, T beat i in their only conference meeting, i and T have equal total counted conference games, the conference's first two-team step is head_to_head, and every other pool team j has B_j < L_T or W_j > L_T, then T is clinched. The last condition is what makes the tie provably two-team."
+    - "KD2 after clinch math, if a pool has top_n clinched teams, all others become eliminated."
+    - "KD3 head-to-head facts are passed into the pure function (a mapping built by the caller from rows); the function gains no I/O."
+    - "KD4 upcoming ingest: after the gated target-week ingest, one best-effort fetch of the regular season, upserting only weeks later than the target; failure logs a warning without the INGEST_FAILURE token."
+    - "KD5 data steps use existing workflows: backfill --apply for weeks 13 and 14, then a weekly-update run for week 12 (republishes both artifacts and fires the site hook)."
+branching: {strategy: "single-branch", branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"}
+execution_batches:
+  - id: "B0"
+    goal: "data live now (no code)"
+    tasks:
+      - {id: "T0", title: "apply backfill wk13 + wk14, rerun weekly-update week=12", assigned_domain: "orchestrator (workflow dispatches)", expected_validation: ["run logs show 4 + 3 rows verified present", "hook returns success"]}
+  - id: "B1"
+    goal: "clinch logic"
+    tasks:
+      - id: "T1"
+        title: "H2H clinch + top_n-clinched elimination, with tests"
+        assigned_domain: "generalist-developer"
+        model_routing: {task_profile: implementation, uncertainty: medium, consequence: high, scope_size: bounded, determinism: interpretive, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", escalation_tier: frontier, escalation_condition: "the rule cannot be made provably safe as specified"}
+        owned_scope: ["artifacts/schedule_standings.py", "artifacts/schedule.py (call site only)", "tests/test_h2h_clinch.py"]
+        forbidden_scope: ["main.py", "database/*", "workflows"]
+        expected_validation: ["full suite green", "AC1/AC2 fixtures", "mutation check on each guard"]
+  - id: "B2"
+    goal: "upcoming-weeks ingest"
+    tasks:
+      - id: "T2"
+        title: "best-effort later-weeks ingest in main.py, with tests"
+        assigned_domain: "data-engineer"
+        model_routing: {task_profile: implementation, uncertainty: low, consequence: medium, scope_size: bounded, determinism: deterministic, requested_tier: balanced, requested_reasoning: medium, provider_model: "Claude Sonnet 5", escalation_tier: frontier, escalation_condition: "call-order guard tests cannot be kept meaningful"}
+        owned_scope: ["main.py", "database/get_games.py", "tests/test_ingest_resilience.py or a new test file"]
+        forbidden_scope: ["artifacts/*"]
+        expected_validation: ["full suite green", "AC4 test", "tests/test_game_result_overrides.py call-order guard updated deliberately, not weakened"]
+ordering_notes: ["B0 first and independent", "T1 and T2 touch disjoint files; run sequentially on the one branch"]
+risks:
+  - "R1 over-reporting a clinch: mitigated by the two-team-tie proof condition and negative fixtures"
+  - "R2 an early-ingested title game changes what existing code paths see: notes-based identification already handles scheduled games; verify on the published payload after B0"
+  - "R3 whole-season fetch is a larger request: covered by existing retries, and non-blocking"
+checkpoint: {required_before_execution: true, status: pending}

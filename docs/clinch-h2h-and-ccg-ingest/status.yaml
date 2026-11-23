@@ -1,0 +1,60 @@
+artifact: status
+feature: "clinch-h2h-and-ccg-ingest"
+mode: "bounded-feature"
+stage: "planning"
+owner_skill: work
+objective: >
+  (1) Get the announced Pac-12 week 13 flex games and the already-listed conference championship
+  games into the Season Grid. (2) Add a head-to-head clinch rule so a team is marked clinched when
+  exactly one rival can still tie it and the team holds the head-to-head. (3) Make the weekly run
+  ingest upcoming games so a title game appears as soon as CFBD lists it.
+repository_sync:
+  completed_before_work: true
+  checked_at: "2026-11-23"
+  repositories:
+    - path: "/home/user/cfb-rankings"
+      remote: "origin (wmentrekin/cfb-rankings)"
+      relevant_branch: "main"
+      local_commit_before: "77a563d (stale pinned branch; kept as local branch backup/postseason-planning)"
+      remote_commit_after_fetch: "8ab8201"
+      local_commit_after: "8ab8201"
+      result: "updated"
+      notes: "Pinned branch restarted from origin/main because PR #21 is merged. Tree clean."
+branching:
+  branch_name: "claude/georgia-tech-schedule-viz-aqy1ay"
+summary:
+  current_focus: "pre-execution checkpoint"
+  last_completed: "discovery (orchestrator, direct): CFBD dry runs for weeks 13-15, one read-only standings query, code read"
+  current_blocker: ""
+artifacts:
+  requirements: "docs/clinch-h2h-and-ccg-ingest/requirements.yaml"
+  plan: "docs/clinch-h2h-and-ccg-ingest/plan.yaml"
+  implementation_report: null
+pr: {number: null, url: null, status: "not_opened"}
+agents:
+  - id: "orchestrator"
+    role: "orchestrator"
+    task_profile: "orchestration"
+    requested_model_tier: "frontier"
+    requested_reasoning: "high"
+    actual_model: "claude-fable-5-2 (session model)"
+    routing_enforced: false
+    status: "active"
+    stage: "planning"
+    task: "checkpoint"
+loops:
+  planning_review: {count: 0, max: 2}
+  execution_verification: {count: 0, max: 2}
+checkpoint:
+  pre_execution_required: true
+  pre_execution_status: pending
+blockers: []
+decisions:
+  - "Discovery done in the main session: it was three workflow dry runs, two SELECTs and a code read, smaller than a handoff."
+  - "Owner asked for tiebreaker logic instead of a hand-maintained clinched list; no manual override is planned."
+  - "2025 grid sizing is a personal-site issue and is scoped as a separate follow-up."
+model_routing:
+  provider: "Claude Code / Anthropic"
+  substitutions: ["Agent tool aliases: balanced -> sonnet"]
+next_action: "owner checkpoint: proceed | revise_plan | narrow_scope | stop"
+user_input_needed: true
