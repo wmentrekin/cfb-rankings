@@ -376,3 +376,92 @@ def test_2026_actual_payload_never_returns_none_for_incomplete_rows():
         row["team_seed"] = None
         row["opp_seed"] = None
     assert _payload_2026(rows)["kind"] == "projected"
+
+
+# ---------------------------------------------------------------------------
+# One-sided semifinal / championship rows, and literal "TBD" opponents
+# ---------------------------------------------------------------------------
+def _one_sided(rows, game_id, keep, placeholder=None):
+    """Keep only `keep`'s perspective of the game, with its opponent replaced by `placeholder`
+    and nothing played."""
+    out = []
+    for r in rows:
+        if r["game_id"] != game_id:
+            out.append(r)
+        elif r["team"] == keep:
+            out.append(dict(r, opponent=placeholder, opp_seed=None, opp_score=None, team_score=None, status="upcoming"))
+    return out
+
+
+def _side_tuple(side):
+    return (side["seed"], side["team"], side["from"])
+
+
+def test_semifinal_with_only_the_later_feeder_team_known_puts_it_on_the_bottom():
+    # SF2 is fed by QF3 (top) / QF4 (bottom); Ole Miss came through QF4.
+    for placeholder in (None, "TBD"):
+        rows = _one_sided(_rows(), 22, "Ole Miss", placeholder)
+        sf2 = _games_by_slot(build_actual_bracket(rows, 2025))["SF2"]
+        assert _side_tuple(sf2["top"]) == (None, None, "QF3"), placeholder
+        assert _side_tuple(sf2["bottom"]) == (6, "Ole Miss", "QF4"), placeholder
+        assert sf2["status"] == "scheduled" and sf2["winner"] is None
+
+
+def test_semifinal_with_only_the_earlier_feeder_team_known_puts_it_on_top():
+    sf2 = _games_by_slot(build_actual_bracket(_one_sided(_rows(), 22, "Miami"), 2025))["SF2"]
+    assert _side_tuple(sf2["top"]) == (10, "Miami", "QF3")
+    assert _side_tuple(sf2["bottom"]) == (None, None, "QF4")
+    sf1 = _games_by_slot(build_actual_bracket(_one_sided(_rows(), 21, "Oregon"), 2025))["SF1"]
+    assert _side_tuple(sf1["top"]) == (None, None, "QF1") and _side_tuple(sf1["bottom"]) == (5, "Oregon", "QF2")
+
+
+def test_championship_with_only_one_finalist_known_sits_on_its_own_feeder_side():
+    # CH is fed by SF1 (top) / SF2 (bottom). Indiana is from SF1, Miami from SF2.
+    ch = _games_by_slot(build_actual_bracket(_one_sided(_rows(), 30, "Miami"), 2025))["CH"]
+    assert _side_tuple(ch["top"]) == (None, None, "SF1") and _side_tuple(ch["bottom"]) == (10, "Miami", "SF2")
+    ch = _games_by_slot(build_actual_bracket(_one_sided(_rows(), 30, "Indiana", "TBD"), 2025))["CH"]
+    assert _side_tuple(ch["top"]) == (1, "Indiana", "SF1") and _side_tuple(ch["bottom"]) == (None, None, "SF2")
+
+
+def test_quarterfinal_with_only_the_first_round_team_known_puts_it_on_the_bottom():
+    rows = _one_sided(_rows(), 11, "Alabama")  # QF1: Indiana (bye) v Alabama, bye side missing
+    qf1 = _games_by_slot(build_actual_bracket(rows, 2025))["QF1"]
+    assert _side_tuple(qf1["bottom"]) == (9, "Alabama", "FR1")
+
+
+def test_tbd_quarterfinal_opponent_before_the_first_round_is_played_still_builds_actual_2026():
+    rows = _selection_day_rows()
+    for row in rows:
+        if row["playoff_round_name"] == "Quarterfinal":
+            row["opponent"] = "TBD"
+    payload = _payload_2026(rows)
+    assert payload["kind"] == "actual" and [t["seed"] for t in payload["teams"]] == list(range(1, 13))
+    assert "TBD" not in {t["team"] for t in payload["teams"]}
+    qf1 = _games_by_slot(payload)["QF1"]
+    assert _side_tuple(qf1["top"]) == (1, "Indiana", None)
+    assert qf1["bottom"] == {"seed": None, "team": None, "score": None, "from": "FR1"}
+
+
+def test_tbd_is_not_an_unknown_side_when_it_is_a_real_team_or_in_the_first_round(caplog):
+    # a first-round "TBD" with no seed is a genuine unseeded participant: refuse / stay projected
+    rows = _rows()
+    for row in rows:
+        if row["game_id"] == 1:
+            row["opponent"] = "TBD" if row["team"] == "Oregon" else row["opponent"]
+            row["team"] = "TBD" if row["team"] == "James Madison" else row["team"]
+            row["team_seed"] = None if row["team"] == "TBD" else row["team_seed"]
+            row["opp_seed"] = None if row["opponent"] == "TBD" else row["opp_seed"]
+    with caplog.at_level("ERROR", logger="cfb_lp"):
+        assert build_actual_bracket(rows, 2025) is None
+    assert "TBD has no seed" in caplog.text
+
+
+def test_placeholder_rule_requires_a_later_round_a_placeholder_name_and_no_team_identity():
+    from artifacts.playoffs import _is_placeholder_side as ph
+
+    assert ph("TBD", "quarterfinal", None, set()) and ph("Winner of FR1", "semifinal", None, set())
+    assert not ph("TBD", "first_round", None, set())            # first round: never unknown
+    assert not ph("Tulane", "quarterfinal", None, set())        # not a placeholder name
+    assert not ph("TBD", "quarterfinal", {"TBD": {}}, set())    # an FBS team in teams_meta
+    assert not ph("TBD", "quarterfinal", None, {"TBD"})         # has rows of its own
+    assert not ph(None, "quarterfinal", None, set())

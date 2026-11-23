@@ -398,7 +398,33 @@ def _cfp_game_rows(rows: Iterable[Dict[str, Any]], season: int) -> Dict[Any, Dic
     return games
 
 
-def _cfp_seed_map(rows: Iterable[Dict[str, Any]], season: int) -> Tuple[Dict[str, int], List[str]]:
+_PLACEHOLDER_NAMES = frozenset({"tbd", "tba", "to be determined", "to be announced", "unknown", "n/a"})
+_PLACEHOLDER_RE = re.compile(r"^(winner|loser)\s+(of|from)\b")
+
+
+def _is_placeholder_side(
+    name: Optional[str], round_id: Optional[str], teams_meta: Optional[Dict[str, Any]], own_row_teams: Set[str]
+) -> bool:
+    """True when `name` on a stored row is a literal "opponent not decided yet" marker, i.e. an
+    UNKNOWN side rather than an unseeded participant. ALL must hold:
+      - the round is AFTER the first round (a first-round participant is always a real, seeded
+        team, so an unseeded one there must still refuse the build);
+      - the normalised name is a known placeholder ("TBD", "TBA", "To Be Determined", "Unknown",
+        "N/A", or "Winner/Loser of ...");
+      - the name is not a team in `teams_meta` and no stored row carries it as its own `team`
+        (a real team always has rows of its own).
+    Safe because a real team is never named like that, and each condition independently blocks the
+    cases where it might be: the first-round gate, the name list, and the no-own-rows check."""
+    if not name or round_id in (None, ROUND_FIRST):
+        return False
+    if name.strip().lower() not in _PLACEHOLDER_NAMES and not _PLACEHOLDER_RE.match(name.strip().lower()):
+        return False
+    return name not in (teams_meta or {}) and name not in own_row_teams
+
+
+def _cfp_seed_map(
+    rows: Iterable[Dict[str, Any]], season: int, teams_meta: Optional[Dict[str, Any]] = None
+) -> Tuple[Dict[str, int], List[str]]:
     """({team: seed} from every CFP-bracket row, [problems]). Seeds come from team_seed/opp_seed on
     either perspective of any round (a bye team is seeded through its quarterfinal row). Problems:
     a team with two different seeds, two teams sharing a seed, and a participant with no seed on
@@ -406,13 +432,16 @@ def _cfp_seed_map(rows: Iterable[Dict[str, Any]], season: int) -> Tuple[Dict[str
     seeds: Dict[str, int] = {}
     problems: List[str] = []
     participants: Set[str] = set()
+    rows = list(rows)
+    own_row_teams = {r.get("team") for r in rows if r.get("team")}
     for row in rows:
         round_name = row.get("playoff_round_name")
         if row.get("season") != season or not isinstance(round_name, str) or not round_name.strip():
             continue
+        round_id = _round_id_for(round_name)
         for team_key, seed_key in (("team", "team_seed"), ("opponent", "opp_seed")):
             team, seed = row.get(team_key), _int_or_none(row.get(seed_key))
-            if not team:
+            if not team or _is_placeholder_side(team, round_id, teams_meta, own_row_teams):
                 continue
             participants.add(team)
             if seed is not None and seed in SEED_QUARTER:
@@ -429,14 +458,16 @@ def _cfp_seed_map(rows: Iterable[Dict[str, Any]], season: int) -> Tuple[Dict[str
     return seeds, problems
 
 
-def _complete_actual_bracket(rows: List[Dict[str, Any]], season: int, field_size: int) -> Optional[Dict[str, Any]]:
+def _complete_actual_bracket(
+    rows: List[Dict[str, Any]], season: int, field_size: int, teams_meta: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
     """The actual bracket for a season configured as projected, or None (with ONE logged reason)
     when the stored rows do not yet identify the whole field: seeds 1..field_size each on exactly
     one team and no participant without a seed. Never raises, never returns a partial bracket."""
     if not _cfp_game_rows(rows, season):
         logger.info("playoffs: no CFP rows stored for season=%s yet; staying on the projection.", season)
         return None
-    seeds, problems = _cfp_seed_map(rows, season)
+    seeds, problems = _cfp_seed_map(rows, season, teams_meta)
     if problems:
         logger.warning(
             "playoffs: CFP rows for season=%s have bad seed data (%s); staying on the projection.",
@@ -449,10 +480,12 @@ def _complete_actual_bracket(rows: List[Dict[str, Any]], season: int, field_size
             season, sorted(seeds.values()), field_size,
         )
         return None
-    return build_actual_bracket(rows, season)
+    return build_actual_bracket(rows, season, teams_meta)
 
 
-def build_actual_bracket(rows: List[Dict[str, Any]], season: int) -> Optional[Dict[str, Any]]:
+def build_actual_bracket(
+    rows: List[Dict[str, Any]], season: int, teams_meta: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
     """
     Reconstruct the real bracket from schedule_grid rows whose playoff_round_name is set.
 
@@ -481,8 +514,9 @@ def build_actual_bracket(rows: List[Dict[str, Any]], season: int) -> Optional[Di
     cfp_rows = _cfp_game_rows(rows, season)
     if not cfp_rows:
         return None
+    own_row_teams = {r.get("team") for r in rows if r.get("team")}
 
-    seeds, problems = _cfp_seed_map(rows, season)
+    seeds, problems = _cfp_seed_map(rows, season, teams_meta)
     if problems:
         logger.error(
             "playoffs: refusing to build the actual bracket for season=%s, bad CFP seed data: %s",
@@ -502,6 +536,9 @@ def build_actual_bracket(rows: List[Dict[str, Any]], season: int) -> Optional[Di
             {"team": row.get("team"), "score": _int_or_none(row.get("team_score"))},
             {"team": row.get("opponent"), "score": _int_or_none(row.get("opp_score"))},
         ]
+        for side in sides:  # a literal "TBD" after the first round is an unknown side, not a team
+            if _is_placeholder_side(side["team"], round_id, teams_meta, own_row_teams):
+                side["team"], side["score"] = None, None
         for side in sides:
             side["seed"] = seeds.get(side["team"])
             side["quarter"] = SEED_QUARTER.get(side["seed"])
@@ -515,9 +552,28 @@ def build_actual_bracket(rows: List[Dict[str, Any]], season: int) -> Optional[Di
             continue
 
         if round_id in (ROUND_SF, ROUND_CH):
-            sides.sort(key=lambda s: (s["quarter"] is None, s["quarter"] or 0, s["seed"] or 99))
+            # A known team sits on the side of the feeder game it came through: semifinal k is fed
+            # by quarterfinals 2k (top) / 2k+1 (bottom) -> quarter % 2; the championship by
+            # semifinals 0 / 1 -> quarter // 2. With only ONE side known, the other side is the
+            # opposite feeder, never simply "whatever is left on the bottom".
+            def feeder_index(side):
+                return side["quarter"] % 2 if round_id == ROUND_SF else side["quarter"] // 2
+
+            known = [s_ for s_ in sides if s_["quarter"] is not None]
+            if len(known) == 1:
+                unknown = next(s_ for s_ in sides if s_ is not known[0])
+                sides = [known[0], unknown] if feeder_index(known[0]) == 0 else [unknown, known[0]]
+                unknown.update(team=None, seed=None, quarter=None, score=None)
+            else:
+                sides.sort(key=lambda s_: (s_["quarter"] is None, s_["quarter"] or 0, s_["seed"] or 99))
+        elif round_id == ROUND_QF:
+            # The bye seed is always the top; a lone known first-round team belongs on the bottom.
+            sides.sort(key=lambda s_: (s_["seed"] is None, s_["seed"] or 99))
+            known = [s_ for s_ in sides if s_["seed"] is not None]
+            if len(known) == 1 and known[0]["seed"] > len(QUARTER_BYE_SEEDS):
+                sides = [sides[1], sides[0]]
         else:
-            sides.sort(key=lambda s: (s["seed"] is None, s["seed"] or 99))
+            sides.sort(key=lambda s_: (s_["seed"] is None, s_["seed"] or 99))
         feeders = _feeder_slots(round_id, order)
         rendered = []
         for index, side in enumerate(sides):
@@ -665,14 +721,14 @@ def build_playoffs_payload(
         }
 
     if rules["kind"] == "actual":
-        bracket = build_actual_bracket(rows, season)
+        bracket = build_actual_bracket(rows, season, teams_meta)
         if bracket is None:
             logger.warning("playoffs: no usable CFP games stored for season=%s; nothing built.", season)
             return None
         return actual_payload(bracket)
 
     # Configured "projected": switch to the real bracket once the stored rows identify every seed.
-    bracket = _complete_actual_bracket(rows, season, rules["field_size"])
+    bracket = _complete_actual_bracket(rows, season, rules["field_size"], teams_meta)
     if bracket is not None:
         return actual_payload(bracket)
 
