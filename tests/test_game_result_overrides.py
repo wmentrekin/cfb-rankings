@@ -469,7 +469,11 @@ def test_load_overrides_rejects_a_duplicate_game_id():
 # refactor that hoists the call above the postseason ingest (or below
 # get_ratings) in main.py -- this test reads main.py itself via ast.
 # ===========================================================================
-TARGET_CALL_NAMES = ("load_games_to_db", "apply_game_result_overrides", "get_ratings")
+# load_upcoming_games_to_db (the best-effort look-ahead ingest) is a third ingest call and must be
+# tracked too: left out, a refactor placing it AFTER the overrides would re-write result columns
+# unnoticed, and the guard would pass while no longer covering "after every ingest".
+INGEST_CALL_NAMES = ("load_games_to_db", "load_upcoming_games_to_db")
+TARGET_CALL_NAMES = INGEST_CALL_NAMES + ("apply_game_result_overrides", "get_ratings")
 
 
 def _main_call_order():
@@ -489,16 +493,17 @@ def _main_call_order():
 
 def test_override_step_is_positioned_between_ingest_and_model():
     call_order = _main_call_order()
-    load_games_positions = [i for i, name in enumerate(call_order) if name == "load_games_to_db"]
+    load_games_positions = [i for i, name in enumerate(call_order) if name in INGEST_CALL_NAMES]
+    assert call_order.count("load_games_to_db") == 2, f"expected 2 load_games_to_db calls in main(), found order={call_order}"
+    assert call_order.count("load_upcoming_games_to_db") == 1, f"expected 1 load_upcoming_games_to_db call, found order={call_order}"
     override_positions = [i for i, name in enumerate(call_order) if name == "apply_game_result_overrides"]
     ratings_positions = [i for i, name in enumerate(call_order) if name == "get_ratings"]
 
-    assert len(load_games_positions) == 2, f"expected 2 load_games_to_db calls in main(), found order={call_order}"
     assert len(override_positions) == 1, f"expected exactly 1 apply_game_result_overrides call, found order={call_order}"
     assert len(ratings_positions) == 1, f"expected exactly 1 get_ratings call, found order={call_order}"
 
     assert max(load_games_positions) < override_positions[0], (
-        "apply_game_result_overrides must come after BOTH load_games_to_db calls (K3) -- "
+        "apply_game_result_overrides must come after EVERY ingest call (both load_games_to_db and load_upcoming_games_to_db) (K3) -- "
         f"call order was {call_order}"
     )
     assert override_positions[0] < ratings_positions[0], (

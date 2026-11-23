@@ -21,6 +21,14 @@ test_a_huge_retry_after_is_capped_not_slept_through hang until killed (urllib3 s
 header, up to six hours); (f) disabling the empty-week check failed
 test_an_empty_week_after_a_successful_ingest_stops_the_run; (g) making a week-15 postseason failure
 non-blocking failed the postseason-gating test. Each was reverted afterwards.
+
+LOOK-AHEAD INGEST (load_upcoming_games_to_db, section 2b) MUTATION-CHECK LOG: (h) removing the
+`week > after_week` filter failed test_load_upcoming_games_upserts_only_weeks_after_the_target;
+(i) making main's upcoming handler re-raise failed test_upcoming_ingest_failure_never_gates_the_run
+(both params); (j) logging the upcoming failure through _log_ingest_fetch_failure (INGEST_FAILURE
+token) failed the same test on its token assertion; (k) moving the upcoming call after
+apply_game_result_overrides failed test_override_step_is_positioned_between_ingest_and_model.
+Each was reverted afterwards.
 """
 import ast
 import re
@@ -158,7 +166,7 @@ def test_a_hung_server_is_abandoned_not_awaited(monkeypatch):
 # ---------------------------------------------------------------------------
 # 2. main() when the ingest fails
 # ---------------------------------------------------------------------------
-def _run_main(tmp_path, monkeypatch, load_games, *, week=8, has_games=True):
+def _run_main(tmp_path, monkeypatch, load_games, *, week=8, has_games=True, load_upcoming=None):
     """Run main() with every collaborator stubbed except the ingest handling under test.
 
     Returns the mocks that must (or must not) have been reached, and the run's log text.
@@ -169,11 +177,13 @@ def _run_main(tmp_path, monkeypatch, load_games, *, week=8, has_games=True):
         "get_ratings": mock.Mock(return_value=None),  # None -> main logs and exits cleanly
         "publish_rankings_artifact": mock.Mock(),
         "publish_schedule_artifact": mock.Mock(),
+        "load_upcoming": load_upcoming if load_upcoming is not None else mock.Mock(return_value=0),
     }
     with mock.patch.object(main, "teams_exist_for_year", return_value=True), \
             mock.patch.object(main, "non_fbs_logo_coverage_is_complete", return_value=True), \
             mock.patch.object(main, "regular_week_has_games", return_value=has_games), \
             mock.patch.object(main, "load_games_to_db", side_effect=load_games), \
+            mock.patch.object(main, "load_upcoming_games_to_db", mocks["load_upcoming"]), \
             mock.patch.object(main, "apply_game_result_overrides",
                               return_value={"applied": [], "failures": []}), \
             mock.patch.object(main, "get_ratings", mocks["get_ratings"]), \
@@ -249,6 +259,57 @@ def test_healthy_ingest_emits_no_failure_token_and_reaches_the_model(tmp_path, m
 
     mocks["get_ratings"].assert_called_once()
     assert "INGEST_FAILURE" not in log
+
+
+# ---------------------------------------------------------------------------
+# 2b. Best-effort look-ahead ingest of later regular-season weeks
+# ---------------------------------------------------------------------------
+def test_healthy_run_calls_the_upcoming_ingest_once_with_year_and_target_week(tmp_path, monkeypatch):
+    mocks, log = _run_main(tmp_path, monkeypatch, lambda *a, **k: None, week=8)
+
+    mocks["load_upcoming"].assert_called_once_with(2026, 8)
+    mocks["get_ratings"].assert_called_once()
+    assert "INGEST_FAILURE" not in log
+
+
+@pytest.mark.parametrize("exc", [
+    _http_504(),
+    main.ProgrammingError("SELECT 1", {}, Exception("column missing")),
+])
+def test_upcoming_ingest_failure_never_gates_the_run(tmp_path, monkeypatch, exc):
+    """AC4: a failed look-ahead (fetch error, or a schema error) warns and the run goes on."""
+    mocks, log = _run_main(
+        tmp_path, monkeypatch, lambda *a, **k: None, load_upcoming=mock.Mock(side_effect=exc),
+    )
+
+    mocks["load_upcoming"].assert_called_once()
+    mocks["get_ratings"].assert_called_once()
+    assert "INGEST_FAILURE" not in log
+    assert "Upcoming-weeks ingest" in log and "WARNING" in log
+
+
+def test_upcoming_ingest_is_skipped_when_the_gated_ingest_stops_the_run(tmp_path, monkeypatch):
+    def load_games(year, week=None, season_type="regular"):
+        raise _http_504()
+
+    mocks, _ = _run_main(tmp_path, monkeypatch, load_games)
+
+    mocks["load_upcoming"].assert_not_called()
+
+
+def test_load_upcoming_games_upserts_only_weeks_after_the_target():
+    import pandas as pd  # type: ignore
+    from database import get_games
+
+    fetched = pd.DataFrame({"id": [1, 2, 3, 4], "week": [7, 8, 9, 14]})
+    with mock.patch.object(get_games, "get_games_by_year_week", return_value=fetched) as fetch, \
+            mock.patch.object(get_games, "_upsert_games", side_effect=lambda df: len(df)) as upsert:
+        count = get_games.load_upcoming_games_to_db(2026, 8)
+
+    fetch.assert_called_once_with(2026, week=None, season_type="regular")
+    upserted = upsert.call_args.args[0]
+    assert list(upserted["id"]) == [3, 4]
+    assert count == 2
 
 
 # ---------------------------------------------------------------------------
