@@ -172,9 +172,8 @@ def test_no_army_navy_column_when_the_season_has_no_army_navy_game():
     )
     # The rest of the layout is untouched -- this guard removes one column, nothing else.
     assert "conf-championship" in slot_ids
-    assert slot_ids[-4:] == [
-        "cfp-r1-bowls", "cfp-quarterfinals", "cfp-semifinals", "cfp-national-championship",
-    ]
+    assert slot_ids[-1:] == ["cfp-r1-bowls"], "the single Bowls column is the only CFP/postseason slot"
+    assert not {"cfp-quarterfinals", "cfp-semifinals", "cfp-national-championship"} & set(slot_ids)
 
 
 def test_army_navy_column_is_kept_when_the_game_exists():

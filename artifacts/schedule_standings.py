@@ -30,7 +30,7 @@ T4b uses those for its own JSON shaping.
 
 import logging
 from collections import Counter, defaultdict
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 # Reuse the same logger name main.py configures via utils.setup_logging (see
 # artifacts/rankings.py for the identical convention), so warnings surface
@@ -291,6 +291,165 @@ def compute_team_records(
     return records
 
 
+def build_head_to_head_series(
+    rows: Iterable[Dict[str, Any]],
+    season: int,
+    excluded_conference_game_ids: Optional[Set[Any]] = None,
+) -> Dict[Tuple[str, str], Tuple[int, int, int]]:
+    """
+    Per ordered team pair, the conference-game series from the FIRST team's own-perspective rows:
+    {(team, opponent): (wins, losses, upcoming)}. A pair with no meeting is simply absent.
+
+    Same row discipline as artifacts/schedule.py's _head_to_head_winner (a played game has TWO
+    team-oriented rows sharing a game_id, so reading both perspectives would count one meeting as
+    two) and the same game set as compute_team_records: conference_game rows only, minus
+    `excluded_conference_game_ids`, so a game the conference tally ignores is ignored here too.
+    UNPLAYED meetings are counted separately because a still-scheduled rematch can undo a
+    head-to-head lead (the clinch rule refuses to fire while one exists).
+    """
+    excluded_conference_game_ids = excluded_conference_game_ids or set()
+    tally: Dict[Tuple[str, str], List[int]] = defaultdict(lambda: [0, 0, 0])
+    for row in rows:
+        if row.get("season") != season or not row.get("conference_game"):
+            continue
+        if row.get("game_id") in excluded_conference_game_ids:
+            continue
+        team, opponent = row.get("team"), row.get("opponent")
+        if not team or not opponent:
+            continue
+        status = row.get("status")
+        if status == "win":
+            tally[(team, opponent)][0] += 1
+        elif status == "loss":
+            tally[(team, opponent)][1] += 1
+        elif status == "upcoming":
+            tally[(team, opponent)][2] += 1
+    return {pair: (w, l, u) for pair, (w, l, u) in tally.items()}
+
+
+def _beat_in_only_meeting(
+    series: Dict[Tuple[str, str], Tuple[int, int, int]], winner: str, loser: str
+) -> bool:
+    """True iff `winner` beat `loser` in exactly one played conference meeting, with no other
+    meeting played or still scheduled. Both teams' own-perspective rows must agree: a one-sided
+    or contradictory record is treated as unknown, never as a win."""
+    if series.get((winner, loser), (0, 0, 0)) != (1, 0, 0):
+        return False
+    return series.get((loser, winner), (0, 0, 0)) == (0, 1, 0)
+
+
+_WIN_PCT = "win_pct"
+# The one wider tie definition whose join test is NOT a within-one-win band: "same wins OR same
+# losses". Every other non-win_pct string (cusa_within_one_win, and any string this module does not
+# recognise) is treated as the strictest case and widens T's win range by one on each side.
+_NO_WIDENING_DEFINITIONS = frozenset({"acc_alternate_games"})
+
+
+def _ranges_overlap(a: Tuple[int, int], b: Tuple[int, int]) -> bool:
+    return a[0] <= b[1] and b[0] <= a[1]
+
+
+def _clear_of_other_game_counts(
+    team: str,
+    teams: List[str],
+    W: Dict[str, int],
+    B: Dict[str, int],
+    N: Dict[str, int],
+    tie_definition: str,
+) -> bool:
+    """
+    For a conference whose tie definition is wider than equal win percentage: True iff no pool
+    team j on a DIFFERENT number of counted conference games than `team` could ever be counted in
+    `team`'s tie. Used by the head-to-head clinch (inside condition f) and by the complement
+    elimination (for every clinched team).
+
+    j can be pulled into a tie with `team` only through a coincidence of FINAL wins or FINAL
+    losses (ACC: same wins OR same losses; CUSA: within one win AND equal losses). Final wins lie
+    in [W, B] and final losses in [N - B, N - W] (N is fixed, so losses are N minus wins). This
+    returns True only if BOTH j's wins range misses team's wins range AND j's losses range misses
+    team's losses range, so neither kind of coincidence is possible at any outcome:
+      - acc_alternate_games: "same wins" needs overlapping wins ranges, "same losses" overlapping
+        loss ranges; both are excluded, so j is never tied in.
+      - cusa_within_one_win: "within one win" needs j's wins range to come within 1 of team's, so
+        team's wins range is widened by one on each side; "equal losses" needs overlapping loss
+        ranges. Requiring both to miss is stronger than the rule needs (either would do) -- that
+        is deliberate conservatism.
+      - anything else (unrecognised string): widened by one, the strictest reading. Fails safe.
+    Teams on the SAME game count are not examined here: for them equal wins is equal losses is
+    equal percentage, which the caller's wins-based logic already handles.
+    """
+    widen = 0 if tie_definition in _NO_WIDENING_DEFINITIONS else 1
+    t_wins = (W[team] - widen, B[team] + widen)
+    t_losses = (N[team] - B[team], N[team] - W[team])
+    for j in teams:
+        if j == team or N[j] == N[team]:
+            continue
+        if _ranges_overlap((W[j], B[j]), t_wins):
+            return False
+        if _ranges_overlap((N[j] - B[j], N[j] - W[j]), t_losses):
+            return False
+    return True
+
+
+def _head_to_head_clinch(
+    team: str,
+    teams: List[str],
+    W: Dict[str, int],
+    B: Dict[str, int],
+    N: Dict[str, int],
+    top_n: int,
+    series: Dict[Tuple[str, str], Tuple[int, int, int]],
+    tie_definition: str = _WIN_PCT,
+) -> bool:
+    """
+    The head-to-head clinch; the proof is in the HEAD-TO-HEAD CLINCH section of
+    compute_conference_championship_status's docstring. The caller has already established that
+    the conference's first two-team step is head_to_head for this season (condition e) and that
+    `team` is neither eliminated nor clinched by the wins-only math. Each early `return False`
+    below is one lettered condition of that proof; none may be dropped.
+    """
+    floor = W[team]  # L_T
+    others = [i for i in teams if i != team]
+    reaching = [i for i in others if B[i] >= floor]
+    # (a) exactly one team too many for the wins-only test to clear.
+    if len(reaching) != top_n:
+        return False
+    # (b) exactly one of them can at best TIE T's worst case, never pass it.
+    ties_at_best = [i for i in reaching if B[i] == floor]
+    if len(ties_at_best) != 1:
+        return False
+    rival = ties_at_best[0]
+    # (c) T won the one and only meeting, and no rematch is still scheduled.
+    if not _beat_in_only_meeting(series, team, rival):
+        return False
+    # (d) equal total counted conference games, so equal wins means equal win pct.
+    if N[team] != N[rival]:
+        return False
+    # (f) PROOF OF A TWO-TEAM TIE: the tie at T's floor can only be {T, rival}. Every other team
+    # either cannot reach T's floor, or has banked strictly more than it (so is never tied AT it).
+    # The argument is about win PERCENTAGE, which is win TOTAL only when game counts are equal,
+    # so it is stricter than the bare wins statement: a team that CAN reach the floor (B_j >=
+    # L_T, so it is in `reaching`) must also have T's game count; a team that cannot reach it
+    # may have a different game count only if its best-case percentage is still strictly below
+    # T's worst-case percentage (cross-multiplied to stay in integers).
+    for j in others:
+        if j == rival:
+            continue
+        if B[j] < floor:
+            if N[j] != N[team] and B[j] * N[team] >= floor * N[j]:
+                return False
+        elif not (W[j] > floor and N[j] == N[team]):
+            return False
+    # (f2) a wider tie definition than win percentage (ACC 2026, CUSA, or anything unrecognised)
+    # can pull a team on a different game count into T's tie even though (f)'s percentage clause
+    # let it through, making the tie 3-way so head_to_head no longer decides it.
+    if tie_definition != _WIN_PCT and not _clear_of_other_game_counts(
+        team, teams, W, B, N, tie_definition
+    ):
+        return False
+    return True
+
+
 def compute_conference_championship_status(
     records: Dict[str, Dict[str, Any]],
     qualifying_conferences: Optional[Dict[str, str]] = None,
@@ -298,6 +457,9 @@ def compute_conference_championship_status(
     divisions: Optional[Dict[str, Optional[str]]] = None,
     divisional_conferences: Optional[Dict[str, str]] = None,
     ccg_participants: Optional[Dict[str, Set[str]]] = None,
+    head_to_head: Optional[Dict[Tuple[str, str], Tuple[int, int, int]]] = None,
+    head_to_head_first_conferences: Optional[Set[str]] = None,
+    tie_definitions: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Compute conference-championship status (possible/eliminated/clinched)
@@ -341,6 +503,72 @@ def compute_conference_championship_status(
     pool (top_n=1) this means "nobody else in the division can even reach my
     banked win total", so T finishes strictly first and no tiebreaker can
     take the division away from it.
+
+    HEAD-TO-HEAD CLINCH (opt-in; off unless BOTH `head_to_head` and
+    `head_to_head_first_conferences` are passed). The wins-only CLINCHED test above
+    under-reports whenever a rival can only TIE T's floor, because a tie is not a loss of the
+    slot if T wins it. Let S = {i != T : B_i >= L_T}. T is additionally CLINCHED when ALL hold:
+      a. len(S) == top_n (exactly one team too many for the wins-only test);
+      b. exactly ONE team i in S has B_i == L_T (i can at best tie T's worst case, never pass it);
+      c. T beat i in exactly one played conference meeting, i beat T in none, and no further
+         meeting is still scheduled (a split series, a lost series, an unplayed series, or a
+         pending rematch all fail);
+      d. T and i have the same total counted conference games (W + losses + R), so equal wins is
+         equal win percentage;
+      e. the conference's first two-team tiebreak step for this season is head_to_head (the caller
+         resolves that from artifacts/conference_tiebreakers.json and passes the conference name
+         in `head_to_head_first_conferences`; a conference with no rule set is simply absent);
+      f. PROOF OF A TWO-TEAM TIE: every other pool team j (not T, not i) has B_j < L_T (cannot
+         reach T's floor) or W_j > L_T (banked strictly more, so never tied AT that total).
+         The comparison is really on win PERCENTAGE: a j on a different number of counted games
+         than T qualifies only if it cannot reach T's floor even on percentage
+         (B_j / N_j < L_T / N_T); a j that can reach the floor must have T's game count.
+      f2. (only when the conference's tie definition is not plain win percentage -- see
+         `tie_definitions`) every other pool team j with a DIFFERENT counted game count N_j != N_T
+         must have a possible-final-WINS range [W_j, B_j] that misses T's [L_T, B_T] (widened by
+         one each side for cusa_within_one_win and any unrecognised definition) AND a possible-
+         final-LOSSES range [N_j - B_j, N_j - W_j] that misses T's [N_T - B_T, N_T - W_T].
+         Why it is sufficient: the ACC (2026) tied group is the best-percentage team(s) plus any
+         alternate-game-count team with the SAME wins OR the SAME losses; CUSA's is any team
+         within ONE win with EQUAL losses. Both joins need a coincidence of final wins (possibly
+         +-1) and/or final losses with a member of the tie, and the tie members here, T and i,
+         finish on identical records (same N, same wins). If neither range can ever meet, no
+         such j can join, the tie stays exactly {T, i} and (c)+(e) decide it. Teams on T's own
+         game count need no such check: equal wins is equal losses there, already covered by (f).
+         Requiring BOTH ranges to miss is stronger than either definition strictly needs.
+    Why this is safe. T finishes with F_T >= L_T wins. Every team outside S finishes below T
+    (B_j < L_T <= F_T; on percentage when game counts differ, per (f)). i finishes with F_i <= B_i = L_T <= F_T, so i can never finish above T and
+    can only tie it when both land exactly on L_T; by (f) nobody else can be at that total (teams
+    in S other than i have W > L_T), so that tie is exactly {T, i} and (c)+(e) resolve it for T.
+    Hence at most the top_n - 1 teams of S other than i can finish above T: T is top_n or better.
+    For a division pool (top_n=1) S = {i}, (f) reduces to the game-count/percentage check on
+    everyone else, and this says "the only team that can
+    even reach my banked total can at best tie me, and I own the head-to-head" -- also sound, and
+    every division tiebreak this module's callers configure starts with head_to_head. A rule that
+    did not hold for a given conference/season is simply not passed in; nothing is guessed.
+    Conditions (a)-(f) are layered ON TOP of the inequalities above (a team is only tested here
+    if the wins-only test left it neither clinched nor eliminated); none is loosened.
+
+    COMPLEMENT ELIMINATION. Once a pool has EXACTLY top_n clinched teams (by either test), those
+    teams occupy every slot, so every other team in the pool is "eliminated" -- the wins-only
+    ELIMINATED test cannot say this on its own when a rival is merely tied on wins with the
+    last clinched team (e.g. a 7-2 Louisville behind a head-to-head-clinched 7-1 Wake Forest).
+    More than top_n clinched is a contradiction: it is logged and nothing is eliminated.
+    Ordering against the played-championship-game override and its guard, deliberately: the
+    complement runs AFTER the override. It never writes "clinched", so it cannot hide a
+    non-participant clinched team from guard (a); and it is SKIPPED for any pool whose
+    participant set the guard rejected, because a pool whose clinched teams contradict its own
+    participants has a premise failure (see GUARD PREMISE) and eliminating, say, the title-game
+    participants on the strength of that same clinch math would be exactly the over-elimination
+    the guard exists to prevent. A pool participant is also never complement-eliminated.
+    KNOWN GAP AND ITS FENCE: the pre-existing wins-only CLINCHED test counts wins, not the
+    conference's own tie definition, so on an ACC/CUSA pool with uneven game counts it does not
+    model a team on another game count being tied in; the complement inherits that. It is left
+    unchanged, and the complement is simply NOT applied to a pool whose conference tie definition
+    is not win_pct unless EVERY clinched team in it passes `_clear_of_other_game_counts` against
+    every pool team on a different game count (the same non-overlap check as f2). When it is
+    skipped the other teams stay "possible" -- under-reporting, never a wrong "eliminated".
+    With `tie_definitions` omitted (None) every conference is read as win_pct (legacy callers).
 
     WIN TOTALS vs. WIN PERCENTAGE: as with the MAC caveat on
     QUALIFYING_CHAMPIONSHIP_CONFERENCES, both tests count WINS, and the Sun
@@ -503,6 +731,17 @@ def compute_conference_championship_status(
             as None/empty, is completely unaffected -- covers both "no
             championship game exists for this conference" and "one was
             identified but has not been played yet."
+        head_to_head: optional {(team, opponent): (wins, losses, upcoming)} series facts, built
+            by the caller from schedule_grid rows (see build_head_to_head_series). Pure data in,
+            no I/O here. None (the default) disables the HEAD-TO-HEAD CLINCH entirely.
+        head_to_head_first_conferences: optional set of conference names whose first two-team
+            tiebreak step is head_to_head for this season. None/empty (the default) disables the
+            HEAD-TO-HEAD CLINCH; a conference absent from it never gets that clinch.
+        tie_definitions: optional {conference name -> RuleSet.tie_definition}. None (the default)
+            reads every conference as "win_pct", i.e. the legacy behaviour. When a mapping IS
+            given, a conference missing from it, or carrying any string other than "win_pct",
+            gets the wider-definition protections (f2 and the complement fence); an
+            unrecognised string is treated as the strictest case (win range widened by one).
 
     Returns:
         Dict keyed by team name, present ONLY for teams belonging to a
@@ -526,6 +765,16 @@ def compute_conference_championship_status(
         divisions = {}
     if ccg_participants is None:
         ccg_participants = {}
+    if head_to_head is None:
+        head_to_head = {}
+    if head_to_head_first_conferences is None:
+        head_to_head_first_conferences = set()
+
+    def tie_definition_for(conference: str) -> str:
+        if tie_definitions is None:
+            return _WIN_PCT
+        # Absent from a supplied mapping = unknown = strictest (any non-win_pct string).
+        return tie_definitions.get(conference, "unknown")
 
     flat_by_conference: Dict[str, List[str]] = defaultdict(list)
     divisional_by_conference: Dict[str, Dict[Optional[str], List[str]]] = defaultdict(
@@ -624,6 +873,12 @@ def compute_conference_championship_status(
         R = {t: records[t]["conf_games_remaining"] for t in teams}
         B = {t: W[t] + R[t] for t in teams}
         L = W  # worst case for T is simply its current banked win count
+        # Total counted conference games (W + losses + R), for the head-to-head clinch only.
+        N = {t: W[t] + records[t]["conf_losses"] + R[t] for t in teams}
+        # The head-to-head clinch needs BOTH the series facts and this conference's rule; with
+        # either missing it is off and the loop below is exactly the wins-only math.
+        h2h_enabled = bool(head_to_head) and pool["conference"] in head_to_head_first_conferences
+        tie_definition = tie_definition_for(pool["conference"])
 
         statuses: Dict[str, str] = {}
         for t in teams:
@@ -661,6 +916,10 @@ def compute_conference_championship_status(
                 statuses[t] = "eliminated"
             elif clinched:
                 statuses[t] = "clinched"
+            elif h2h_enabled and _head_to_head_clinch(
+                t, teams, W, B, N, top_n, head_to_head, tie_definition
+            ):
+                statuses[t] = "clinched"
             else:
                 statuses[t] = "possible"
 
@@ -670,6 +929,9 @@ def compute_conference_championship_status(
         # division's participant is never a member of `teams` here, so it can never leak into
         # this pool's forcing loop.
         participants = ccg_participants.get(pool["conference"])
+        # Set when the guard below rejects `participants` for this pool; the complement
+        # elimination further down must then stay out of it too.
+        participants_rejected = False
         if participants:
             # GUARD (post-review hardening): `participants` is only as trustworthy as
             # identify_conference_championship_games' identification, which has a documented
@@ -704,6 +966,7 @@ def compute_conference_championship_status(
                     "top_n=%d W=%s R=%s B=%s L=%s",
                     pool_label, already_clinched, participants, top_n, W, R, B, L,
                 )
+                participants_rejected = True
             elif len(would_eliminate) == len(teams):
                 # Related sub-case: `participants` is non-empty but comes from a DIFFERENT
                 # pool's teams entirely (e.g. a divisional conference whose identified game
@@ -722,9 +985,39 @@ def compute_conference_championship_status(
                     "leaving its W/R/B/L statuses unmodified.",
                     pool_label, participants, teams,
                 )
+                participants_rejected = True
             else:
                 for t in would_eliminate:
                     statuses[t] = "eliminated"
+
+        # COMPLEMENT ELIMINATION (see that section of the docstring): exactly top_n clinched
+        # teams fill every slot, so everyone else is out. Placed AFTER the override on purpose:
+        # it only ever writes "eliminated", so it cannot change what guard (a) above saw, and it
+        # is skipped when the guard rejected this pool's participant set -- a contradiction
+        # between the clinch math and the participants is a premise failure, not a result.
+        clinched_teams = [t for t in teams if statuses[t] == "clinched"]
+        if len(clinched_teams) > top_n:
+            logger.error(
+                "Pool %r has %d clinched teams (%s) for %d slot(s) -- impossible; skipping "
+                "complement elimination. W=%s R=%s B=%s",
+                pool_label, len(clinched_teams), clinched_teams, top_n, W, R, B,
+            )
+        elif len(clinched_teams) == top_n and not participants_rejected:
+            complement_safe = tie_definition == _WIN_PCT or all(
+                _clear_of_other_game_counts(t, teams, W, B, N, tie_definition)
+                for t in clinched_teams
+            )
+            if not complement_safe:
+                logger.info(
+                    "Pool %r: tie definition %r is wider than win percentage and a clinched "
+                    "team could share wins/losses with a team on a different game count -- "
+                    "skipping complement elimination (others stay possible).",
+                    pool_label, tie_definition,
+                )
+            else:
+                for t in teams:
+                    if statuses[t] == "possible" and t not in (participants or ()):
+                        statuses[t] = "eliminated"
 
         statuses_by_pool.append(statuses)
 
@@ -820,6 +1113,8 @@ def compute_standings(
     divisions: Optional[Dict[str, Optional[str]]] = None,
     excluded_conference_game_ids: Optional[Set[Any]] = None,
     ccg_participants: Optional[Dict[str, Set[str]]] = None,
+    head_to_head_first_conferences: Optional[Set[str]] = None,
+    tie_definitions: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Top-level convenience entry point tying the three computations above
@@ -844,6 +1139,13 @@ def compute_standings(
             compute_conference_championship_status -- see that function's
             docstring (PLAYED-CHAMPIONSHIP-GAME OVERRIDE). Optional, defaults
             to "no conference has a played championship game."
+        head_to_head_first_conferences: conferences whose first two-team tiebreak step is
+            head_to_head this season (resolved by the caller from the tiebreaker config). When
+            given, the series facts are built from `rows` here (build_head_to_head_series, with
+            the same excluded games as the conference tally) and passed to the HEAD-TO-HEAD
+            CLINCH of compute_conference_championship_status. Optional, defaults to off.
+        tie_definitions: {conference -> tie_definition}, passed straight through (see
+            compute_conference_championship_status). None reads every conference as win_pct.
 
     Returns:
         Dict keyed by team name:
@@ -859,8 +1161,18 @@ def compute_standings(
         not in a qualifying conference (see compute_conference_championship_status) --
         this is the deliberate blank fallback, not a guessed "possible".
     """
+    rows = list(rows)  # iterated twice below (records, head-to-head series)
     records = compute_team_records(rows, season, excluded_conference_game_ids=excluded_conference_game_ids)
-    championship = compute_conference_championship_status(records, divisions=divisions, ccg_participants=ccg_participants)
+    head_to_head = (
+        build_head_to_head_series(rows, season, excluded_conference_game_ids)
+        if head_to_head_first_conferences
+        else None
+    )
+    championship = compute_conference_championship_status(
+        records, divisions=divisions, ccg_participants=ccg_participants,
+        head_to_head=head_to_head, head_to_head_first_conferences=head_to_head_first_conferences,
+        tie_definitions=tie_definitions,
+    )
     bowl = compute_bowl_eligibility(records)
 
     combined: Dict[str, Dict[str, Any]] = {}

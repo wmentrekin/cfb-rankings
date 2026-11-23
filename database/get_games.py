@@ -168,6 +168,38 @@ def get_games_by_year_week(year, week=None, season_type='regular'):
 
     return games_df
 
+def _upsert_games(games_df):
+    """Upsert a games DataFrame (as returned by get_games_by_year_week) into `games`.
+
+    Shared by load_games_to_db and load_upcoming_games_to_db so there is one upsert code path.
+    Returns the number of rows upserted.
+    """
+    games_df = games_df.where(pd.notnull(games_df), None)
+
+    db_url = (
+        f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+        "?sslmode=require"
+    )
+    engine = create_engine(db_url)
+
+    metadata = MetaData()
+    table = Table('games', metadata, autoload_with=engine)
+
+    with engine.begin() as conn:
+        for _, row in games_df.iterrows():
+            stmt = insert(table).values(**row.to_dict())
+            update_dict = {c: getattr(stmt.excluded, c) for c in games_df.columns if c != 'id'}
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['id'],
+                set_=update_dict
+            )
+            conn.execute(stmt)
+
+    engine.dispose()
+    return len(games_df)
+
+
 def load_games_to_db(year, week=None, season_type='regular'):
     """
     Loads game data into the database for a given year and optional week.
@@ -179,27 +211,27 @@ def load_games_to_db(year, week=None, season_type='regular'):
         season_type (str, optional): Type of season ('regular', 'postseason', etc.). Defaults to 'regular'.
     """
     games_df = get_games_by_year_week(year, week, season_type)
-    games_df = games_df.where(pd.notnull(games_df), None)
-
-    db_url = (
-        f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
-        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
-        "?sslmode=require"
-    )
-    engine = create_engine(db_url)
-    
-    metadata = MetaData()
-    table = Table('games', metadata, autoload_with=engine)
-    
-    with engine.begin() as conn:
-        for _, row in games_df.iterrows():
-            stmt = insert(table).values(**row.to_dict())
-            update_dict = {c: getattr(stmt.excluded, c) for c in games_df.columns if c != 'id'}
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['id'],
-                set_=update_dict
-            )
-            conn.execute(stmt)
-    
-    engine.dispose()
+    _upsert_games(games_df)
     print(f"Games for year {year} week {week} loaded into DB (upsert completed).")
+
+
+def load_upcoming_games_to_db(year, after_week):
+    """Upsert the regular-season games of every week STRICTLY AFTER `after_week`.
+
+    One CFBD fetch of the whole regular season, filtered to week > after_week before the upsert.
+    The filter is deliberate: weeks at or before the target are the gated ingest's business, and
+    past weeks must not be rewritten wholesale on every run (see "WHY A DRY RUN MATTERS" in
+    scripts/backfill_games.py). This exists so games CFBD adds or re-times for later weeks (a
+    conference championship, mid-season flex games) reach the table before their own week runs.
+
+    Look-ahead rows cannot affect ratings: unplayed games are stored 0-0 with winner NULL
+    (database/game_derivations.compute_winner) and model/process_data.py skips rows with a null
+    winner.
+
+    Returns the number of rows upserted.
+    """
+    games_df = get_games_by_year_week(year, week=None, season_type='regular')
+    upcoming = games_df[games_df['week'] > after_week]
+    count = _upsert_games(upcoming)
+    print(f"Upcoming games for year {year} after week {after_week}: {count} upserted.")
+    return count

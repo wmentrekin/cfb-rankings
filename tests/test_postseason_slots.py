@@ -17,6 +17,29 @@ The `_game_name_for_row` coverage below is deliberately split in two:
 
 No formatting/behavior change is made here. This file only characterizes.
 
+CFP COLUMN COLLAPSE (Season Grid payload change, playoffs-contract.md): the grid carries ONE
+postseason column ("cfp-r1-bowls", labelled "Bowls"). Cases pinned below:
+  - _is_cfp_row: a postseason row with a non-empty playoff_round_name is a CFP row; ordinary
+    bowls (null/blank round name) and non-postseason rows are not
+  - _classify_row_slot: ordinary bowl -> the Bowls slot; every CFP round -> None (never indexed
+    into a slot, never mistaken for a regular bowl)
+  - _build_team_cfp_seeds: first-round loser, first-round winner who went on, bye team that lost
+    its quarterfinal, champion -> one entry each with the right seed; lowest non-null seed wins;
+    all-null seeds -> None; non-FBS / non-CFP teams absent
+  - _build_team_weeks: playoff team -> exactly one `cfp` cell (no opponent/score/result);
+    non-playoff bowl team and ineligible team unchanged
+  - build_schedule_payload end to end with a small mixed fixture; no removed slot id anywhere
+
+MUTATION-CHECK LOG (each mutation applied to artifacts/schedule.py, the named test(s) failed,
+then reverted):
+  (a) _classify_row_slot lets a Quarterfinal row fall through to CFP_SLOTS[0] (bucketed into a
+      slot) -> test_every_cfp_round_is_never_indexed_into_a_slot (all 11 rows) failed
+  (b) _build_team_cfp_seeds skips rows whose round name contains "quarterfinal" (drops the bye
+      team) -> test_cfp_seeds_cover_first_round_loser_winner_bye_team_and_champion,
+      test_cfp_seed_is_lowest_non_null_and_none_when_all_null, test_end_to_end_mixed_payload failed
+  (c) _cfp_cell emits a non-null opponent -> test_playoff_team_gets_exactly_one_bare_cfp_cell (3 params),
+      test_end_to_end_mixed_payload failed
+
 Run: python -m pytest tests/ -q   (or: python tests/test_postseason_slots.py)
 """
 import sys
@@ -29,20 +52,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import artifacts.bowl_names as bowl_names  # noqa: E402
 from artifacts.bowl_names import short_bowl_name  # noqa: E402
 from artifacts.schedule import (  # noqa: E402
-    CFP_BYE_STATUS,
     CFP_SLOTS,
+    _build_team_cfp_seeds,
     _build_team_weeks,
-    _bucket_cfp_slot,
+    _classify_row_slot,
     _game_name_for_row,
+    _is_cfp_row,
     _playoff_round_for_row,
+    build_canonical_columns,
+    build_schedule_payload,
 )
 from artifacts.schedule_standings import compute_team_records  # noqa: E402
 
 SEASON = 2025
 
-CFP_R1_BOWLS, CFP_QUARTERFINALS, CFP_SEMIFINALS, CFP_NATIONAL_CHAMPIONSHIP = (
-    slot_id for slot_id, _label in CFP_SLOTS
-)
+(CFP_R1_BOWLS,) = (slot_id for slot_id, _label in CFP_SLOTS)
+REMOVED_SLOT_IDS = {"cfp-quarterfinals", "cfp-semifinals", "cfp-national-championship"}
 
 
 def _row(
@@ -51,7 +76,7 @@ def _row(
     playoff_round_order=None, notes=None, season_type="postseason",
     conference="ACC", conference_game=False,
 ):
-    """A schedule_grid-shaped row carrying the postseason columns _bucket_cfp_slot and
+    """A schedule_grid-shaped row carrying the postseason columns _classify_row_slot and
     _game_name_for_row read. Defaults to a postseason row since that is what both functions
     are about; season_type is overridden by the regular-season contract tests below."""
     return dict(
@@ -106,51 +131,46 @@ ORDINARY_BOWL_ROWS = [
 
 
 # ===========================================================================
-# _bucket_cfp_slot
+# _is_cfp_row / _classify_row_slot
 # ===========================================================================
-@pytest.mark.parametrize("row", FIRST_ROUND_ROWS, ids=lambda r: r["playoff_bracket_slot"])
-def test_first_round_games_bucket_into_cfp_r1_bowls_slot(row):
-    """PINS a deliberate phase-1 shape (requirements.yaml non_goals): the CFP first round is
-    NOT split into its own column in this pass -- all four first-round games land in
-    cfp-r1-bowls, the same slot as ordinary bowls. Splitting it out, or visually
-    distinguishing it within the shared column, is phase-2 scope (open question Q1)."""
-    slot_id, _label = _bucket_cfp_slot(row)
-    assert slot_id == CFP_R1_BOWLS
+ALL_CFP_ROWS = FIRST_ROUND_ROWS + QUARTERFINAL_ROWS + SEMIFINAL_ROWS + [CHAMPIONSHIP_ROW]
+
+
+def test_columns_end_with_exactly_one_postseason_slot_labelled_bowls():
+    assert CFP_SLOTS == [("cfp-r1-bowls", "Bowls")]
+    columns = build_canonical_columns([], 2025)
+    assert columns[-1] == ("cfp-r1-bowls", "Bowls")
+    assert REMOVED_SLOT_IDS.isdisjoint(slot_id for slot_id, _ in columns)
+
+
+@pytest.mark.parametrize("row", ALL_CFP_ROWS, ids=lambda r: r["playoff_bracket_slot"])
+def test_every_cfp_round_is_never_indexed_into_a_slot(row):
+    """First Round, Quarterfinal, Semifinal and National Championship rows have no column, so
+    they classify to None -- never to the Bowls slot (which would mis-read them as a regular
+    bowl) and never to a removed slot id."""
+    assert _is_cfp_row(row)
+    assert _classify_row_slot(row, set(), None) is None
 
 
 @pytest.mark.parametrize("row", ORDINARY_BOWL_ROWS, ids=lambda r: r["notes"])
-def test_ordinary_bowls_share_the_same_slot_as_cfp_first_round(row):
-    slot_id, _label = _bucket_cfp_slot(row)
-    assert slot_id == CFP_R1_BOWLS
+def test_ordinary_bowls_classify_into_the_bowls_slot(row):
+    assert not _is_cfp_row(row)
+    assert _classify_row_slot(row, set(), None) == ("cfp-r1-bowls", "Bowls")
 
 
-@pytest.mark.parametrize("row", QUARTERFINAL_ROWS, ids=lambda r: r["playoff_bracket_slot"])
-def test_quarterfinal_games_bucket_into_cfp_quarterfinals_slot(row):
-    slot_id, _label = _bucket_cfp_slot(row)
-    assert slot_id == CFP_QUARTERFINALS
-
-
-@pytest.mark.parametrize("row", SEMIFINAL_ROWS, ids=lambda r: r["playoff_bracket_slot"])
-def test_semifinal_games_bucket_into_cfp_semifinals_slot(row):
-    slot_id, _label = _bucket_cfp_slot(row)
-    assert slot_id == CFP_SEMIFINALS
-
-
-def test_national_championship_game_buckets_into_cfp_national_championship_slot():
-    slot_id, _label = _bucket_cfp_slot(CHAMPIONSHIP_ROW)
-    assert slot_id == CFP_NATIONAL_CHAMPIONSHIP
+def test_blank_round_name_is_an_ordinary_bowl_and_regular_rows_are_never_cfp():
+    assert not _is_cfp_row(_row(14, playoff_round_name="   ", notes="Pop-Tarts Bowl"))
+    assert not _is_cfp_row(_row(15, season_type="regular", playoff_round_name="Quarterfinal"))
 
 
 def test_playoff_round_order_is_never_read():
     """PINS a deliberate scope decision (plan.yaml non_goals: 'Backfilling playoff_round_order.
-    Nothing reads it; _bucket_cfp_slot matches playoff_round_name substrings.'). Two rows
-    identical except playoff_round_order (2025's real NULL vs. an arbitrary non-null value)
-    must bucket identically."""
+    Nothing reads it'). Two rows identical except playoff_round_order must detect identically."""
     null_order = _row(20, playoff_round_name="Quarterfinal", playoff_bowl_name="Rose Bowl",
                        playoff_bracket_slot="QF1", playoff_round_order=None)
     non_null_order = _row(21, playoff_round_name="Quarterfinal", playoff_bowl_name="Rose Bowl",
                            playoff_bracket_slot="QF1", playoff_round_order=99)
-    assert _bucket_cfp_slot(null_order) == _bucket_cfp_slot(non_null_order)
+    assert _is_cfp_row(null_order) == _is_cfp_row(non_null_order) is True
 
 
 # ===========================================================================
@@ -239,101 +259,145 @@ def test_postseason_games_count_toward_the_record():
 
 
 # ===========================================================================
-# T4/AC5 -- first-round CFP bye state (_build_team_weeks' cfp-r1-bowls branch)
+# CFP team cell (_build_team_cfp_seeds + _build_team_weeks' single `cfp` Bowls cell)
 # ===========================================================================
-def _team_slot_rows_with_quarterfinal(home_away="home", team_seed=None):
-    """A team_slot_rows dict shaped like Indiana's real 2025 case: a real row in
-    cfp-quarterfinals, no entry at all for cfp-r1-bowls (no real row there).
-
-    team_seed is already team-relative, because schedule_grid flips the seed per perspective
-    (migration 0006), exactly as it flips team_score/opp_score. home_away is still set so these
-    fixtures stay row-shaped, but nothing reads it to resolve the seed any more."""
-    row = _row(50, team="Indiana", opponent="Notre Dame", status="win",
-               playoff_round_name="Quarterfinal", playoff_bowl_name="Sugar Bowl",
-               playoff_bracket_slot="QF1")
-    row["home_away"] = home_away
-    row["team_seed"] = team_seed
-    return {CFP_QUARTERFINALS: row}
+FBS = {"Alpha", "Beta", "Gamma", "Delta", "Echo", "Foxtrot"}
+BARE_CFP_CELL = {
+    "season_type": "postseason", "opponent": None, "opponent_logo_url": None,
+    "conditional_opponent": None, "game_name": "College Football Playoff",
+    "game_name_short": "CFP", "home_away": None, "neutral_site": False, "status": "cfp",
+    "team_score": None, "opp_score": None, "playoff_round": "CFP",
+}
 
 
-def test_bye_status_present_for_a_team_with_a_quarterfinal_row_but_no_r1_bowls_row():
-    """AC5: Indiana's real 2025 shape -- present."""
-    team_slot_rows = _team_slot_rows_with_quarterfinal(home_away="home", team_seed=1)
-    weeks = _build_team_weeks(CFP_SLOTS, team_slot_rows, None, None, "eligible", {})
-    bye_cell = weeks[0]
-    assert bye_cell["slot_id"] == CFP_R1_BOWLS
-    assert bye_cell["status"] == CFP_BYE_STATUS
+def _cfp_row(game_id, team, round_name, seed, status="win", opponent="Zulu"):
+    row = _row(game_id, team=team, opponent=opponent, status=status,
+               playoff_round_name=round_name, playoff_bracket_slot=f"S{game_id}")
+    row["team_seed"] = seed
+    return row
 
 
-def test_bye_status_absent_for_a_team_that_missed_the_playoff():
-    """A team with NEITHER a real cfp-quarterfinals row NOR a real cfp-r1-bowls row must keep
-    rendering exactly as it does today: the bowl-eligibility placeholder, never the new bye
-    status."""
-    weeks = _build_team_weeks(CFP_SLOTS, {}, None, None, "eligible", {})
-    bowl_cell = weeks[0]
-    assert bowl_cell["slot_id"] == CFP_R1_BOWLS
-    assert bowl_cell["status"] == "eligible"
-    assert bowl_cell["status"] != CFP_BYE_STATUS
+CFP_FIXTURE_ROWS = [
+    _cfp_row(101, "Alpha", "First Round", 12, status="loss"),           # first-round loser
+    _cfp_row(102, "Beta", "First Round", 9, status="win"),              # first-round winner...
+    _cfp_row(103, "Beta", "Quarterfinal", 9, status="loss"),            # ...who went on
+    _cfp_row(104, "Gamma", "Quarterfinal", 1, status="loss"),           # bye team, lost QF
+    _cfp_row(105, "Delta", "Quarterfinal", 2, status="win"),            # champion
+    _cfp_row(106, "Delta", "Semifinal", 2, status="win"),
+    _cfp_row(107, "Delta", "National Championship", 2, status="win"),
+    _row(108, team="Echo", opponent="Zulu", status="win", notes="Pop-Tarts Bowl"),  # plain bowl
+]
 
 
-def test_bye_status_absent_for_an_ordinary_bowl_team():
-    """A team with a REAL cfp-r1-bowls row (an ordinary bowl, or a CFP first-round game) takes
-    the real-row path and must never be reclassified as a bye, whatever else that team's
-    team_slot_rows dict happens to contain."""
+def test_cfp_seeds_cover_first_round_loser_winner_bye_team_and_champion():
+    seeds = _build_team_cfp_seeds(CFP_FIXTURE_ROWS, FBS)
+    assert seeds == {"Alpha": 12, "Beta": 9, "Gamma": 1, "Delta": 2}
+    assert "Echo" not in seeds and "Foxtrot" not in seeds  # bowl team / no postseason
+
+
+def test_cfp_seed_is_lowest_non_null_and_none_when_all_null():
+    rows = [
+        _cfp_row(110, "Alpha", "First Round", None),
+        _cfp_row(111, "Alpha", "Quarterfinal", 7),
+        _cfp_row(112, "Alpha", "Semifinal", 5),
+        _cfp_row(113, "Beta", "First Round", None),
+        _cfp_row(114, "Beta", "Quarterfinal", None),
+        _cfp_row(115, "Gamma", "Quarterfinal", "n/a"),
+    ]
+    assert _build_team_cfp_seeds(rows, FBS) == {"Alpha": 5, "Beta": None, "Gamma": None}
+
+
+def test_cfp_seeds_ignore_non_fbs_teams():
+    rows = [_cfp_row(120, "Not FBS", "First Round", 11)]
+    assert _build_team_cfp_seeds(rows, FBS) == {}
+
+
+@pytest.mark.parametrize("seed", [1, 12, None])
+def test_playoff_team_gets_exactly_one_bare_cfp_cell(seed):
+    weeks = _build_team_weeks(CFP_SLOTS, {}, None, None, "eligible", {},
+                              is_cfp_team=True, cfp_seed=seed)
+    assert len(weeks) == 1
+    assert weeks[0] == {"slot_id": "cfp-r1-bowls", "label": "Bowls", **BARE_CFP_CELL, "cfp_seed": seed}
+
+
+def test_cfp_cell_key_set_matches_a_placeholder_cell():
+    cfp = _build_team_weeks(CFP_SLOTS, {}, None, None, "eligible", {}, is_cfp_team=True)[0]
+    placeholder = _build_team_weeks(CFP_SLOTS, {}, None, None, "eligible", {})[0]
+    assert set(cfp) == set(placeholder)
+
+
+def test_non_playoff_bowl_team_is_unchanged():
     real_row = _row(51, team="Georgia Tech", opponent="Vanderbilt", status="loss",
                      notes="Union Home Mortgage Gasparilla Bowl")
     real_row["home_away"] = "home"
-    team_slot_rows = {CFP_R1_BOWLS: real_row}
-    weeks = _build_team_weeks(CFP_SLOTS, team_slot_rows, None, None, "eligible", {})
-    bowl_cell = weeks[0]
-    assert bowl_cell["slot_id"] == CFP_R1_BOWLS
-    assert bowl_cell["status"] != CFP_BYE_STATUS
-    assert bowl_cell["game_name"] == "Union Home Mortgage Gasparilla Bowl"
-    assert bowl_cell["game_name_short"] == "Gasparilla"
+    cell = _build_team_weeks(CFP_SLOTS, {CFP_R1_BOWLS: real_row}, None, None, "eligible", {})[0]
+    assert cell["status"] == "loss"
+    assert cell["opponent"] == "Vanderbilt"
+    assert cell["game_name"] == "Union Home Mortgage Gasparilla Bowl"
+    assert cell["game_name_short"] == "Gasparilla"
+    assert cell["playoff_round"] is None
+    assert cell["cfp_seed"] is None
 
 
-def test_bye_seed_present_is_carried_as_its_own_field_not_baked_into_game_name():
-    """Fix-cycle-1 design correction: the seed is its own nullable cell field (cfp_seed), not
-    pre-composed prose in game_name -- baking an integer into a sentence two functions before
-    the frontend reads it conflicted with _game_name_for_row's own contract (non-null only for a
-    real, determined game) and inverted K5's whole argument against deriving structured meaning
-    from a label. game_name/game_name_short stay null here exactly like an ordinary bye cell;
-    the frontend composes its own label from status == CFP_BYE_STATUS plus cfp_seed."""
-    team_slot_rows = _team_slot_rows_with_quarterfinal(home_away="home", team_seed=1)
-    weeks = _build_team_weeks(CFP_SLOTS, team_slot_rows, None, None, "eligible", {})
-    bye_cell = weeks[0]
-    assert bye_cell["status"] == CFP_BYE_STATUS
-    assert bye_cell["cfp_seed"] == 1
-    assert bye_cell["game_name"] is None
-    assert bye_cell["game_name_short"] is None
+@pytest.mark.parametrize("bowl_status", ["eligible", "ineligible", "possible"])
+def test_team_without_a_postseason_game_keeps_its_placeholder(bowl_status):
+    cell = _build_team_weeks(CFP_SLOTS, {}, None, None, bowl_status, {})[0]
+    assert cell["status"] == bowl_status
+    assert cell["game_name"] is None and cell["cfp_seed"] is None and cell["playoff_round"] is None
 
 
-def test_bye_seed_absent_degrades_to_a_null_cfp_seed():
-    """K8: an unpopulated seed field must cost a nicety, not break the feature -- cfp_seed stays
-    null (rather than guessing) so the frontend's plain 'CFP Bye' STATUS_TEXT_BY_SLOT fallback
-    renders instead of a possibly-wrong seed number."""
-    team_slot_rows = _team_slot_rows_with_quarterfinal(home_away="home")
-    weeks = _build_team_weeks(CFP_SLOTS, team_slot_rows, None, None, "eligible", {})
-    bye_cell = weeks[0]
-    assert bye_cell["status"] == CFP_BYE_STATUS
-    assert bye_cell["cfp_seed"] is None
-    assert bye_cell["game_name"] is None
-    assert bye_cell["game_name_short"] is None
+def _teams_meta():
+    return {t: {"conference": "ACC", "division": None, "logos": None} for t in sorted(FBS)}
 
 
-def test_cfp_seed_is_null_on_every_non_bye_cell():
-    """cfp_seed exists only to carry a CFP bye team's seed -- null everywhere else, including a
-    real game's own cell (K5's playoff_round precedent: a nullable field added to every cell,
-    meaningfully populated in exactly one place)."""
-    real_row = _row(52, team="Georgia Tech", opponent="Vanderbilt", status="loss",
-                     notes="Union Home Mortgage Gasparilla Bowl")
-    real_row["home_away"] = "home"
-    team_slot_rows = {CFP_R1_BOWLS: real_row}
-    weeks = _build_team_weeks(CFP_SLOTS, team_slot_rows, None, None, "eligible", {})
-    for week in weeks:
-        if week["status"] == CFP_BYE_STATUS:
-            continue
-        assert week["cfp_seed"] is None, week
+def _regular_rows():
+    rows = []
+    for i, team in enumerate(sorted(FBS)):
+        rows.append(dict(
+            game_id=900 + i, season=SEASON, season_type="regular", team=team, opponent="Zulu",
+            conference="ACC", conference_game=False, status="win",
+            start_date="2025-09-06T16:00:00Z", home_away="home", neutral_site=False,
+            team_score=30, opp_score=10,
+        ))
+    return rows
+
+
+def _payload_teams(payload):
+    return {t["team"]: t for conf in payload["conferences"] for t in conf["teams"]}
+
+
+def test_end_to_end_mixed_payload():
+    rows = _regular_rows() + [dict(r, season=SEASON, start_date="2025-12-20T16:00:00Z",
+                                   home_away="home", neutral_site=False, team_score=20, opp_score=10)
+                              for r in CFP_FIXTURE_ROWS]
+    payload = build_schedule_payload(rows, _teams_meta(), SEASON)
+    teams = _payload_teams(payload)
+
+    expected_seed = {"Alpha": 12, "Beta": 9, "Gamma": 1, "Delta": 2}
+    for team, seed in expected_seed.items():
+        postseason = [w for w in teams[team]["weeks"] if w["season_type"] == "postseason"]
+        assert len(postseason) == 1, team
+        assert postseason[0] == {"slot_id": "cfp-r1-bowls", "label": "Bowls",
+                                 **BARE_CFP_CELL, "cfp_seed": seed}, team
+
+    echo = teams["Echo"]["weeks"][-1]
+    assert echo["slot_id"] == "cfp-r1-bowls"
+    assert echo["opponent"] == "Zulu" and echo["game_name"] == "Pop-Tarts Bowl"
+    assert echo["playoff_round"] is None and echo["cfp_seed"] is None
+
+    foxtrot = teams["Foxtrot"]["weeks"][-1]
+    assert foxtrot["slot_id"] == "cfp-r1-bowls"
+    assert foxtrot["status"] != "cfp" and foxtrot["opponent"] is None
+
+    # No cell anywhere carries a removed slot id; every team ends with the Bowls column.
+    for team in teams.values():
+        slot_ids = [w["slot_id"] for w in team["weeks"]]
+        assert REMOVED_SLOT_IDS.isdisjoint(slot_ids)
+        assert slot_ids[-1] == "cfp-r1-bowls"
+        assert slot_ids.count("cfp-r1-bowls") == 1
+    assert REMOVED_SLOT_IDS.isdisjoint(
+        w["slot_id"] for t in teams.values() for w in t["weeks"]
+    )
 
 
 # ===========================================================================
@@ -360,6 +424,11 @@ def test_playoff_round_is_null_on_every_placeholder_and_bye_cell():
     weeks = _build_team_weeks(CFP_SLOTS, {}, None, None, "eligible", {})
     for week in weeks:
         assert week["playoff_round"] is None
+
+
+def test_cfp_cell_playoff_round_is_the_constant_cfp_not_the_row_round_name():
+    weeks = _build_team_weeks(CFP_SLOTS, {}, None, None, "eligible", {}, is_cfp_team=True)
+    assert weeks[0]["playoff_round"] == "CFP"
 
 
 # ===========================================================================

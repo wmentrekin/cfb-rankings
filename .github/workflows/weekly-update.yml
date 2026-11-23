@@ -11,6 +11,16 @@ on:
     # plus a gate that self-disarms -- over moving this line, and delete both afterwards, since
     # a bare `cron: '0 7 8 9 *'` recurs every year.
     - cron: '0 7 * * 0'
+    # DATED ONE-OFFS for the 2026 playoff field (selection day is Sunday Dec 6, 2026; the
+    # regular Sunday run above fires before the bracket is announced). These re-run the
+    # pipeline on the Monday and Tuesday after, so the postseason ingest picks up the real
+    # first-round and quarterfinal games and the playoffs artifact switches from a projection
+    # to the actual bracket without waiting a week. Two shots in case CFBD lists the games
+    # late; the run is idempotent. A bare dated cron recurs EVERY year, so the `gate` job
+    # below only lets these fire in 2026. Delete both lines and the gate's year check once
+    # the 2026 bracket has shipped.
+    - cron: '0 9 7 12 *'
+    - cron: '0 9 8 12 *'
   workflow_dispatch:
     inputs:
       week:
@@ -22,7 +32,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  gate:
+    # Decides whether this firing should run at all. The weekly Sunday schedule and manual
+    # dispatches always run. A dated one-off schedule (see the cron comments above) runs only
+    # in the year it was written for, so it disarms itself instead of recurring annually.
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          RUN=true
+          if [ "$EVENT_NAME" = "schedule" ] && [ "$SCHEDULE" != "0 7 * * 0" ]; then
+            if [ "$(date -u +%Y)" != "2026" ]; then
+              RUN=false
+              echo "Dated one-off schedule '$SCHEDULE' is expired (not 2026); skipping."
+            fi
+          fi
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+
   weekly_update:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 

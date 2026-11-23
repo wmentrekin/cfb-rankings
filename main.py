@@ -2,12 +2,13 @@ import argparse
 from typing import Dict, Optional
 from model.model import get_ratings
 from database.model_to_db import ratings_to_df, insert_model_results_to_db
-from database.get_games import load_games_to_db
+from database.get_games import load_games_to_db, load_upcoming_games_to_db
 from sqlalchemy.exc import CompileError, ProgrammingError  # type: ignore
 from database.get_teams import load_teams_to_db
 from database.get_non_fbs_teams import load_non_fbs_teams_to_db
 from database.game_overrides import apply_game_result_overrides
 from artifacts.r2 import publish_rankings_artifact
+from artifacts.playoffs import publish_playoffs_artifact
 from artifacts.schedule import publish_schedule_artifact
 from utils import football_day, get_cfb_week, setup_logging
 import pandas as pd #type: ignore
@@ -432,6 +433,28 @@ def main():
         )
         return
 
+    # PULL LATER REGULAR-SEASON WEEKS (best effort)
+    # The ingest above only covers the target week, so games CFBD adds or re-times for later
+    # weeks (conference championships, mid-season flex games) would not reach `games` until their
+    # own week runs -- after they were played. One regular-season fetch, keeping only
+    # week > args.week: past weeks are not rewritten wholesale on every run (see scripts/
+    # backfill_games.py, "WHY A DRY RUN MATTERS"). Unplayed rows are 0-0 with winner NULL and the
+    # model skips them, so this cannot move ratings. It never gates the run: the gated ingest
+    # above already proved the schema and the fetch path, so any failure here (schema included)
+    # only warns, deliberately WITHOUT the INGEST_FAILURE token. Runs before the overrides so
+    # they are still re-asserted after every ingest (K3).
+    try:
+        logger.info("Loading later regular-season weeks into DB for year=%s after week=%s", args.year, args.week)
+        upcoming_count = load_upcoming_games_to_db(args.year, args.week)
+        logger.info("Upcoming-weeks ingest upserted %s row(s).", upcoming_count)
+    except _SCHEMA_ERRORS as e:
+        logger.warning(
+            "Upcoming-weeks ingest hit a database schema error (non-blocking; the gated ingest "
+            "above succeeded). Continuing. Exception: %s", e,
+        )
+    except Exception as e:
+        logger.warning("Upcoming-weeks ingest failed (non-blocking). Continuing. Exception: %s: %s", type(e).__name__, e)
+
     # PULL POSTSEASON DATA
     # Postseason week numbers are a different, colliding numbering scheme from
     # the regular-season pipeline-week cursor (args.week) -- always fetch the
@@ -538,6 +561,17 @@ def main():
             logger.exception("Schedule artifact publish step failed unexpectedly: %s", ex)
     else:
         logger.info("Skipping schedule artifact publish because --staging was set.")
+
+    # PUBLISH PLAYOFFS ARTIFACT
+    # Season-scoped like the schedule artifact; seasons without playoff rules are skipped inside.
+    # Own try/except so it can never affect (or be affected by) the publishes above.
+    if not args.staging:
+        try:
+            publish_playoffs_artifact(args.year)
+        except Exception as ex:
+            logger.exception("Playoffs artifact publish step failed unexpectedly: %s", ex)
+    else:
+        logger.info("Skipping playoffs artifact publish because --staging was set.")
 
     logger.info("Run finished successfully for year=%s week=%s", args.year, args.week)
 
