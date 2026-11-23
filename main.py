@@ -8,6 +8,7 @@ from database.get_teams import load_teams_to_db
 from database.get_non_fbs_teams import load_non_fbs_teams_to_db
 from database.game_overrides import apply_game_result_overrides
 from artifacts.r2 import publish_rankings_artifact
+from artifacts.playoffs import publish_playoffs_artifact
 from artifacts.schedule import publish_schedule_artifact
 from utils import football_day, get_cfb_week, setup_logging
 import pandas as pd #type: ignore
@@ -560,6 +561,17 @@ def main():
             logger.exception("Schedule artifact publish step failed unexpectedly: %s", ex)
     else:
         logger.info("Skipping schedule artifact publish because --staging was set.")
+
+    # PUBLISH PLAYOFFS ARTIFACT
+    # Season-scoped like the schedule artifact; seasons without playoff rules are skipped inside.
+    # Own try/except so it can never affect (or be affected by) the publishes above.
+    if not args.staging:
+        try:
+            publish_playoffs_artifact(args.year)
+        except Exception as ex:
+            logger.exception("Playoffs artifact publish step failed unexpectedly: %s", ex)
+    else:
+        logger.info("Skipping playoffs artifact publish because --staging was set.")
 
     logger.info("Run finished successfully for year=%s week=%s", args.year, args.week)
 

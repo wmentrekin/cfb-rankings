@@ -81,6 +81,10 @@ at the higher seed. Quarterfinal order 0: seed 1 v winner 8/9; order 1: seed 4 v
 order 2: seed 2 v winner 7/10; order 3: seed 3 v winner 6/11. Semifinal order 0 = QF 0 + QF 1;
 order 1 = QF 2 + QF 3. First-round `order` matches the quarterfinal it feeds.
 Team display data for a game side is looked up in `teams` by `team`.
+Side placement: first round and quarterfinals put the HIGHER seed on top. Semifinals and the
+championship put the side fed by the earlier feeder game (order 2k) on top and the later one
+(2k+1) on the bottom, regardless of seed, so connector lines never cross. The site renders `top`
+and `bottom` exactly as given and must not re-sort sides by seed.
 
 ## Season Grid payload change (`schedule/{season}/latest.json`)
 - `weeks` no longer contains `cfp-quarterfinals`, `cfp-semifinals`, `cfp-national-championship`.
