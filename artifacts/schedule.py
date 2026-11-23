@@ -4,8 +4,8 @@ schedule.py -- Season Grid artifact builder + R2 publisher (T4b).
 Queries schedule_grid + teams for one season, calls
 artifacts/schedule_standings.py's compute_standings() for record/conf_record
 and championship/bowl status, resolves logos via artifacts/rankings.py's
-_resolve_logo(), groups/sorts teams by conference, buckets postseason rows
-into the fixed CFP-round slots, identifies each qualifying conference's
+_resolve_logo(), groups/sorts teams by conference, buckets ordinary bowl rows
+into the single Bowls slot (CFP games collapse into one `cfp` cell there), identifies each qualifying conference's
 championship game and the Army-Navy game (see the two heuristic sections
 below), synthesizes bye-week cells so every team has exactly one cell per
 canonical column, and publishes the resulting JSON to R2 under a
@@ -136,21 +136,20 @@ CONF_CHAMPIONSHIP_SLOT_ID = "conf-championship"
 ARMY_NAVY_SLOT_ID = "army-navy"
 CONF_CHAMPIONSHIP_SLOT: Tuple[str, str] = (CONF_CHAMPIONSHIP_SLOT_ID, "Conference Championship")
 ARMY_NAVY_SLOT: Tuple[str, str] = (ARMY_NAVY_SLOT_ID, "Army-Navy Game Week")
+# The ONE postseason column. The Season Grid no longer carries per-round CFP columns
+# (quarterfinals / semifinals / national championship were removed for every season; the
+# bracket lives in its own playoffs artifact). A team that played in -- or got a bye into -- the
+# College Football Playoff gets a single `cfp` cell here (see _cfp_cell); every other team keeps
+# the bowl game cell or the eligible/ineligible/possible placeholder. The slot id keeps its
+# historical "cfp-r1-bowls" name: it is the stable contract key the site already reads.
 CFP_SLOTS: List[Tuple[str, str]] = [
     ("cfp-r1-bowls", "Bowls"),
-    ("cfp-quarterfinals", "CFP Quarterfinals"),
-    ("cfp-semifinals", "CFP Semifinals"),
-    ("cfp-national-championship", "CFP National Championship"),
 ]
 _CFP_SLOT_IDS = {slot_id for slot_id, _ in CFP_SLOTS}
-
-# T4/AC5: distinct status for a team that earned a first-round CFP bye -- see _cfp_bye_cell and
-# the cfp-r1-bowls branch of _build_team_weeks. Previously this slot NEVER fell through to a bye
-# at all (it unconditionally emitted the bowl-eligibility placeholder, reading as merely
-# "Eligible" -- indistinguishable from, and arguably worse than, a team that missed the playoff
-# entirely). Deliberately deferred when the grid first shipped and added later; the behaviour
-# it replaced is described above so the reason survives without the planning note.
-CFP_BYE_STATUS = "cfp_bye"
+CFP_STATUS = "cfp"
+CFP_GAME_NAME = "College Football Playoff"
+CFP_GAME_NAME_SHORT = "CFP"
+CFP_PLAYOFF_ROUND = "CFP"
 
 
 # ---------------------------------------------------------------------------
@@ -610,35 +609,19 @@ def identify_army_navy_game(rows: List[Dict[str, Any]], season: int) -> Optional
 
 
 # ---------------------------------------------------------------------------
-# CFP-ROUND BUCKETING (postseason rows only)
+# CFP ROW DETECTION (postseason rows only)
 #
-# Case-insensitive substring match on playoff_round_name per the handoff:
-#   contains 'quarterfinal'                                   -> CFP Quarterfinals
-#   contains 'semifinal'                                       -> CFP Semifinals
-#   contains 'national championship', or ('championship' and
-#     NOT 'conference')                                        -> CFP National Championship
-#   anything else (incl. null/empty, non-CFP bowls, 'first
-#     round')                                                   -> CFP 1st Round + Other Bowls
-#
-# playoff_round_order is deliberately NOT used, even as a tie-break: T2's
-# actual implementation never called CFBD's separate /playoffs/cfp/games
-# endpoint (a documented, deliberate scope-narrowing from T2, not an
-# oversight -- see plan.yaml/implementation-report.yaml), so
-# playoff_round_name/order's exact real-world values were never live-
-# verified (0 postseason rows exist in this sandbox's DB). Per the handoff's
-# own caution, round_order's numeric convention is unconfirmed -- coding a
-# tie-break against it here would be guessing at an unverified contract, so
-# it's left unused. Flagged again in this task's report.
+# A postseason row is a College Football Playoff game iff CFBD gave it a non-empty
+# playoff_round_name (First Round, Quarterfinal, Semifinal, National Championship). CFBD leaves
+# it null for ordinary bowls. CFP rows are NEVER indexed into a slot: the grid has no per-round
+# column for them, so _classify_row_slot returns None for them and they are consumed only by
+# _build_team_cfp_seeds, which reduces a team's CFP rows to the single Bowls-column `cfp` cell.
+# playoff_round_order is deliberately unused (its numeric convention was never live-verified).
 # ---------------------------------------------------------------------------
-def _bucket_cfp_slot(row: Dict[str, Any]) -> Tuple[str, str]:
-    round_name = (row.get("playoff_round_name") or "").strip().lower()
-    if "quarterfinal" in round_name:
-        return CFP_SLOTS[1]
-    if "semifinal" in round_name:
-        return CFP_SLOTS[2]
-    if "national championship" in round_name or ("championship" in round_name and "conference" not in round_name):
-        return CFP_SLOTS[3]
-    return CFP_SLOTS[0]
+def _is_cfp_row(row: Dict[str, Any]) -> bool:
+    if row.get("season_type") != "postseason":
+        return False
+    return bool((row.get("playoff_round_name") or "").strip())
 
 
 def _game_name_for_row(row: Dict[str, Any]) -> Optional[str]:
@@ -677,7 +660,10 @@ def _classify_row_slot(
         week_n = _get_week_slot(row)
         return (f"week-{week_n}", f"Week {week_n}")
     if season_type == "postseason":
-        return _bucket_cfp_slot(row)
+        if _is_cfp_row(row):
+            # No column exists for CFP-bracket games; see _build_team_cfp_seeds.
+            return None
+        return CFP_SLOTS[0]
     logger.warning(
         "schedule.py: unrecognized season_type %r for game_id=%s team=%r; row excluded from the "
         "grid (falls through to bye/computed-placeholder fill for its slot).",
@@ -706,7 +692,7 @@ def _build_team_slot_rows(
     is worse than the cosmetic imperfection of a slightly-off week label. Resolution: keep the
     chronologically earlier game in its natural slot; walk the later game forward to the next
     week-N column (in canonical order) that this team doesn't already occupy. Only applies to
-    week-N slots -- Conference Championship/Army-Navy/CFP-round slots are keyed by a single
+    week-N slots -- Conference Championship/Army-Navy slots are keyed by a single
     globally-unique game_id per team per season by construction, so a collision there would
     indicate a genuine data anomaly rather than this fixed-window artifact; such a case is logged
     and resolved by simple first-wins rather than shifted (there is no well-defined "next slot"
@@ -738,7 +724,7 @@ def _build_team_slot_rows(
                 continue
             candidate_rows = sorted(candidate_rows, key=lambda r: _to_datetime(r["start_date"]))
             if slot_id not in week_slot_ids_sorted:
-                # A non-week slot collision (conf-championship/army-navy/a CFP-round slot) --
+                # A non-week slot collision (conf-championship/army-navy) --
                 # should be structurally impossible given how those are identified; first-wins.
                 logger.error(
                     "schedule.py: team %r has %d rows colliding on non-week slot %r (game_ids=%s) "
@@ -791,7 +777,7 @@ def build_canonical_columns(
     """
     Every DISTINCT regular-season display-week-slot present in this season's
     data (derived, not hardcoded), then Conference Championship, then
-    Army-Navy Game Week, then the four fixed CFP slots. Every team gets this
+    Army-Navy Game Week, then the single Bowls slot. Every team gets this
     SAME list.
 
     Rows that _classify_row_slot() DIVERTS into a dedicated slot -- the Army-Navy
@@ -927,9 +913,8 @@ def _cell_from_row(row: Dict[str, Any], logos_by_team: Dict[str, Any]) -> Dict[s
         "opp_score": opp_score,
         # K5: non-null only for a real CFP-round game -- see _playoff_round_for_row.
         "playoff_round": _playoff_round_for_row(row),
-        # cfp_seed: null on every real-row cell -- this field exists only to carry a CFP bye
-        # team's seed (see _cfp_bye_cell); a real game's own seed is not surfaced here today
-        # (out of scope -- no acceptance criterion asks for it on a played/scheduled game).
+        # cfp_seed: null on every real-row cell -- this field exists only to carry a CFP team's
+        # seed on its single `cfp` cell (see _cfp_cell); a real game's own seed is not surfaced.
         "cfp_seed": None,
     }
 
@@ -993,19 +978,16 @@ def _tbd_cell(logical_season_type: str) -> Dict[str, Any]:
 
 
 def _team_seed_from_row(row: Dict[str, Any]) -> Optional[int]:
-    """This team's CFP seed, from a schedule_grid row it appears in (its cfp-quarterfinals row,
-    for the bye case).
+    """This team's CFP seed, from a schedule_grid CFP row it appears in.
 
     Reads schedule_grid's team_seed directly rather than picking between
     playoff_home_seed/playoff_away_seed on home_away. Migration 0006 flips the seed in the view,
     the same way it already flips team_score/opp_score and conference -- re-deriving "which side
     am I?" here would duplicate, in Python, the one thing that view exists to do once.
 
-    K8: home_seed/away_seed's existence on CFBD's GamePlayoff is confirmed only at the schema
-    level (read from the OpenAPI-generated client) -- nobody has confirmed they're actually
-    POPULATED for real games, and this environment cannot call CFBD to check. So an absent or
-    non-numeric value degrades to None here rather than guessing -- the caller (_cfp_bye_cell)
-    turns that into a plain label instead of a wrong seed number.
+    K8: seeds were confirmed POPULATED for 2025 on 2026-11-23 (they were previously verified only
+    at the schema level). An absent or non-numeric value still degrades to None here rather than
+    guessing -- the cell then carries cfp_seed null and the site renders no seed.
     """
     seed = row.get("team_seed")
     if seed is None:
@@ -1016,37 +998,45 @@ def _team_seed_from_row(row: Dict[str, Any]) -> Optional[int]:
         return None
 
 
-def _cfp_bye_cell(logical_season_type: str, seed: Optional[int]) -> Dict[str, Any]:
-    """T4/AC5: a team with a real cfp-quarterfinals row but no real cfp-r1-bowls row earned a
-    first-round CFP bye. Distinct from BOTH _bye_cell (no game exists at all that slot) and the
-    bowl-eligibility placeholder (which reads as merely "Eligible", indistinguishable from a
-    team that never made the playoff).
+def _build_team_cfp_seeds(
+    rows: List[Dict[str, Any]], fbs_team_names: set
+) -> Dict[str, Optional[int]]:
+    """Dict[team -> seed-or-None] for every FBS team with at least one CFP postseason row
+    (bye teams included -- their first CFP row is a quarterfinal). Membership in the dict IS the
+    "playoff team" signal; the value is the lowest non-null seed across the team's CFP rows, or
+    None when none carries a usable seed."""
+    result: Dict[str, Optional[int]] = {}
+    for row in rows:
+        team = row.get("team")
+        if team not in fbs_team_names or not _is_cfp_row(row):
+            continue
+        seed = _team_seed_from_row(row)
+        current = result.get(team)
+        if team not in result:
+            result[team] = seed
+        elif seed is not None and (current is None or seed < current):
+            result[team] = seed
+    return result
 
-    REVISED (fix-cycle-1 design correction): the seed is carried as its OWN nullable field,
-    cfp_seed -- an integer when resolved, null when not -- rather than pre-composed into
-    game_name as "Bye (No. N)" prose. Baking it into game_name conflicted with
-    _game_name_for_row's own contract (non-null only for a real, determined game; this is
-    neither) and inverted K5's whole argument: K5 exists precisely so the frontend does not have
-    to derive structured meaning (a badge) from a label's prose, and writing an integer into a
-    sentence two functions before the frontend reads it is that same coupling in the other
-    direction. game_name/game_name_short stay null here, exactly like _bye_cell -- the frontend
-    composes its own label from status == CFP_BYE_STATUS plus cfp_seed (present or absent), the
-    same K8 degrade (a resolved seed renders it, an absent one falls back to a plain "CFP Bye"
-    label) now expressed as a data question instead of a string-presence question.
-    """
+
+def _cfp_cell(logical_season_type: str, seed: Optional[int]) -> Dict[str, Any]:
+    """The single Bowls-column cell for a playoff team. Deliberately carries NO opponent, score,
+    or win/loss status however many CFP games the team played -- the bracket is the playoffs
+    artifact's job. Key set mirrors _placeholder_cell so the site renderer never hits a missing
+    key."""
     return {
         "season_type": logical_season_type,
         "opponent": None,
         "opponent_logo_url": None,
         "conditional_opponent": None,
-        "game_name": None,
-        "game_name_short": None,
+        "game_name": CFP_GAME_NAME,
+        "game_name_short": CFP_GAME_NAME_SHORT,
         "home_away": None,
         "neutral_site": False,
-        "status": CFP_BYE_STATUS,
+        "status": CFP_STATUS,
         "team_score": None,
         "opp_score": None,
-        "playoff_round": None,
+        "playoff_round": CFP_PLAYOFF_ROUND,
         "cfp_seed": seed,
     }
 
@@ -1059,10 +1049,17 @@ def _build_team_weeks(
     bowl_status: str,
     logos_by_team: Dict[str, Any],
     flex_tbd_slot_ids: Optional[set] = None,
+    is_cfp_team: bool = False,
+    cfp_seed: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     flex_tbd_slot_ids = flex_tbd_slot_ids or set()
     weeks = []
     for slot_id, label in canonical_columns:
+        if slot_id == CFP_SLOTS[0][0] and is_cfp_team:
+            # A playoff team (incl. a first-round bye) gets exactly one `cfp` cell, whatever
+            # else the slot might hold.
+            weeks.append({"slot_id": slot_id, "label": label, **_cfp_cell("postseason", cfp_seed)})
+            continue
         real_row = team_slot_rows.get(slot_id)
         if real_row is not None:
             cell = _cell_from_row(real_row, logos_by_team)
@@ -1075,20 +1072,8 @@ def _build_team_weeks(
             weeks.append({"slot_id": slot_id, "label": label, **_placeholder_cell(logical_type, championship_status, conditional_opponent)})
             continue
         if slot_id == CFP_SLOTS[0][0]:
-            # T4/AC5: the only available bye signal is structural -- a real row in
-            # cfp-quarterfinals (checked here) with no real row in cfp-r1-bowls (already true,
-            # or this branch would never have been reached: the `real_row is not None` check
-            # above always wins once a real cfp-r1-bowls row exists) means this team earned a
-            # first-round bye, not that it merely "made a bowl."
-            quarterfinal_row = team_slot_rows.get(CFP_SLOTS[1][0])
-            if quarterfinal_row is not None:
-                seed = _team_seed_from_row(quarterfinal_row)
-                weeks.append({"slot_id": slot_id, "label": label, **_cfp_bye_cell(logical_type, seed)})
-                continue
             # Bowl eligibility (possible/eligible/ineligible) is computed unconditionally for
-            # every team, so absent a detected bye above, this slot NEVER falls through to a
-            # plain 'bye' -- unlike Conference Championship/Army-Navy/the other 3 CFP slots,
-            # which do.
+            # every non-playoff team, so this slot NEVER falls through to a plain 'bye'.
             weeks.append({"slot_id": slot_id, "label": label, **_placeholder_cell(logical_type, bowl_status, None)})
             continue
         if slot_id in flex_tbd_slot_ids:
@@ -1955,6 +1940,7 @@ def build_schedule_payload(
     canonical_columns = build_canonical_columns(rows, season, champ_game_ids, army_navy_game_id)
     week_slot_ids_sorted = [slot_id for slot_id, _label in canonical_columns if slot_id.startswith("week-")]
     team_slot_rows = _build_team_slot_rows(rows, fbs_team_names, champ_game_ids, army_navy_game_id, week_slot_ids_sorted)
+    team_cfp_seeds = _build_team_cfp_seeds(rows, fbs_team_names)
     # Non-FBS entries first so an FBS row always wins on a name collision. The two tables are
     # disjoint by construction (the ingest filters `classification != 'fbs'` before writing
     # non_fbs_teams), so there should be no collision at all -- this ordering just makes the
@@ -2019,6 +2005,8 @@ def build_schedule_payload(
                 bowl_status,
                 logos_by_team,
                 flex_tbd_slot_ids,
+                is_cfp_team=team in team_cfp_seeds,
+                cfp_seed=team_cfp_seeds.get(team),
             )
             entries.append({
                 "team": team,

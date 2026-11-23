@@ -200,18 +200,19 @@ def _print_summary(payload: dict) -> None:
     first_team_weeks = conferences[0]["teams"][0]["weeks"] if conferences and conferences[0]["teams"] else []
     cfp_slot_ids = {slot_id for slot_id, _label in CFP_SLOTS}
 
-    # Resolved postseason CELLS (a real game -- non-null opponent -- sitting in a cfp-* slot),
-    # not just column presence: build_canonical_columns() always emits all four CFP slot ids
-    # for ANY non-empty season regardless of whether the postseason has actually been played
-    # (they're placeholder/bye cells otherwise), so counting slot ids alone would read as "the
-    # postseason is populated" when it may be nothing of the kind. Counted across every team,
-    # not just the first, since that's what "populated" actually means.
+    # Resolved postseason CELLS, not just column presence: build_canonical_columns() always
+    # emits the Bowls slot for ANY non-empty season regardless of whether the postseason has
+    # actually been played (placeholder cells otherwise), so counting the slot id alone would
+    # read as "the postseason is populated" when it may be nothing of the kind. A resolved cell
+    # is a real bowl game (non-null opponent) or a playoff team's "cfp" cell, which carries no
+    # opponent by design. Counted across every team, since that's what "populated" means.
     resolved_postseason_cells = sum(
         1
         for conf in conferences
         for team in conf["teams"]
         for wk in team["weeks"]
-        if wk["slot_id"] in cfp_slot_ids and wk.get("opponent") is not None
+        if wk["slot_id"] in cfp_slot_ids
+        and (wk.get("opponent") is not None or wk.get("status") == "cfp")
     )
 
     print(f"season: {payload.get('season')}")
