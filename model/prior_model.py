@@ -3,6 +3,7 @@ import networkx as nx # type: ignore
 import numpy as np # type: ignore
 import pandas as pd # type: ignore
 
+from model.margin_scale import compute_k_margin
 from model.process_data import get_data_by_year_up_to_week
 
 def get_prior_ratings(year):
@@ -41,12 +42,7 @@ def get_prior_ratings(year):
     # Margin Regularization Parameters
     TARGET_GAP_FOR_MEDIAN = 7.0        # rating points the median margin should represent
     MAX_RATING_GAP_FROM_MARGIN = 20.0  # cap for maximum rating gap any margin can demand
-    margins = [abs(m) for (_, _, _, _, _, m, _, _) in games if m is not None and m >= 0]
-    if len(margins) == 0:
-        median_margin = 1.0
-    else:
-        median_margin = float(np.median(margins))
-    k_margin = TARGET_GAP_FOR_MEDIAN / max(np.sqrt(median_margin), 1e-6)
+    k_margin = compute_k_margin(games, TARGET_GAP_FOR_MEDIAN)
 
     # Decision Variables
     r = {team: cp.Variable(name = f"r_{team}") for team in teams} # team rating
@@ -56,7 +52,9 @@ def get_prior_ratings(year):
     fcs_loss_terms = []
     for (team, margin, alpha, _, _) in fcs_losses:
         fcs_loss_terms.append(cp.pos(r[team] + (margin * alpha) - r_fcs)**2 * gamma_fcs)
-    fcs_loss_penalty = cp.sum(fcs_loss_terms)
+    # cp.sum([]) is a plain 0 with no .value, which crashed the diagnostics below in a season
+    # with no FCS losses. Same guard as model/model.py.
+    fcs_loss_penalty = cp.sum(fcs_loss_terms) if fcs_loss_terms else cp.Constant(0.0)
 
     # Soft Margin Penalty Terms
     soft_margin_terms = []

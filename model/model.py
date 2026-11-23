@@ -4,6 +4,7 @@ import numpy as np # type: ignore
 import pandas as pd # type: ignore
 
 from model.process_data import get_data_by_year_up_to_week
+from model.margin_scale import compute_k_margin
 from model.prior_model import get_prior_ratings
 
 def get_ratings(year, week = None):
@@ -30,8 +31,8 @@ def get_ratings(year, week = None):
 
     # Datasets
     teams = teams  # List of FBS team names
-    games = games  # List of tuples: (i, j, k, winner, margin, location_multiplier)
-    fcs_losses = fcs_losses  # List of tuples: (team, margin, location_multiplier)
+    games = games  # List of tuples: (i, j, k, winner, margin, location_multiplier, week, season)
+    fcs_losses = fcs_losses  # List of tuples: (team, margin, location_multiplier, week, season)
     prior_ratings = prior_ratings  # {team: prior_rating}
 
     # Assign Prior Rating to New FBS Teams
@@ -60,12 +61,7 @@ def get_ratings(year, week = None):
     # Margin Regularization Parameters
     TARGET_GAP_FOR_MEDIAN = 7.0        # rating points the median margin should represent
     MAX_RATING_GAP_FROM_MARGIN = 20.0  # cap for maximum rating gap any margin can demand
-    margins = [abs(m) for (_, _, _, _, _, m, _, _) in games if m is not None and m >= 0]
-    if len(margins) == 0:
-        median_margin = 1.0
-    else:
-        median_margin = float(np.median(margins))
-    k_margin = TARGET_GAP_FOR_MEDIAN / max(np.sqrt(median_margin), 1e-6)
+    k_margin = compute_k_margin(games, TARGET_GAP_FOR_MEDIAN)
 
     # Decision Variables
     r = {team: cp.Variable(name = f"r_{team}") for team in teams} # team rating
