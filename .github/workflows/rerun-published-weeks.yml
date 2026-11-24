@@ -24,8 +24,10 @@ on:
         default: ''
 
 concurrency:
-  # Never alongside itself. It does not share a group with weekly-update.yml: do not start it
-  # while a weekly run is in progress.
+  # Never alongside itself. It cannot share a group with weekly-update.yml, whose group cancels
+  # runs in progress and would kill a rerun mid-publish. Do not start it while a weekly run is
+  # in progress; if one lands anyway, the script's last step re-points the "latest" keys at the
+  # newest week in the database.
   group: rerun-published-weeks
   cancel-in-progress: false
 
@@ -49,16 +51,17 @@ jobs:
         run: uv sync --frozen --extra pipeline
 
       - name: Re-solve (and, with apply, rewrite and republish)
+        # The R2 secrets are passed only when apply is true: a dry run has no use for them.
         env:
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_NAME: ${{ secrets.DB_NAME }}
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_PORT: ${{ secrets.DB_PORT }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          R2_ACCOUNT_ID: ${{ github.event.inputs.apply == 'true' && secrets.R2_ACCOUNT_ID || '' }}
+          R2_ACCESS_KEY_ID: ${{ github.event.inputs.apply == 'true' && secrets.R2_ACCESS_KEY_ID || '' }}
+          R2_SECRET_ACCESS_KEY: ${{ github.event.inputs.apply == 'true' && secrets.R2_SECRET_ACCESS_KEY || '' }}
+          R2_BUCKET_NAME: ${{ github.event.inputs.apply == 'true' && secrets.R2_BUCKET_NAME || '' }}
           APPLY: ${{ github.event.inputs.apply }}
           SEASON: ${{ github.event.inputs.season }}
         run: |

@@ -139,10 +139,12 @@ jobs:
         # raises the alarm. It has to exist as a step at all because the model step above ends
         # in `|| true`, so a nonzero exit from main.py is invisible and the job goes green.
         run: |
+          # Every check runs before the job exits, so one failure cannot hide another.
+          failed=0
           if grep -q "OVERRIDE_FAILURE" output.log; then
             echo "::error::Manual result override failure(s) found in output.log:"
             grep "OVERRIDE_FAILURE" output.log
-            exit 1
+            failed=1
           fi
           # Separate token, same reasoning: a failed ingest -- a schema mismatch, or CFBD
           # unavailable after the fetch retries -- stops the run (or, for the postseason slate,
@@ -151,13 +153,14 @@ jobs:
           if grep -q "INGEST_FAILURE" output.log; then
             echo "::error::Ingest failed -- unapplied migration, CFBD unavailable after retries, or no games returned for the week (the run stopped before publishing):"
             grep "INGEST_FAILURE" output.log
-            exit 1
+            failed=1
           fi
-          # Last, so the more specific failures above are reported first. The artifacts are in R2
-          # at this point; only the site rebuild is missing. Re-running the job fires the hook
-          # again, or the site can be redeployed from the Cloudflare dashboard.
+          # The artifacts are in R2 at this point; only the site rebuild is missing. Re-running
+          # the job fires the hook again, or the site can be redeployed from the Cloudflare
+          # dashboard.
           if [ -f deploy-hook-failed ]; then
             echo "::error::The personal-site deploy hook failed, so the site is still showing the previous build. Check that the hook URL secret is current and that Cloudflare Pages is still connected to the site repository."
-            exit 1
+            failed=1
           fi
+          exit $failed
 

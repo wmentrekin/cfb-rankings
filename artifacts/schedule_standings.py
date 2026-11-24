@@ -345,6 +345,9 @@ _WIN_PCT = "win_pct"
 _NO_WIDENING_DEFINITIONS = frozenset({"acc_alternate_games"})
 
 
+_KNOWN_TIE_DEFINITIONS = frozenset({_WIN_PCT, "acc_alternate_games", "cusa_within_one_win"})
+
+
 def _ranges_overlap(a: Tuple[int, int], b: Tuple[int, int]) -> bool:
     return a[0] <= b[1] and b[0] <= a[1]
 
@@ -428,6 +431,10 @@ def _surely_finishes_ahead(
     if tie_definition != _WIN_PCT and _ranges_overlap(
         (N[other] - B[other], N[other] - W[other]), (N[team] - B[team], N[team] - W[team])
     ):
+        return False
+    # A definition this code does not recognise gets the strictest reading, as in
+    # _clear_of_other_game_counts: a tie could also mean "within one win".
+    if tie_definition not in _KNOWN_TIE_DEFINITIONS and W[other] <= B[team] + 1:
         return False
     return True
 
@@ -1014,7 +1021,22 @@ def compute_conference_championship_status(
             # for this pool entirely and leave the plain W/R/B/L statuses as computed.
             would_eliminate = [t for t in teams if t not in participants]
             already_clinched = [t for t in would_eliminate if statuses[t] == "clinched"]
-            if already_clinched:
+            # The same contradiction from the other side: a team named as having PLAYED in the
+            # title game that the math says could not have reached it. The clinch test is
+            # deliberately slow to say "clinched" when game counts differ, so on its own it no
+            # longer catches every misidentified game; this does.
+            eliminated_participants = [t for t in teams if t in participants and statuses[t] == "eliminated"]
+            if eliminated_participants and not already_clinched:
+                logger.error(
+                    "Played-championship-game override for pool %r names participant(s) %s that "
+                    "the W/R/B/L math already computed as ELIMINATED (participants=%s). Treating "
+                    "this as evidence the identified championship game is a false positive: "
+                    "skipping the override for this whole pool and leaving its W/R/B/L statuses "
+                    "unmodified. top_n=%d W=%s R=%s B=%s L=%s",
+                    pool_label, eliminated_participants, participants, top_n, W, R, B, L,
+                )
+                participants_rejected = True
+            elif already_clinched:
                 logger.error(
                     "Played-championship-game override for pool %r would force team(s) %s -- "
                     "already computed as CLINCHED by the W/R/B/L math -- to eliminated "

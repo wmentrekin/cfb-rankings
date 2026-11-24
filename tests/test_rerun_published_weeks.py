@@ -95,25 +95,91 @@ def test_verify_fails_on_a_file_that_does_not_match_this_run(payload):
     assert stop.value.code == 1
 
 
+def test_verify_fails_when_one_team_far_down_the_file_is_stale():
+    payload = {"rankings": [{"team": "Alpha", "rating": 12.35}, {"team": "Bravo", "rating": 0.01}]}
+    with pytest.raises(SystemExit):
+        rerun.verify_rankings(_FakeR2(payload), "bucket", 2026, 3, _df())
+
+
+STARTED = rerun.datetime(2026, 11, 24, 12, 0, tzinfo=rerun.timezone.utc)
+
+
+def test_fresh_check_accepts_a_file_written_during_the_run_and_rejects_an_older_one():
+    rerun.verify_fresh(_FakeR2({"generated_at_utc": "2026-11-24T12:03:00+00:00"}), "b", "schedule/2026/latest.json", STARTED)
+    for stale in ("2026-11-23T23:40:00+00:00", None, "not a time"):
+        with pytest.raises(SystemExit):
+            rerun.verify_fresh(_FakeR2({"generated_at_utc": stale}), "b", "schedule/2026/latest.json", STARTED)
+
+
+def test_latest_check_fails_when_the_keys_point_at_another_week():
+    rerun.verify_latest(_FakeR2({"season": 2026, "week": 12}), "b", 2026, 12)
+    with pytest.raises(SystemExit):
+        rerun.verify_latest(_FakeR2({"season": 2025, "week": 15}), "b", 2026, 12)
+
+
+def _wire(monkeypatch, order, newest=(2026, 12)):
+    monkeypatch.setenv("R2_BUCKET_NAME", "bucket")
+    monkeypatch.setattr(rerun, "get_r2_client", lambda: object())
+    monkeypatch.setattr(rerun, "publish_rankings_artifact", lambda s, w: order.append(("rankings", s, w)))
+    monkeypatch.setattr(rerun, "verify_rankings", lambda *a: None)
+    monkeypatch.setattr(rerun, "verify_fresh", lambda *a: None)
+    monkeypatch.setattr(rerun, "verify_latest", lambda c, b, s, w: order.append(("latest", s, w)))
+    monkeypatch.setattr(rerun, "publish_schedule_artifact", lambda s: order.append(("grid", s)))
+    monkeypatch.setattr(rerun, "publish_playoffs_artifact", lambda s: order.append(("playoffs", s)))
+    monkeypatch.setattr(rerun, "newest_week", lambda engine: newest)
+
+
 def test_publish_stops_before_uploading_when_r2_is_not_configured(monkeypatch):
     published = []
     monkeypatch.setattr(rerun, "get_r2_client", lambda: None)
     monkeypatch.setattr(rerun, "publish_rankings_artifact", lambda s, w: published.append((s, w)))
     with pytest.raises(SystemExit):
-        rerun.publish_all({(2026, 3): _df()})
+        rerun.publish_all(None, {(2026, 3): _df()}, STARTED)
     assert published == []
 
 
-def test_publish_goes_oldest_first_then_each_season_once(monkeypatch):
+def test_publish_ends_on_the_newest_week_in_the_database(monkeypatch):
+    """A --season 2025 run publishes only 2025 weeks, each of which rewrites the global
+    "latest" key. The last publish must be the newest week in the database, then checked."""
     order = []
-    monkeypatch.setenv("R2_BUCKET_NAME", "bucket")
-    monkeypatch.setattr(rerun, "get_r2_client", lambda: object())
-    monkeypatch.setattr(rerun, "publish_rankings_artifact", lambda s, w: order.append(("rankings", s, w)))
-    monkeypatch.setattr(rerun, "verify_rankings", lambda *a: None)
-    monkeypatch.setattr(rerun, "publish_schedule_artifact", lambda s: order.append(("grid", s)))
-    monkeypatch.setattr(rerun, "publish_playoffs_artifact", lambda s: order.append(("playoffs", s)))
-    rerun.publish_all({(2026, 2): _df(), (2025, 15): _df(), (2026, 1): _df()})
+    _wire(monkeypatch, order)
+    rerun.publish_all(None, {(2025, 15): _df(), (2025, 14): _df()}, STARTED)
     assert order == [
-        ("rankings", 2025, 15), ("rankings", 2026, 1), ("rankings", 2026, 2),
-        ("grid", 2025), ("playoffs", 2025), ("grid", 2026), ("playoffs", 2026),
+        ("rankings", 2025, 14), ("rankings", 2025, 15), ("grid", 2025), ("playoffs", 2025),
+        ("rankings", 2026, 12), ("latest", 2026, 12),
     ]
+
+
+def test_publish_repoints_latest_even_when_a_week_fails_its_check(monkeypatch):
+    order = []
+    _wire(monkeypatch, order)
+
+    def failing(client, bucket, season, week, df):
+        if (season, week) == (2026, 2):
+            rerun._fail("stale")
+
+    monkeypatch.setattr(rerun, "verify_rankings", failing)
+    with pytest.raises(SystemExit):
+        rerun.publish_all(None, {(2026, 1): _df(), (2026, 2): _df(), (2026, 3): _df()}, STARTED)
+    assert order == [("rankings", 2026, 1), ("rankings", 2026, 2), ("rankings", 2026, 12), ("latest", 2026, 12)]
+
+
+def test_playoffs_are_republished_only_for_seasons_that_have_playoff_rules(monkeypatch):
+    order = []
+    _wire(monkeypatch, order, newest=(2024, 15))
+    rerun.publish_all(None, {(2024, 15): _df()}, STARTED)
+    assert ("playoffs", 2024) not in order and ("grid", 2024) in order
+
+
+def test_drift_report_names_added_dropped_and_changed_teams(capsys):
+    solved = {(2026, 3): pd.DataFrame([
+        {"team": "Alpha", "rating": 5.0, "wins": 3, "losses": 0},
+        {"team": "Bravo", "rating": 1.0, "wins": 1, "losses": 2},
+        {"team": "Newcomer", "rating": 0.01, "wins": 0, "losses": 3},
+    ])}
+    stored = {(2026, 3): {"Alpha": (3, 0), "Bravo": (2, 1), "Departed": (0, 3)}}
+    rerun.print_drift(solved, stored)
+    out = capsys.readouterr().out
+    assert "['Newcomer']" in out and "['Departed']" in out and "['Bravo']" in out
+    rerun.print_drift({(2026, 3): solved[(2026, 3)].iloc[:1]}, {(2026, 3): {"Alpha": (3, 0)}})
+    assert "none: every week" in capsys.readouterr().out

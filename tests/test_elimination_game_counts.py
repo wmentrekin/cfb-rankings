@@ -100,3 +100,36 @@ def test_helper_requires_more_banked_wins_than_the_team_can_reach():
     assert _surely_finishes_ahead("A", "T", W, B, N, "win_pct") is False
     W["A"] = 7
     assert _surely_finishes_ahead("A", "T", W, B, N, "win_pct") is True
+
+
+def test_unknown_tie_rule_also_needs_a_clear_win_of_separation():
+    """An unrecognised definition is read as strictly as _clear_of_other_game_counts reads it:
+    a tie could mean "within one win", so one more banked win than the team can reach is not
+    enough across different game counts."""
+    W, B, N = {"A": 7, "T": 3}, {"A": 7, "T": 6}, {"A": 9, "T": 7}
+    # A is 7-2 final; T can reach 6-1. Percentage: 7/9 < 6/7, so not ahead under any rule.
+    assert _surely_finishes_ahead("A", "T", W, B, N, "something_new") is False
+    W, B, N = {"A": 9, "T": 3}, {"A": 9, "T": 8}, {"A": 10, "T": 12}
+    # A is 9-1; T can reach 8-4. Ahead on percentage, no shared loss total, but only one win clear.
+    assert _surely_finishes_ahead("A", "T", W, B, N, "win_pct") is True
+    assert _surely_finishes_ahead("A", "T", W, B, N, "acc_alternate_games") is True
+    assert _surely_finishes_ahead("A", "T", W, B, N, "something_new") is False
+
+
+def test_a_named_title_game_participant_the_math_eliminated_rejects_the_participant_set():
+    """Review finding. CUSA, season over: Bravo and Charlie are 9-0, Delta 8-0, Alpha 7-1, and
+    the "title game" is said to be Alpha against Delta. The stricter clinch test leaves Bravo
+    and Charlie "possible" (unequal game counts under CUSA's tie rule), so the older guard --
+    "the override would eliminate a clinched team" -- no longer fires. Alpha, a named
+    participant, computes as eliminated: that contradiction must reject the participant set
+    instead of letting it eliminate the two unbeaten teams."""
+    records = {
+        "Alpha": _rec(7, 1, 0), "Bravo": _rec(9, 0, 0), "Charlie": _rec(9, 0, 0), "Delta": _rec(8, 0, 0),
+    }
+    result = compute_conference_championship_status(
+        records, qualifying_conferences=QUALIFYING, tie_definitions={CONF: "cusa_within_one_win"},
+        ccg_participants={CONF: {"Alpha", "Delta"}},
+    )
+    assert result["Alpha"]["status"] == "eliminated"
+    assert result["Bravo"]["status"] != "eliminated"
+    assert result["Charlie"]["status"] != "eliminated"
