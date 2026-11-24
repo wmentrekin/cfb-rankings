@@ -5,7 +5,7 @@ import pandas as pd # type: ignore
 
 from model.process_data import get_data_by_year_up_to_week
 from model.margin_scale import compute_k_margin
-from model.params import DEFAULT_PARAMS
+from model.params import DEFAULT_PARAMS, shift_to_display
 from model.prior_model import get_prior_ratings
 
 def get_ratings(year, week = None, params = DEFAULT_PARAMS):
@@ -109,7 +109,8 @@ def get_ratings(year, week = None, params = DEFAULT_PARAMS):
     # Constraints
     constraints = []
     for (team) in teams:
-        constraints.append(r[team] >= r_min)
+        if r_min is not None:
+            constraints.append(r[team] >= r_min)
         constraints.append(r[team] <= r_max)
     constraints.append(r_fcs >= r_fcs_min)
     constraints.append(r_fcs <= r_fcs_max)
@@ -148,6 +149,10 @@ def get_ratings(year, week = None, params = DEFAULT_PARAMS):
         print("Margin penalty:", soft_margin_penalty.value)
         print("FCS Margin penalty:", fcs_loss_penalty.value)
         print("Loss rate penalty:", loss_rate_penalty.value)
+
+        # Published scale: one uniform shift, after every diagnostic above has read the raw
+        # solve. Order is unchanged, so `ratings` stays sorted.
+        ratings = shift_to_display(ratings, params)
 
         return ratings, records
 

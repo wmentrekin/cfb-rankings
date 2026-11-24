@@ -127,3 +127,90 @@ def test_weekly_model_orders_an_unbeaten_team_first(no_database, monkeypatch):
     assert fbs[0] == "Alpha"
     assert records["Alpha"][:2] == [3, 0]
     assert ratings["Alpha"] > ratings["Bravo"] > ratings["Delta"]
+
+
+# --- The 2026 retune: no rating floor, published ratings shifted so the lowest reads 0.01 ---
+
+from model.params import DEFAULT_PARAMS, LEGACY_FLOOR_PARAMS, ModelParams, shift_to_display  # noqa: E402
+
+
+def _winless_pair_games_df():
+    """Echo and Foxtrot lose every game, to teams that are themselves poor: under a 0.01 floor
+    both are clamped to it and tie."""
+    return pd.DataFrame([
+        _game(1, "Alpha", 45, "Bravo", 10),
+        _game(1, "Charlie", 31, "Delta", 13),
+        _game(2, "Alpha", 38, "Charlie", 7),
+        _game(2, "Bravo", 24, "Delta", 20),
+        _game(3, "Delta", 35, "Echo", 7),
+        _game(3, "Charlie", 28, "Foxtrot", 0),
+        _game(4, "Bravo", 42, "Echo", 3),
+        _game(4, "Delta", 21, "Foxtrot", 14),
+        _game(5, "Charlie", 30, "Echo", 20),
+        _game(5, "Bravo", 17, "Foxtrot", 16),
+    ])
+
+
+@pytest.fixture
+def six_team_season(monkeypatch):
+    teams = pd.DataFrame({"school": TEAMS + ["Echo", "Foxtrot"]})
+    monkeypatch.setattr(process_data, "get_games_by_year_week", lambda year, week=None: _winless_pair_games_df())
+    monkeypatch.setattr(process_data, "get_fbs_teams_by_year", lambda year: teams)
+    monkeypatch.setattr(weekly_model, "get_prior_ratings", lambda year, params=None: {})
+
+
+def _team_values(ratings):
+    return sorted(value for name, value in ratings.items() if name != "fcs")
+
+
+def test_production_default_has_no_floor_and_shifts_to_point_zero_one():
+    assert DEFAULT_PARAMS.r_min is None
+    assert DEFAULT_PARAMS.display_min == 0.01
+
+
+def test_lowest_published_rating_is_the_display_minimum(six_team_season):
+    ratings, _records = weekly_model.get_ratings(2026, 8)
+    values = _team_values(ratings)
+    assert values[0] == pytest.approx(0.01, abs=1e-9)
+    assert list(ratings.values()) == sorted(ratings.values(), reverse=True)  # still sorted
+
+
+def test_no_floor_separates_teams_the_old_floor_tied(six_team_season):
+    """The reason for the retune. Under the old floor the two winless teams share 0.01; with
+    no floor each gets its own rating."""
+    legacy, _ = weekly_model.get_ratings(2026, 8, LEGACY_FLOOR_PARAMS)
+    assert legacy["Echo"] == pytest.approx(0.01, abs=1e-3)
+    assert legacy["Foxtrot"] == pytest.approx(0.01, abs=1e-3)
+
+    ratings, _ = weekly_model.get_ratings(2026, 8)
+    assert abs(ratings["Echo"] - ratings["Foxtrot"]) > 0.05
+    values = _team_values(ratings)
+    assert min(b - a for a, b in zip(values, values[1:])) > 1e-3
+
+
+def test_the_shift_moves_every_rating_equally_and_changes_no_order(six_team_season):
+    raw, _ = weekly_model.get_ratings(2026, 8, ModelParams(display_min=None))
+    shown, _ = weekly_model.get_ratings(2026, 8)
+    offsets = {round(shown[name] - raw[name], 6) for name in raw}
+    assert len(offsets) == 1
+    assert min(v for n, v in raw.items() if n != "fcs") < 0  # the raw solve really goes below zero
+    assert list(raw) == list(shown)
+
+
+def test_shift_ignores_the_fcs_stand_in_when_finding_the_lowest_team():
+    shifted = shift_to_display({"A": 3.0, "B": -2.0, "fcs": -9.0}, DEFAULT_PARAMS)
+    assert shifted["B"] == pytest.approx(0.01)
+    assert shifted["A"] == pytest.approx(5.01)
+    assert shifted["fcs"] == pytest.approx(-6.99)
+    assert shift_to_display({"A": 3.0}, ModelParams(display_min=None)) == {"A": 3.0}
+    assert shift_to_display({}, DEFAULT_PARAMS) == {}
+
+
+def test_prior_ratings_stay_on_the_raw_scale(monkeypatch):
+    """The prior feeds the next season's solve, which is anchored at zero. A shifted prior
+    would drag every early-season rating up by the shift."""
+    teams = pd.DataFrame({"school": TEAMS + ["Echo", "Foxtrot"]})
+    monkeypatch.setattr(process_data, "get_games_by_year_week", lambda year, week=None: _winless_pair_games_df())
+    monkeypatch.setattr(process_data, "get_fbs_teams_by_year", lambda year: teams)
+    prior = prior_model.get_prior_ratings(2026)
+    assert min(v for n, v in prior.items() if n != "fcs") < 0

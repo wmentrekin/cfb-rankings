@@ -1,0 +1,78 @@
+name: Manual - Re-solve and Republish Every Published Week
+
+# Rewrites history with the model on the chosen ref. See scripts/rerun_published_weeks.py for
+# what it does, in what order, and how to undo it.
+#
+# apply=false (the default) solves every week and writes NOTHING: no database write, no R2
+# upload, no site rebuild. apply=true rewrites the `ratings` table (after copying it to
+# `ratings_pre_2026_retune`), republishes every rankings file plus the Season Grid and Playoffs
+# files, and asks the site to rebuild.
+#
+# It never calls CFBD and holds no CFBD key: it re-solves from the games already stored.
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Rewrite ratings and republish (false = solve only, write nothing)'
+        type: boolean
+        required: true
+        default: false
+      season:
+        description: 'Only this season (blank = every published season)'
+        required: false
+        default: ''
+
+concurrency:
+  # Never alongside itself. It does not share a group with weekly-update.yml: do not start it
+  # while a weekly run is in progress.
+  group: rerun-published-weeks
+  cancel-in-progress: false
+
+jobs:
+  rerun:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra pipeline
+
+      - name: Re-solve (and, with apply, rewrite and republish)
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          APPLY: ${{ github.event.inputs.apply }}
+          SEASON: ${{ github.event.inputs.season }}
+        run: |
+          ARGS=""
+          if [ "$APPLY" = "true" ]; then ARGS="$ARGS --apply"; fi
+          if [ -n "$SEASON" ]; then ARGS="$ARGS --season $SEASON"; fi
+          echo "Running: rerun_published_weeks.py $ARGS"
+          # No `|| true`: the script exits non-zero on any failure and that must fail the job.
+          uv run python scripts/rerun_published_weeks.py $ARGS
+
+      - name: Trigger personal-site rebuild
+        if: ${{ github.event.inputs.apply == 'true' }}
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.PERSONAL_SITE_DEPLOY_HOOK_URL }}
+        run: |
+          curl -fsS --retry 3 --retry-delay 10 --retry-all-errors --max-time 60 -o /dev/null -X POST "$DEPLOY_HOOK_URL"
+          echo "Deploy hook accepted."

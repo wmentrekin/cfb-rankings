@@ -89,13 +89,14 @@ def get_prior_ratings(year, params = DEFAULT_PARAMS):
     # Constraints
     constraints = []
     for (team) in teams:
-        constraints.append(r[team] >= r_min)
+        if r_min is not None:
+            constraints.append(r[team] >= r_min)
         constraints.append(r[team] <= r_max)
     constraints.append(r_fcs >= r_fcs_min)
     constraints.append(r_fcs <= r_fcs_max)
-    # Redundant while r_min is positive (the production default); skipped for a candidate
-    # that lets ratings go below zero, where it would silently put the floor back.
-    if r_min >= 0:
+    # Redundant with a positive r_min (the pre-2026 model); skipped when there is no lower
+    # bound (production), where it would silently put the floor back.
+    if r_min is not None and r_min >= 0:
         for (team) in teams:
             constraints.append(r[team] >= 0)
 
