@@ -56,10 +56,8 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_PORT: ${{ secrets.DB_PORT }}
         run: |
-          # TEMPORARY (reverted in the next commit): run the read-only comparison from this branch.
-          uv run python scripts/compare_margin_scale.py --out margin-scale-report.md --dump-json ratings.json > /dev/null 2> output.log || true
-          echo "REPORT_BEGIN"; cat margin-scale-report.md || tail -40 output.log; echo "REPORT_END"
-          echo "DUMP_BEGIN"; gzip -9c ratings.json | base64 -w 200; echo "DUMP_END"
+          echo "Running main.py with year=${{ github.event.inputs.year }}, week=${{ github.event.inputs.week }} (staging)"
+          uv run python main.py --year ${{ github.event.inputs.year }} --week ${{ github.event.inputs.week }} --staging > output.log 2>&1 || true
       - name: Upload output log
         uses: actions/upload-artifact@v4
         with:
