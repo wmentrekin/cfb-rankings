@@ -1024,8 +1024,18 @@ def compute_conference_championship_status(
             # The same contradiction from the other side: a team named as having PLAYED in the
             # title game that the math says could not have reached it. The clinch test is
             # deliberately slow to say "clinched" when game counts differ, so on its own it no
-            # longer catches every misidentified game; this does.
-            eliminated_participants = [t for t in teams if t in participants and statuses[t] == "eliminated"]
+            # longer catches every misidentified game there; this does.
+            #
+            # ONLY for pools on uneven game counts. With equal counts the clinch test is the
+            # original one and needs no help, and a GENUINE participant can compute as
+            # eliminated: a team that reached the title game on a tiebreak or an eligibility
+            # rule while two teams with more counted wins stayed home (the Army case in this
+            # function's docstring). Firing there would reject a correct participant set and
+            # leave the teams that stayed home "possible" after the game was played.
+            uneven_counts = len({N[t] for t in teams}) > 1
+            eliminated_participants = [
+                t for t in teams if uneven_counts and t in participants and statuses[t] == "eliminated"
+            ]
             if eliminated_participants and not already_clinched:
                 logger.error(
                     "Played-championship-game override for pool %r names participant(s) %s that "
