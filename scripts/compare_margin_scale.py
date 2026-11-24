@@ -27,6 +27,7 @@ Usage:
 
 import argparse
 import contextlib
+import json
 import os
 import sys
 from pathlib import Path
@@ -51,6 +52,8 @@ from model.margin_scale import (  # noqa: E402
 TARGET_GAP = 7.0  # TARGET_GAP_FOR_MEDIAN in both models
 CAP = 20.0        # MAX_RATING_GAP_FROM_MARGIN in both models
 FCS = "fcs"
+FLOOR = 0.01    # r_min in both models
+FLOOR_TOLERANCE = 1e-3  # a solver leaves a clamped rating a hair above the bound
 
 
 def legacy_k_margin(games, target_gap):
@@ -141,8 +144,13 @@ def solve(mode, year, week, prior_cache):
 
     weekly_model.get_prior_ratings = cached_prior
     with _quiet():
-        ratings, _records = weekly_model.get_ratings(year, week)
-    return ratings
+        ratings, records = weekly_model.get_ratings(year, week)
+    return ratings, records
+
+
+def _on_floor(ratings: dict) -> int:
+    """Teams the solver clamped to the minimum rating: tied with each other, in no real order."""
+    return sum(1 for t, r in ratings.items() if t != FCS and r <= FLOOR + FLOOR_TOLERANCE)
 
 
 def compare_week(data, stored, year, week, prior_cache):
@@ -154,8 +162,8 @@ def compare_week(data, stored, year, week, prior_cache):
     def capped(k):
         return sum(1 for m in margins if k * np.sqrt(max(m, 0.0)) >= CAP) / len(margins) if margins else 0.0
 
-    legacy = solve("legacy", year, week, prior_cache)
-    fixed = solve("fixed", year, week, prior_cache)
+    legacy, records = solve("legacy", year, week, prior_cache)
+    fixed, _ = solve("fixed", year, week, prior_cache)
     r_legacy, r_fixed = _ranks(legacy), _ranks(fixed)
     moves = {t: r_legacy[t] - r_fixed[t] for t in r_legacy if t in r_fixed}  # + = rises after fix
     top25_moves = [abs(moves[t]) for t in set(_top(r_legacy, 25)) | set(_top(r_fixed, 25)) if t in moves]
@@ -183,7 +191,9 @@ def compare_week(data, stored, year, week, prior_cache):
         "stored_teams": len(common),
         "stored_max_rating_diff": max((abs(stored_ratings[t] - legacy[t]) for t in common), default=float("nan")),
         "stored_rank_changes": sum(1 for t in common if r_stored.get(t) != r_legacy.get(t)),
-        "_legacy": legacy, "_fixed": fixed,
+        "floor_legacy": _on_floor(legacy), "floor_fixed": _on_floor(fixed),
+        "floor_stored": _on_floor(stored_ratings),
+        "_legacy": legacy, "_fixed": fixed, "_records": records, "_stored": stored_ratings,
     }
 
 
@@ -217,11 +227,25 @@ def render(rows) -> str:
         "fix: it is games corrected since that week was published, or solver noise.", "",
         "| Season | Week | Spread legacy | Spread fixed | Stored teams | Max rating drift | Ranks that differ |",
         "| --- | --- | --- | --- | --- | --- | --- |",
+        "SPREAD_ROWS",
+        "", "## Teams on the rating floor", "",
+        "A team on the floor (0.01) is tied with every other team there, so its rank among them "
+        "is arbitrary.", "",
+        "| Season | Week | Teams | Published | Legacy re-solve | Fixed |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
     for r in rows:
         out.append(
             f"| {r['season']} | {r['week']} | {r['rating_range_legacy']:.1f} | {r['rating_range_fixed']:.1f} "
             f"| {r['stored_teams']} | {r['stored_max_rating_diff']:.3f} | {r['stored_rank_changes']} |")
+    spread_at = out.index("SPREAD_ROWS")
+    floor_header = out[spread_at + 1:spread_at + 8]
+    spread_rows = out[spread_at + 8:]
+    out = out[:spread_at] + spread_rows + floor_header
+    for r in rows:
+        out.append(
+            f"| {r['season']} | {r['week']} | {len(r['_fixed']) - (1 if FCS in r['_fixed'] else 0)} "
+            f"| {r['floor_stored']} | {r['floor_legacy']} | {r['floor_fixed']} |")
 
     for season in sorted({r["season"] for r in rows}):
         last = max((r for r in rows if r["season"] == season), key=lambda r: r["week"])
@@ -243,6 +267,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--season", type=int, default=None, help="Only this season. Default: every published season.")
     parser.add_argument("--out", type=str, default=None, help="Also write the report to this path.")
+    parser.add_argument("--dump-json", type=str, default=None,
+                        help="Also write every week's ratings (published, legacy, fixed) and records as JSON.")
     args = parser.parse_args()
 
     engine = _engine()
@@ -269,6 +295,18 @@ def main() -> None:
             rows.append(compare_week(data, stored, year, week, prior_cache))
     finally:
         engine.dispose()
+
+    if args.dump_json:
+        dump = [{
+            "season": r["season"], "week": r["week"],
+            "teams": [
+                {"team": t, "fixed": round(r["_fixed"][t], 3), "legacy": round(r["_legacy"].get(t, float("nan")), 3),
+                 "published": (round(r["_stored"][t], 3) if t in r["_stored"] else None),
+                 "w": r["_records"][t][0], "l": r["_records"][t][1]}
+                for t in r["_fixed"] if t != FCS
+            ],
+        } for r in rows]
+        Path(args.dump_json).write_text(json.dumps(dump, separators=(",", ":")))
 
     report = render(rows)
     if args.out:

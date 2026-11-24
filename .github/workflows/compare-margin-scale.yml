@@ -43,7 +43,7 @@ jobs:
         run: |
           ARGS="--out margin-scale-report.md"
           if [ -n "$SEASON" ]; then ARGS="$ARGS --season $SEASON"; fi
-          uv run python scripts/compare_margin_scale.py $ARGS > /dev/null
+          uv run python scripts/compare_margin_scale.py $ARGS --dump-json margin-scale-ratings.json > /dev/null
           echo "REPORT_BEGIN"
           cat margin-scale-report.md
           echo "REPORT_END"
@@ -53,4 +53,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: margin-scale-report
-          path: margin-scale-report.md
+          path: |
+            margin-scale-report.md
+            margin-scale-ratings.json
