@@ -2,8 +2,8 @@
 
 The defaults ARE the production model: `ModelParams()` reproduces exactly what the weekly run
 publishes, and nothing in the pipeline passes anything else. The fields exist so that a
-candidate retune can be solved side by side with production (scripts/compare_margin_scale.py)
-without editing the model, and so the weekly model and the prior model cannot drift apart.
+candidate retune can be solved side by side with production without editing the model, and so
+the weekly model and the prior model cannot drift apart.
 """
 from dataclasses import dataclass
 from typing import Optional
@@ -37,8 +37,9 @@ class ModelParams:
 
 DEFAULT_PARAMS = ModelParams()
 
-# The model as it was published before the 2026 retune (apart from the margin scale, which
-# scripts/compare_margin_scale.py swaps separately): a hard floor and no shift.
+# The model as it was published before the 2026 retune, apart from the margin scale: a hard
+# floor and no shift. Kept as the record of what changed, and so tests can show the tie the
+# floor produced.
 LEGACY_FLOOR_PARAMS = ModelParams(r_min=0.01, display_min=None)
 
 

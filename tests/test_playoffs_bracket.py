@@ -129,7 +129,7 @@ def test_2025_dates_are_football_days_and_round_labels():
 def test_2025_payload_shape_and_champion():
     ranks = {t: i for i, t in enumerate(_CONF, start=1)}
     payload = build_playoffs_payload(_rows(), _teams_meta(), 2025, ranks)
-    assert set(payload) == {"season", "kind", "as_of_week", "generated_at_utc", "teams", "rounds", "games", "first_out"}
+    assert set(payload) == {"season", "kind", "as_of_week", "generated_at_utc", "teams", "rounds", "games", "first_out", "selection_date"}
     assert payload["kind"] == "actual" and payload["as_of_week"] is None and payload["first_out"] == []
     assert [r["round"] for r in payload["rounds"]] == ["first_round", "quarterfinal", "semifinal", "championship"]
     assert len(payload["teams"]) == 12 and len(payload["games"]) == 11
@@ -203,6 +203,33 @@ def _projected_league():
         teams_meta[name] = {"conference": conf, "division": None, "logos": None}
         ranks[name] = rank
     return teams_meta, ranks
+
+
+def test_2025_first_out_is_the_committees_with_its_ranks_beside_ours():
+    """The actual bracket lists the committee's first four out (hand-entered in SEASON_RULES).
+    `cfp_rank` is the committee's; `rank` is still this model's, as everywhere in the payload."""
+    meta = dict(_teams_meta())
+    for team in ("Notre Dame", "BYU", "Texas", "Vanderbilt"):
+        meta[team] = {"conference": "SEC", "logos": [f"http://example.test/{team}.png"]}
+    payload = build_playoffs_payload(_rows(), meta, 2025, {"Notre Dame": 9, "BYU": 7, "Texas": 16, "Vanderbilt": 14})
+    assert [(f["team"], f["cfp_rank"], f["rank"]) for f in payload["first_out"]] == [
+        ("Notre Dame", 11, 9), ("BYU", 12, 7), ("Texas", 13, 16), ("Vanderbilt", 14, 14)]
+    assert set(payload["first_out"][0]) == {"team", "rank", "record", "conference", "logo_url", "cfp_rank"}
+    assert payload["selection_date"] is None
+
+
+def test_2025_first_out_skips_a_named_team_that_is_not_in_this_seasons_teams(caplog):
+    with caplog.at_level("WARNING", logger="cfb_lp"):
+        payload = build_playoffs_payload(_rows(), _teams_meta(), 2025, {})
+    assert payload["first_out"] == []
+    assert "actual_first_out names 'Notre Dame'" in caplog.text
+
+
+def test_2026_projection_carries_selection_day_and_no_committee_ranks():
+    teams_meta, ranks = _projected_league()
+    payload = build_playoffs_payload([], teams_meta, 2026, ranks, as_of_week=12)
+    assert payload["selection_date"] == "2026-12-06"
+    assert all("cfp_rank" not in f for f in payload["first_out"])
 
 
 def test_2026_projected_payload_shape():
@@ -315,7 +342,7 @@ def test_2026_all_twelve_seeds_with_nothing_played_builds_the_actual_bracket():
     assert payload["season"] == 2026
     assert [t["seed"] for t in payload["teams"]] == list(range(1, 13))
     assert [t["bye"] for t in payload["teams"]] == [True] * 4 + [False] * 8
-    assert set(payload) == {"season", "kind", "as_of_week", "generated_at_utc", "teams", "rounds", "games", "first_out"}
+    assert set(payload) == {"season", "kind", "as_of_week", "generated_at_utc", "teams", "rounds", "games", "first_out", "selection_date"}
     games = _games_by_slot(payload)
     assert len(payload["games"]) == 11 and all(g["status"] == "scheduled" and g["winner"] is None for g in payload["games"])
     assert _brief(games["FR1"])[4:6] == ((8, "Oklahoma", None, None), (9, "Alabama", None, None))
