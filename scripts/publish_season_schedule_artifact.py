@@ -73,6 +73,7 @@ from sqlalchemy import create_engine  # type: ignore  # noqa: E402
 
 from artifacts.schedule import (  # noqa: E402
     CFP_SLOTS,
+    CONF_CHAMPIONSHIP_SLOT,
     build_schedule_payload,
     publish_schedule_artifact,
     _fetch_non_fbs_logos,
@@ -220,6 +221,28 @@ def _print_summary(payload: dict) -> None:
     print(f"teams: {team_count}")
     print(f"columns (first team): {len(first_team_weeks)}")
     print(f"resolved postseason cells: {resolved_postseason_cells}")
+
+    # The title-game race, by name. A status only shows in the conference-championship column
+    # until a real title game is stored for the team, so teams already in a stored game are
+    # listed separately. This is what a dry run is read for after a change to the clinch or
+    # elimination math: the counts and names can be compared with the previous run's.
+    title_slot_id = CONF_CHAMPIONSHIP_SLOT[0]
+    by_status: dict = {}
+    in_stored_game = []
+    for conf in conferences:
+        for team in conf["teams"]:
+            for wk in team["weeks"]:
+                if wk["slot_id"] != title_slot_id:
+                    continue
+                if wk.get("opponent") is not None:
+                    in_stored_game.append(team["team"])
+                else:
+                    by_status.setdefault(wk.get("status"), []).append(team["team"])
+    print(f"title game stored for: {', '.join(sorted(in_stored_game)) or 'none'}")
+    for status in ("clinched", "possible", "eliminated"):
+        names = sorted(by_status.get(status, []))
+        shown = f": {', '.join(names)}" if status != "eliminated" and names else ""
+        print(f"title race {status}: {len(names)}{shown}")
 
 
 def main() -> None:
