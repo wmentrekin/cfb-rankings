@@ -3,9 +3,11 @@ import networkx as nx # type: ignore
 import numpy as np # type: ignore
 import pandas as pd # type: ignore
 
+from model.margin_scale import compute_k_margin
+from model.params import DEFAULT_PARAMS
 from model.process_data import get_data_by_year_up_to_week
 
-def get_prior_ratings(year):
+def get_prior_ratings(year, params = DEFAULT_PARAMS):
     """
     Get prior team ratings for a given year using all games from that year.
     Args:
@@ -30,23 +32,15 @@ def get_prior_ratings(year):
     fcs_losses = fcs_losses  # List of tuples: (team, margin, location_multiplier, week, season)
 
     # Parameters
-    r_min = 0.01 # minimum team rating
-    r_max = 100 # maximum team rating
-    r_fcs_min = 0.01 # mininum FCS rating
-    r_fcs_max = 15 # maximum FCS rating
-    gamma_margin = 0.05 # small margin penalty coefficient
-    gamma_loss = 0.5 # regularization constant for loss rate
-    gamma_fcs = 5 # regularization constant for FCS loss
+    # Values and their meanings live in model/params.py; the defaults are the production model.
+    r_min, r_max = params.r_min, params.r_max
+    r_fcs_min, r_fcs_max = params.r_fcs_min, params.r_fcs_max
+    gamma_loss, gamma_fcs, gamma_margin = params.gamma_loss, params.gamma_fcs, params.gamma_margin
 
     # Margin Regularization Parameters
-    TARGET_GAP_FOR_MEDIAN = 7.0        # rating points the median margin should represent
-    MAX_RATING_GAP_FROM_MARGIN = 20.0  # cap for maximum rating gap any margin can demand
-    margins = [abs(m) for (_, _, _, _, _, m, _, _) in games if m is not None and m >= 0]
-    if len(margins) == 0:
-        median_margin = 1.0
-    else:
-        median_margin = float(np.median(margins))
-    k_margin = TARGET_GAP_FOR_MEDIAN / max(np.sqrt(median_margin), 1e-6)
+    TARGET_GAP_FOR_MEDIAN = params.target_gap      # rating points the median margin should represent
+    MAX_RATING_GAP_FROM_MARGIN = params.max_gap    # cap for maximum rating gap any margin can demand
+    k_margin = compute_k_margin(games, TARGET_GAP_FOR_MEDIAN)
 
     # Decision Variables
     r = {team: cp.Variable(name = f"r_{team}") for team in teams} # team rating
@@ -56,7 +50,9 @@ def get_prior_ratings(year):
     fcs_loss_terms = []
     for (team, margin, alpha, _, _) in fcs_losses:
         fcs_loss_terms.append(cp.pos(r[team] + (margin * alpha) - r_fcs)**2 * gamma_fcs)
-    fcs_loss_penalty = cp.sum(fcs_loss_terms)
+    # cp.sum([]) is a plain 0 with no .value, which crashed the diagnostics below in a season
+    # with no FCS losses. Same guard as model/model.py.
+    fcs_loss_penalty = cp.sum(fcs_loss_terms) if fcs_loss_terms else cp.Constant(0.0)
 
     # Soft Margin Penalty Terms
     soft_margin_terms = []
@@ -70,7 +66,10 @@ def get_prior_ratings(year):
         else:
             winner_team = j
             loser_team = i
-        soft_margin_terms.append(cp.pos(r[loser_team] + (margin_used * alpha) - r[winner_team])**2 * gamma_margin)
+        shortfall = r[loser_team] + (margin_used * alpha) - r[winner_team]
+        if not params.two_sided_margin:
+            shortfall = cp.pos(shortfall)
+        soft_margin_terms.append(shortfall**2 * gamma_margin)
     soft_margin_penalty = cp.sum(soft_margin_terms)
 
     # Loss Rate Penalty Terms
@@ -90,14 +89,16 @@ def get_prior_ratings(year):
     # Constraints
     constraints = []
     for (team) in teams:
-        constraints.append(r[team] >= r_min)
+        if r_min is not None:
+            constraints.append(r[team] >= r_min)
         constraints.append(r[team] <= r_max)
     constraints.append(r_fcs >= r_fcs_min)
     constraints.append(r_fcs <= r_fcs_max)
-    for (team) in teams:
-        constraints.append(r[team] >= 0)
-    constraints.append(r_fcs >= r_fcs_min)
-    constraints.append(r_fcs <= r_fcs_max)
+    # Redundant with a positive r_min (the pre-2026 model); skipped when there is no lower
+    # bound (production), where it would silently put the floor back.
+    if r_min is not None and r_min >= 0:
+        for (team) in teams:
+            constraints.append(r[team] >= 0)
 
     # Solve
     problem = cp.Problem(objective, constraints)

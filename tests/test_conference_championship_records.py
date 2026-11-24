@@ -1039,16 +1039,21 @@ def test_army_navy_still_renders_in_its_own_display_slot():
 # the override reads (conf_wins, conf_games_remaining, ccg_participants) with nothing else able
 # to explain the result.
 # ---------------------------------------------------------------------------
-def _ccg_record(conference, conf_wins, conf_games_remaining):
-    """One compute_team_records()-shaped entry for the championship-status tests below. Overall
-    wins/losses are irrelevant to this function (only conf_wins/conf_games_remaining are read),
-    so they simply mirror the conference record."""
+def _ccg_record(conference, conf_wins, conf_games_remaining, conf_games=None):
+    """One compute_team_records()-shaped entry for the championship-status tests below.
+
+    `conf_games` is the team's full conference schedule length; conference losses are whatever
+    is left after wins and remaining games. Pass it wherever a test relies on a team being
+    "eliminated": the elimination test compares win percentages when teams are on different
+    numbers of counted games, so a fixture with no losses at all reads a 1-0 team as ahead of a
+    3-1 one. Left out, losses are 0 (the older fixtures, where that does not matter)."""
+    conf_losses = 0 if conf_games is None else conf_games - conf_wins - conf_games_remaining
     return {
         "conference": conference,
         "wins": conf_wins,
-        "losses": 0,
+        "losses": conf_losses,
         "conf_wins": conf_wins,
-        "conf_losses": 0,
+        "conf_losses": conf_losses,
         "conf_games_remaining": conf_games_remaining,
     }
 
@@ -1172,9 +1177,8 @@ def test_ccg_override_skipped_for_pool_where_it_would_eliminate_a_clinched_team(
     season over (0 remaining) in a 4-team SEC pool (top_n=2) -- each computes 'clinched' by the
     plain W/R/B/L math alone (only 1 other team, Charlie/Alpha respectively, can reach its
     banked-win floor of 4, and top_n-1=1). Bravo (3 banked conference wins) and Delta (0), both
-    also with the season over, are already 'eliminated' by the same math. (Records here are
-    stated as banked WINS, not W-L: _ccg_record sets conf_losses=0 for every fixture and this
-    function never reads conf_losses at all.)
+    also with the season over, are already 'eliminated' by the same math. (Every team is on a
+    four-game conference schedule, so losses are four minus wins minus remaining.)
 
     `ccg_participants` names Bravo and Delta as the pair that supposedly played the SEC title
     game -- exactly the false-positive shape identify_conference_championship_games documents
@@ -1187,10 +1191,10 @@ def test_ccg_override_skipped_for_pool_where_it_would_eliminate_a_clinched_team(
     review reproduced through the full pipeline.
     """
     records = {
-        "Alpha": _ccg_record(_SEC, 4, 0),
-        "Charlie": _ccg_record(_SEC, 4, 0),
-        "Bravo": _ccg_record(_SEC, 3, 0),
-        "Delta": _ccg_record(_SEC, 0, 0),
+        "Alpha": _ccg_record(_SEC, 4, 0, 4),
+        "Charlie": _ccg_record(_SEC, 4, 0, 4),
+        "Bravo": _ccg_record(_SEC, 3, 0, 4),
+        "Delta": _ccg_record(_SEC, 0, 0, 4),
     }
     ccg_participants = {_SEC: {"Bravo", "Delta"}}
 
@@ -1221,9 +1225,8 @@ def test_ccg_override_skipped_for_pool_with_no_participant_among_its_own_teams(c
     Arkansas State has 2 with 1 remaining (B=3) -- neither is eliminated (nobody else's banked
     wins exceed their best case) nor clinched (each other could still catch up), so both are
     legitimately 'possible' before the override. Louisiana (1 banked win) and South Alabama (0)
-    are done and already 'eliminated' by the plain math regardless. (Records are stated as
-    banked WINS, not W-L: _ccg_record sets conf_losses=0 for every fixture and this function
-    never reads conf_losses at all.)
+    are done and already 'eliminated' by the plain math regardless. (Every team is on a four-game conference schedule, so losses
+    are four minus wins minus remaining.)
 
     BUGGY (pre-guard) result: every West team, including Troy and Arkansas State, comes back
     'eliminated' -- a 100%-of-pool wipe from a participant set that does not even overlap with
@@ -1246,15 +1249,15 @@ def test_ccg_override_skipped_for_pool_with_no_participant_among_its_own_teams(c
     records = {
         # East: mirrors the West shape below exactly, so this pool's own override application
         # (participants ARE East teams) is uneventful and not what this test is about.
-        "App State": _ccg_record(SUN_BELT, 3, 1),
-        "Coastal Carolina": _ccg_record(SUN_BELT, 2, 1),
-        "Georgia Southern": _ccg_record(SUN_BELT, 1, 0),
-        "Georgia State": _ccg_record(SUN_BELT, 0, 0),
+        "App State": _ccg_record(SUN_BELT, 3, 1, 4),
+        "Coastal Carolina": _ccg_record(SUN_BELT, 2, 1, 4),
+        "Georgia Southern": _ccg_record(SUN_BELT, 1, 0, 4),
+        "Georgia State": _ccg_record(SUN_BELT, 0, 0, 4),
         # West: the pool actually under test.
-        "Troy": _ccg_record(SUN_BELT, 3, 1),
-        "Arkansas State": _ccg_record(SUN_BELT, 2, 1),
-        "Louisiana": _ccg_record(SUN_BELT, 1, 0),
-        "South Alabama": _ccg_record(SUN_BELT, 0, 0),
+        "Troy": _ccg_record(SUN_BELT, 3, 1, 4),
+        "Arkansas State": _ccg_record(SUN_BELT, 2, 1, 4),
+        "Louisiana": _ccg_record(SUN_BELT, 1, 0, 4),
+        "South Alabama": _ccg_record(SUN_BELT, 0, 0, 4),
     }
     # Both named participants are East teams -- disjoint from the West pool's own `teams`.
     ccg_participants = {SUN_BELT: {"App State", "Coastal Carolina"}}
@@ -1314,10 +1317,10 @@ def test_ccg_override_skip_withdraws_the_whole_pool_not_just_the_clinched_team(c
     'possible' is true ONLY under the whole-pool design.
     """
     records = {
-        "Alpha": _ccg_record(_SEC, 8, 0),
-        "Bravo": _ccg_record(_SEC, 5, 2),
-        "Charlie": _ccg_record(_SEC, 6, 0),
-        "Delta": _ccg_record(_SEC, 3, 0),
+        "Alpha": _ccg_record(_SEC, 8, 0, 8),
+        "Bravo": _ccg_record(_SEC, 5, 2, 8),
+        "Charlie": _ccg_record(_SEC, 6, 0, 8),
+        "Delta": _ccg_record(_SEC, 3, 0, 8),
     }
     ccg_participants = {_SEC: {"Charlie", "Delta"}}
 
