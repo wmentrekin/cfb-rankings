@@ -133,3 +133,18 @@ def test_a_named_title_game_participant_the_math_eliminated_rejects_the_particip
     assert result["Alpha"]["status"] == "eliminated"
     assert result["Bravo"]["status"] != "eliminated"
     assert result["Charlie"]["status"] != "eliminated"
+
+
+def test_a_genuine_participant_behind_on_wins_is_not_rejected_on_equal_game_counts():
+    """Second review finding. Everyone on eight games. Echo reached the title game on a
+    tiebreak or eligibility rule with six wins while Bravo and Charlie, on seven, stayed home;
+    the wins-only math therefore calls Echo eliminated. That is a real title game, not a
+    misidentified one: the override must still eliminate the teams that did not play in it."""
+    records = {
+        "Alpha": _rec(8, 0, 0), "Bravo": _rec(7, 1, 0), "Charlie": _rec(7, 1, 0),
+        "Delta": _rec(2, 6, 0), "Echo": _rec(6, 2, 0),
+    }
+    result = compute_conference_championship_status(
+        records, qualifying_conferences=QUALIFYING, ccg_participants={CONF: {"Alpha", "Echo"}})
+    assert result["Bravo"]["status"] == "eliminated"
+    assert result["Charlie"]["status"] == "eliminated"
