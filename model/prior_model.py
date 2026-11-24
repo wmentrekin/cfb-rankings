@@ -4,9 +4,10 @@ import numpy as np # type: ignore
 import pandas as pd # type: ignore
 
 from model.margin_scale import compute_k_margin
+from model.params import DEFAULT_PARAMS
 from model.process_data import get_data_by_year_up_to_week
 
-def get_prior_ratings(year):
+def get_prior_ratings(year, params = DEFAULT_PARAMS):
     """
     Get prior team ratings for a given year using all games from that year.
     Args:
@@ -31,17 +32,14 @@ def get_prior_ratings(year):
     fcs_losses = fcs_losses  # List of tuples: (team, margin, location_multiplier, week, season)
 
     # Parameters
-    r_min = 0.01 # minimum team rating
-    r_max = 100 # maximum team rating
-    r_fcs_min = 0.01 # mininum FCS rating
-    r_fcs_max = 15 # maximum FCS rating
-    gamma_margin = 0.05 # small margin penalty coefficient
-    gamma_loss = 0.5 # regularization constant for loss rate
-    gamma_fcs = 5 # regularization constant for FCS loss
+    # Values and their meanings live in model/params.py; the defaults are the production model.
+    r_min, r_max = params.r_min, params.r_max
+    r_fcs_min, r_fcs_max = params.r_fcs_min, params.r_fcs_max
+    gamma_loss, gamma_fcs, gamma_margin = params.gamma_loss, params.gamma_fcs, params.gamma_margin
 
     # Margin Regularization Parameters
-    TARGET_GAP_FOR_MEDIAN = 7.0        # rating points the median margin should represent
-    MAX_RATING_GAP_FROM_MARGIN = 20.0  # cap for maximum rating gap any margin can demand
+    TARGET_GAP_FOR_MEDIAN = params.target_gap      # rating points the median margin should represent
+    MAX_RATING_GAP_FROM_MARGIN = params.max_gap    # cap for maximum rating gap any margin can demand
     k_margin = compute_k_margin(games, TARGET_GAP_FOR_MEDIAN)
 
     # Decision Variables
@@ -68,7 +66,10 @@ def get_prior_ratings(year):
         else:
             winner_team = j
             loser_team = i
-        soft_margin_terms.append(cp.pos(r[loser_team] + (margin_used * alpha) - r[winner_team])**2 * gamma_margin)
+        shortfall = r[loser_team] + (margin_used * alpha) - r[winner_team]
+        if not params.two_sided_margin:
+            shortfall = cp.pos(shortfall)
+        soft_margin_terms.append(shortfall**2 * gamma_margin)
     soft_margin_penalty = cp.sum(soft_margin_terms)
 
     # Loss Rate Penalty Terms
@@ -92,10 +93,11 @@ def get_prior_ratings(year):
         constraints.append(r[team] <= r_max)
     constraints.append(r_fcs >= r_fcs_min)
     constraints.append(r_fcs <= r_fcs_max)
-    for (team) in teams:
-        constraints.append(r[team] >= 0)
-    constraints.append(r_fcs >= r_fcs_min)
-    constraints.append(r_fcs <= r_fcs_max)
+    # Redundant while r_min is positive (the production default); skipped for a candidate
+    # that lets ratings go below zero, where it would silently put the floor back.
+    if r_min >= 0:
+        for (team) in teams:
+            constraints.append(r[team] >= 0)
 
     # Solve
     problem = cp.Problem(objective, constraints)

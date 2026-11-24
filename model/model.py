@@ -5,9 +5,10 @@ import pandas as pd # type: ignore
 
 from model.process_data import get_data_by_year_up_to_week
 from model.margin_scale import compute_k_margin
+from model.params import DEFAULT_PARAMS
 from model.prior_model import get_prior_ratings
 
-def get_ratings(year, week = None):
+def get_ratings(year, week = None, params = DEFAULT_PARAMS):
     """
     Get team ratings for a given year and optional week.
     Args:
@@ -27,7 +28,7 @@ def get_ratings(year, week = None):
 
     # Get Data
     teams, games, fcs_losses, records, connectivity = get_data_by_year_up_to_week(year, week)
-    prior_ratings = get_prior_ratings(year - 1)
+    prior_ratings = get_prior_ratings(year - 1, params)
 
     # Datasets
     teams = teams  # List of FBS team names
@@ -41,13 +42,10 @@ def get_ratings(year, week = None):
             prior_ratings[team] = 1
 
     # Parameters
-    r_min = 0.01 # minimum team rating
-    r_max = 100 # maximum team rating
-    r_fcs_min = 0.01 # mininum FCS rating
-    r_fcs_max = 15 # maximum FCS rating
-    gamma_loss = 0.5 # regularitzation constant for loss rate
-    gamma_fcs = 5 # regularization constant for FCS loss
-    gamma_margin = 0.05 # small margin penalty coefficient
+    # Values and their meanings live in model/params.py; the defaults are the production model.
+    r_min, r_max = params.r_min, params.r_max
+    r_fcs_min, r_fcs_max = params.r_fcs_min, params.r_fcs_max
+    gamma_loss, gamma_fcs, gamma_margin = params.gamma_loss, params.gamma_fcs, params.gamma_margin
 
     # Prior Regularization Parameter
     _lambda = cp.Parameter(nonneg=True) # calculate term based on lambda_max and connectivity matrix
@@ -59,8 +57,8 @@ def get_ratings(year, week = None):
         _lambda.value = 0
 
     # Margin Regularization Parameters
-    TARGET_GAP_FOR_MEDIAN = 7.0        # rating points the median margin should represent
-    MAX_RATING_GAP_FROM_MARGIN = 20.0  # cap for maximum rating gap any margin can demand
+    TARGET_GAP_FOR_MEDIAN = params.target_gap      # rating points the median margin should represent
+    MAX_RATING_GAP_FROM_MARGIN = params.max_gap    # cap for maximum rating gap any margin can demand
     k_margin = compute_k_margin(games, TARGET_GAP_FOR_MEDIAN)
 
     # Decision Variables
@@ -88,7 +86,10 @@ def get_ratings(year, week = None):
         else:
             winner_team = j
             loser_team = i
-        soft_margin_terms.append(cp.pos(r[loser_team] + (margin_used * alpha) - r[winner_team])**2 * gamma_margin)
+        shortfall = r[loser_team] + (margin_used * alpha) - r[winner_team]
+        if not params.two_sided_margin:
+            shortfall = cp.pos(shortfall)
+        soft_margin_terms.append(shortfall**2 * gamma_margin)
     soft_margin_penalty = cp.sum(soft_margin_terms)
 
     # Loss Rate Penalty Terms

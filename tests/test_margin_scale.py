@@ -112,7 +112,7 @@ def test_both_models_ask_the_shared_helper_for_the_scale(module, no_database, mo
 
     monkeypatch.setattr(module, "compute_k_margin", spy)
     if module is weekly_model:
-        monkeypatch.setattr(weekly_model, "get_prior_ratings", lambda year: {})
+        monkeypatch.setattr(weekly_model, "get_prior_ratings", lambda year, params=None: {})
         weekly_model.get_ratings(2026, 8)
     else:
         prior_model.get_prior_ratings(2026)
@@ -121,7 +121,7 @@ def test_both_models_ask_the_shared_helper_for_the_scale(module, no_database, mo
 
 def test_weekly_model_orders_an_unbeaten_team_first(no_database, monkeypatch):
     """End to end on the real solver: the ratings come back and the 3-0 team leads."""
-    monkeypatch.setattr(weekly_model, "get_prior_ratings", lambda year: {})
+    monkeypatch.setattr(weekly_model, "get_prior_ratings", lambda year, params=None: {})
     ratings, records = weekly_model.get_ratings(2026, 8)
     fbs = [team for team in ratings if team in TEAMS]
     assert fbs[0] == "Alpha"

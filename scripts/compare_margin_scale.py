@@ -48,6 +48,7 @@ from model.margin_scale import (  # noqa: E402
     compute_k_margin,
     median_margin,
 )
+from model.params import DEFAULT_PARAMS, ModelParams  # noqa: E402
 
 TARGET_GAP = 7.0  # TARGET_GAP_FOR_MEDIAN in both models
 CAP = 20.0        # MAX_RATING_GAP_FROM_MARGIN in both models
@@ -65,6 +66,19 @@ def legacy_k_margin(games, target_gap):
 
 
 K_FUNCS = {"legacy": legacy_k_margin, "fixed": compute_k_margin}
+
+# Candidate retunes, all on the FIXED margin scale, aimed at the pile-up on the rating floor.
+# (key, label, params). Nothing here is the production model: that is DEFAULT_PARAMS.
+NO_FLOOR = -100.0
+CANDIDATES = [
+    ("no_floor", "1. No floor", ModelParams(r_min=NO_FLOOR)),
+    ("gap4", "2a. Median gap 4", ModelParams(target_gap=4.0)),
+    ("gap2_5", "2b. Median gap 2.5", ModelParams(target_gap=2.5)),
+    ("loss0_1", "2c. Loss penalty 0.1", ModelParams(gamma_loss=0.1)),
+    ("gap3_loss0_1", "2d. Gap 3, loss penalty 0.1", ModelParams(target_gap=3.0, gamma_loss=0.1)),
+    ("two_sided", "3a. Two-sided margin", ModelParams(two_sided_margin=True)),
+    ("two_sided_no_floor", "3b. Two-sided, no floor", ModelParams(two_sided_margin=True, r_min=NO_FLOOR)),
+]
 
 
 @contextlib.contextmanager
@@ -130,27 +144,37 @@ def _top(ranks: dict, n: int) -> list:
     return [t for t, _ in sorted(ranks.items(), key=lambda kv: kv[1])[:n]]
 
 
-def solve(mode, year, week, prior_cache):
+def solve(mode, year, week, prior_cache, params=DEFAULT_PARAMS):
     """Run the real weekly model with the chosen scale in BOTH the weekly and the prior model."""
     k_func = K_FUNCS[mode]
     weekly_model.compute_k_margin = k_func
     prior_model.compute_k_margin = k_func
 
-    def cached_prior(prior_year):
-        key = (mode, prior_year)
+    def cached_prior(prior_year, prior_params=DEFAULT_PARAMS):
+        key = (mode, prior_params, prior_year)
         if key not in prior_cache:
-            prior_cache[key] = prior_model.get_prior_ratings(prior_year)
+            prior_cache[key] = prior_model.get_prior_ratings(prior_year, prior_params)
         return dict(prior_cache[key])  # get_ratings adds new teams to the dict it is given
 
     weekly_model.get_prior_ratings = cached_prior
     with _quiet():
-        ratings, records = weekly_model.get_ratings(year, week)
+        ratings, records = weekly_model.get_ratings(year, week, params)
     return ratings, records
 
 
-def _on_floor(ratings: dict) -> int:
+def _on_floor(ratings: dict, floor: float = FLOOR) -> int:
     """Teams the solver clamped to the minimum rating: tied with each other, in no real order."""
-    return sum(1 for t, r in ratings.items() if t != FCS and r <= FLOOR + FLOOR_TOLERANCE)
+    return sum(1 for t, r in ratings.items() if t != FCS and r <= floor + FLOOR_TOLERANCE)
+
+
+def _largest_tie(ratings: dict) -> int:
+    """Size of the biggest group of teams within 0.001 of each other, wherever it sits."""
+    values = sorted(r for t, r in ratings.items() if t != FCS)
+    best = run = 1
+    for a, b in zip(values, values[1:]):
+        run = run + 1 if b - a <= FLOOR_TOLERANCE else 1
+        best = max(best, run)
+    return best if values else 0
 
 
 def compare_week(data, stored, year, week, prior_cache):
@@ -165,6 +189,20 @@ def compare_week(data, stored, year, week, prior_cache):
     legacy, records = solve("legacy", year, week, prior_cache)
     fixed, _ = solve("fixed", year, week, prior_cache)
     r_legacy, r_fixed = _ranks(legacy), _ranks(fixed)
+    candidates = {}
+    for key, _label, params in CANDIDATES:
+        ratings, _ = solve("fixed", year, week, prior_cache, params)
+        ranks = _ranks(ratings)
+        values = [ratings[t] for t in ranks]
+        candidates[key] = {
+            "ratings": ratings,
+            "floor": _on_floor(ratings, params.r_min),
+            "largest_tie": _largest_tie(ratings),
+            "spearman_vs_fixed": _spearman(ranks, r_fixed),
+            "top25_shared_vs_fixed": len(set(_top(ranks, 25)) & set(_top(r_fixed, 25))),
+            "top10_shared_vs_fixed": len(set(_top(ranks, 10)) & set(_top(r_fixed, 10))),
+            "no1": _top(ranks, 1)[0], "min": min(values), "max": max(values),
+        }
     moves = {t: r_legacy[t] - r_fixed[t] for t in r_legacy if t in r_fixed}  # + = rises after fix
     top25_moves = [abs(moves[t]) for t in set(_top(r_legacy, 25)) | set(_top(r_fixed, 25)) if t in moves]
     biggest = max(moves, key=lambda t: abs(moves[t])) if moves else None
@@ -193,6 +231,7 @@ def compare_week(data, stored, year, week, prior_cache):
         "stored_rank_changes": sum(1 for t in common if r_stored.get(t) != r_legacy.get(t)),
         "floor_legacy": _on_floor(legacy), "floor_fixed": _on_floor(fixed),
         "floor_stored": _on_floor(stored_ratings),
+        "tie_fixed": _largest_tie(fixed), "_candidates": candidates,
         "_legacy": legacy, "_fixed": fixed, "_records": records, "_stored": stored_ratings,
     }
 
@@ -247,6 +286,22 @@ def render(rows) -> str:
             f"| {r['season']} | {r['week']} | {len(r['_fixed']) - (1 if FCS in r['_fixed'] else 0)} "
             f"| {r['floor_stored']} | {r['floor_legacy']} | {r['floor_fixed']} |")
 
+    out += ["", "## Candidate retunes: teams tied in the largest group", "",
+            "All on the fixed margin scale. \"Fixed\" is the fix with today's constants.", "",
+            "| Season | Week | Fixed | " + " | ".join(label for _k, label, _p in CANDIDATES) + " |",
+            "| --- | --- | --- | " + " | ".join("---" for _ in CANDIDATES) + " |"]
+    for r in rows:
+        out.append(f"| {r['season']} | {r['week']} | {r['tie_fixed']} | "
+                   + " | ".join(str(r["_candidates"][k]["largest_tie"]) for k, _l, _p in CANDIDATES) + " |")
+    for season in sorted({r["season"] for r in rows}):
+        last = max((r for r in rows if r["season"] == season), key=lambda r: r["week"])
+        out += ["", f"## Candidate retunes at {season} week {last['week']}, against the fix alone", "",
+                "| Candidate | On its floor | Largest tie | Lowest | Highest | Rank corr. | Top 10 shared | Top 25 shared | No. 1 |",
+                "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+        for key, label, _p in CANDIDATES:
+            c = last["_candidates"][key]
+            out.append(f"| {label} | {c['floor']} | {c['largest_tie']} | {c['min']:.2f} | {c['max']:.2f} "
+                       f"| {c['spearman_vs_fixed']:.3f} | {c['top10_shared_vs_fixed']} | {c['top25_shared_vs_fixed']} | {c['no1']} |")
     for season in sorted({r["season"] for r in rows}):
         last = max((r for r in rows if r["season"] == season), key=lambda r: r["week"])
         legacy_ranks, fixed_ranks = _ranks(last["_legacy"]), _ranks(last["_fixed"])
@@ -302,10 +357,12 @@ def main() -> None:
             "teams": [
                 {"team": t, "fixed": round(r["_fixed"][t], 3), "legacy": round(r["_legacy"].get(t, float("nan")), 3),
                  "published": (round(r["_stored"][t], 3) if t in r["_stored"] else None),
-                 "w": r["_records"][t][0], "l": r["_records"][t][1]}
+                 "w": r["_records"][t][0], "l": r["_records"][t][1],
+                 "c": {k: round(r["_candidates"][k]["ratings"][t], 3) for k, _l, _p in CANDIDATES}}
                 for t in r["_fixed"] if t != FCS
             ],
         } for r in rows]
+        dump = {"candidates": [{"key": k, "label": l} for k, l, _p in CANDIDATES], "weeks": dump}
         Path(args.dump_json).write_text(json.dumps(dump, separators=(",", ":")))
 
     report = render(rows)
