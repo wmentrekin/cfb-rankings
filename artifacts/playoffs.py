@@ -85,6 +85,12 @@ SEASON_RULES: Dict[int, Dict[str, Any]] = {
         "field_size": 12,
         "byes": 4,
         "round_notes": {ROUND_FIRST: "Campus Sites"},
+        # The first four teams left out, as (team, CFP committee rank) from the committee's
+        # final rankings of December 7, 2025. Entered by hand: the committee's rankings are not
+        # stored anywhere in this pipeline. Tulane (20) and James Madison (24) took the last two
+        # places as conference champions, so the first teams out are the next four the committee
+        # ranked behind No. 10 Miami.
+        "actual_first_out": [("Notre Dame", 11), ("BYU", 12), ("Texas", 13), ("Vanderbilt", 14)],
     },
     2026: {
         # "projected" until the stored CFP rows identify all 12 seeds, then the ACTUAL bracket is
@@ -100,6 +106,11 @@ SEASON_RULES: Dict[int, Dict[str, Any]] = {
         ],
         "guarantee": {"Notre Dame": 12},
         "first_out_count": 4,
+        # Selection Day: the committee's final rankings and the bracket (collegefootballplayoff.com).
+        # Published with the projection so the site can say when the real field is announced.
+        "selection_date": "2026-12-06",
+        # Once the bracket is the actual one, add "actual_first_out" here as for 2025; until
+        # then the actual 2026 bracket publishes with an empty first_out.
         "round_dates": {
             ROUND_FIRST: "Dec 18-19",
             ROUND_QF: "Dec 30 - Jan 1",
@@ -700,6 +711,27 @@ def build_playoffs_payload(
             "bid": bid, "bid_label": bid_label, "bye": seed <= rules["byes"],
         }
 
+    def out_row(team: str) -> Dict[str, Any]:
+        st = standings.get(team)
+        return {
+            "team": team, "rank": team_ranks.get(team),
+            "record": f"{st['record']['wins']}-{st['record']['losses']}" if st else "0-0",
+            "conference": _display_conference(conference_raw(team)),
+            "logo_url": _resolve_logo(teams_meta.get(team, {}).get("logos")),
+        }
+
+    def actual_first_out(seeded: Iterable[str]) -> List[Dict[str, Any]]:
+        """The committee's first teams out, from the hand-entered rule. `cfp_rank` is the
+        committee's rank; `rank` stays this model's, as it is everywhere else in the payload."""
+        rows_out = []
+        for team, cfp_rank in rules.get("actual_first_out", []):
+            if team not in teams_meta or team in seeded:
+                logger.warning("playoffs: season=%s actual_first_out names %r, which is %s; skipped.",
+                               season, team, "in the field" if team in seeded else "not a team this season")
+                continue
+            rows_out.append({**out_row(team), "cfp_rank": cfp_rank})
+        return rows_out
+
     def actual_payload(bracket: Dict[str, Any]) -> Dict[str, Any]:
         teams = []
         for team, seed in sorted(bracket["seeds"].items(), key=lambda kv: kv[1]):
@@ -717,7 +749,8 @@ def build_playoffs_payload(
             "season": season, "kind": "actual", "as_of_week": None,
             "generated_at_utc": datetime.now(timezone.utc).isoformat(),
             "teams": teams, "rounds": _rounds_block(rules, bracket["round_dates"]),
-            "games": bracket["games"], "first_out": [],
+            "games": bracket["games"], "first_out": actual_first_out(set(bracket["seeds"])),
+            "selection_date": None,
         }
 
     if rules["kind"] == "actual":
@@ -741,20 +774,13 @@ def build_playoffs_payload(
     )
     if field is None:
         return None
-    first_out = [
-        {
-            "team": team, "rank": team_ranks[team],
-            "record": f"{standings[team]['record']['wins']}-{standings[team]['record']['losses']}" if team in standings else "0-0",
-            "conference": _display_conference(conference_raw(team)),
-            "logo_url": _resolve_logo(teams_meta.get(team, {}).get("logos")),
-        }
-        for team in select_first_out(team_ranks, field, rules["first_out_count"])
-    ]
+    first_out = [out_row(team) for team in select_first_out(team_ranks, field, rules["first_out_count"])]
     return {
         "season": season, "kind": "projected", "as_of_week": as_of_week,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "teams": [team_row(e["team"], e["seed"], e["bid"], e["bid_label"]) for e in field],
         "rounds": _rounds_block(rules), "games": build_projected_games(field), "first_out": first_out,
+        "selection_date": rules.get("selection_date"),
     }
 
 
