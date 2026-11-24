@@ -56,8 +56,9 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_PORT: ${{ secrets.DB_PORT }}
         run: |
-          echo "Running main.py with year=${{ github.event.inputs.year }}, week=${{ github.event.inputs.week }} (staging)"
-          uv run python main.py --year ${{ github.event.inputs.year }} --week ${{ github.event.inputs.week }} --staging > output.log 2>&1 || true
+          # TEMPORARY (reverted in the next commit): DRY RUN of the history rerun from this branch. Writes nothing.
+          uv run python scripts/rerun_published_weeks.py > output.log 2>&1 || true
+          echo "RERUN_BEGIN"; grep -vE "INFO:|^\(CVXPY\)" output.log | tail -60; echo "RERUN_END"
       - name: Upload output log
         uses: actions/upload-artifact@v4
         with:
