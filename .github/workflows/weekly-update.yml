@@ -128,10 +128,10 @@ jobs:
         # published, the site stayed a week behind, and this job was green. So: retry transient
         # failures, leave a marker on a final failure, and let the last step turn the job red.
         run: |
-          # Once the season's last game is behind us the run publishes nothing (see
-          # season_end.py), so there is nothing for the site to rebuild for.
-          if grep -q "SEASON_COMPLETE" output.log; then
-            echo "Season complete: nothing was published, so the site is not rebuilt."
+          # Out of season the run publishes nothing (season_end.py: the season is over, or the
+          # next one has not started), so there is nothing for the site to rebuild for.
+          if grep -q "NOTHING_TO_PUBLISH" output.log; then
+            echo "Nothing was published, so the site is not rebuilt."
             exit 0
           fi
           if curl -fsS --retry 3 --retry-delay 10 --retry-all-errors --max-time 60 -o /dev/null -X POST "$DEPLOY_HOOK_URL"; then
@@ -166,7 +166,8 @@ jobs:
             failed=1
           fi
           # From December on, a run that cannot tell whether the rankings are finished stops
-          # rather than risk publishing a week after they have ended (season_end.py).
+          # rather than risk publishing a week after they have ended, and so does a postseason
+          # update that crashes (season_end.py).
           if grep -q "SEASON_END_CHECK_FAILED" output.log; then
             echo "::error::Could not tell whether the season's rankings are finished, so the run stopped before doing anything:"
             grep "SEASON_END_CHECK_FAILED" output.log

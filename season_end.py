@@ -18,8 +18,9 @@ week after. The weekly run then has three states, chosen fresh on every run:
   "postseason" -- the final week is rated. No model run, no ratings write, no rankings file.
                   The run still ingests bowl and playoff results (and Army-Navy) and republishes
                   the Season Grid and the Playoffs bracket, which keep changing into January.
-  finished     -- "postseason", and no game of the season has been played in the last
-                  QUIET_DAYS days or is still to come. The run does nothing at all.
+  finished     -- "postseason", it is February or later, no game of the season has been
+                  played in the last QUIET_DAYS days or is still to come, and no recent game
+                  is still waiting for its result. The run does nothing at all.
 
 So the schedule can stay on all year. Nothing here knows a date except the December guard in
 choose_mode, which exists so a gap in the stored schedule mid-season can never be mistaken for
@@ -51,9 +52,18 @@ SEASON_ROLLOVER_MONTH = 7
 # never earlier than December 2. Before December no run may enter postseason mode.
 POSTSEASON_EARLIEST = (12, 1)
 
-# How long after a season's last stored game the run keeps checking for results. Covers a
-# weekly schedule with room to spare, and the gap between selection day and the first games.
-QUIET_DAYS = 8
+# How long after a season's last stored game the run keeps checking for results. Two weekly
+# runs fit inside it, so one failed run cannot lose the national championship result.
+QUIET_DAYS = 15
+
+# A season is never finished before this date in the year after it started. The championship
+# game is in the second half of January every year; this keeps a missing postseason slate (the
+# last STORED game is then Army-Navy) from being read as the end of the season in December.
+FINISHED_EARLIEST = (2, 1)
+
+# A game that started but still has no result keeps the season open for this long, so a result
+# the ingest missed is retried. Bounded, because a cancelled game never gets a result.
+UNRESOLVED_GRACE_DAYS = 45
 
 
 def default_season(today: date) -> int:
@@ -108,16 +118,47 @@ def choose_mode(
                     f"the final rankings week ({final_week}) is already rated; the rankings are finished for {season}")
 
 
-def season_is_finished(now: datetime, start_dates: Iterable[datetime]) -> bool:
-    """True when no stored game of the season is still to come or was played in the last
-    QUIET_DAYS days. `now` and the start dates are naive UTC, as in games.start_date.
+def _naive_utc(value) -> Optional[datetime]:
+    """One stored start time as a naive-UTC datetime, or None if it cannot be read.
+    games.start_date is naive UTC today; a NULL or a timezone-aware value must not crash a run."""
+    if value is None:
+        return None
+    try:
+        stamp = pd.Timestamp(value)
+    except (ValueError, TypeError):
+        return None
+    if pd.isna(stamp):
+        return None
+    if stamp.tzinfo is not None:
+        stamp = stamp.tz_convert("UTC").tz_localize(None)
+    return stamp.to_pydatetime()
 
+
+def season_is_finished(
+    now: datetime,
+    season: int,
+    start_dates: Iterable[datetime],
+    unresolved_start_dates: Iterable[datetime] = (),
+) -> bool:
+    """True when there is nothing left to bring in for `season`. All times are naive UTC.
+
+    Every condition must hold:
+      - it is FINISHED_EARLIEST or later in the following year;
+      - no stored game is still to come or was played in the last QUIET_DAYS days;
+      - no game that started in the last UNRESOLVED_GRACE_DAYS days is still without a result.
     False with no stored games at all: that is a season that has not loaded, not one that ended.
     """
-    starts = [s for s in start_dates if s is not None and not pd.isnull(s)]
+    starts = [s for s in (_naive_utc(v) for v in start_dates) if s is not None]
     if not starts:
         return False
-    return max(starts) < now - timedelta(days=QUIET_DAYS)
+    if now < datetime(season + 1, *FINISHED_EARLIEST):
+        return False
+    if max(starts) >= now - timedelta(days=QUIET_DAYS):
+        return False
+    unresolved = [s for s in (_naive_utc(v) for v in unresolved_start_dates) if s is not None]
+    if any(now - timedelta(days=UNRESOLVED_GRACE_DAYS) <= s <= now for s in unresolved):
+        return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -125,6 +166,8 @@ class SeasonState:
     final_week: Optional[int]
     rated_weeks: Set[int]
     start_dates: Tuple[datetime, ...]
+    # Start times of stored games that have no winner recorded yet (unplayed, or a missed result).
+    unresolved_start_dates: Tuple[datetime, ...] = ()
 
 
 def read_season_state(year: int) -> SeasonState:
@@ -138,7 +181,7 @@ def read_season_state(year: int) -> SeasonState:
     )
     try:
         games = pd.read_sql_query(
-            f"SELECT week, home_team, away_team, season_type, start_date FROM games WHERE season = {int(year)};",
+            f"SELECT week, home_team, away_team, season_type, start_date, winner FROM games WHERE season = {int(year)};",
             engine,
         )
         rated = pd.read_sql_query(f"SELECT DISTINCT week FROM ratings WHERE season = {int(year)};", engine)
@@ -148,5 +191,6 @@ def read_season_state(year: int) -> SeasonState:
     return SeasonState(
         final_week=final_rankings_week(zip(regular["week"], regular["home_team"], regular["away_team"])),
         rated_weeks={int(w) for w in rated["week"]},
-        start_dates=tuple(pd.to_datetime(games["start_date"]).dt.to_pydatetime()) if len(games) else (),
+        start_dates=tuple(games["start_date"]),
+        unresolved_start_dates=tuple(games.loc[games["winner"].isnull(), "start_date"]),
     )
