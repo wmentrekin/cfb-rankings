@@ -531,12 +531,17 @@ def test_override_failure_token_matches_between_main_and_workflows():
 
     for workflow_name in ("weekly-update.yml", "test-week-run.yml"):
         workflow_src = (repo_root / ".github" / "workflows" / workflow_name).read_text()
-        match = re.search(r'grep -q "([^"]+)" output\.log', workflow_src)
-        assert match is not None, f"{workflow_name} must grep output.log for a quoted token"
-        assert match.group(1) == OVERRIDE_FAILURE_TOKEN, (
-            f"{workflow_name} greps for {match.group(1)!r}, which does not match the literal "
+        # Every token the workflow greps for. It greps for several now (ingest failures, the
+        # end-of-season markers), in no fixed order, so the override token only has to be one
+        # of them -- and every one of them has to be a string main.py really contains.
+        tokens = re.findall(r'grep -q "([^"]+)" output\.log', workflow_src)
+        assert tokens, f"{workflow_name} must grep output.log for a quoted token"
+        assert OVERRIDE_FAILURE_TOKEN in tokens, (
+            f"{workflow_name} greps for {tokens!r}, none of which is the literal "
             f"{OVERRIDE_FAILURE_TOKEN!r} token main.py actually emits"
         )
+        for token in tokens:
+            assert token in main_src, f"{workflow_name} greps for {token!r}, which main.py never logs"
 
 
 # ===========================================================================
