@@ -44,6 +44,15 @@ the last three weeks and some are still undecided, so each is marked.
   as a real game.
 - The Group of Six place goes to the highest-ranked team, champion or not.
 
+### Owner's read on the size of each piece (2026-11-27)
+
+- Week numbering: an easy fix.
+- Naming a champion without a title game: mostly done already. The tiebreaker rules were coded
+  for the Season Grid standings; what remains is reading first place off them and adopting
+  whatever the Power Four change for 2027.
+- Bracket builder: needs five rounds, not a large job.
+- Site bracket layout: needs a design pass.
+
 ## 2. What It Touches
 
 Today the season's shape is spread across the code as constants that are true for 2025 and 2026.
