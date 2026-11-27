@@ -166,7 +166,7 @@ def _run(tmp_path, monkeypatch, *, now, resolved_week, state, argv=("main.py",))
         read_state = mock.Mock(side_effect=state)
     else:
         read_state = mock.Mock(return_value=state)
-    resolve = mock.Mock(return_value=resolved_week)
+    resolve = mock.Mock(side_effect=resolved_week) if isinstance(resolved_week, list) else mock.Mock(return_value=resolved_week)
     mocks["resolve_target_week"] = resolve
     with mock.patch.object(main, "datetime", _Clock), \
             mock.patch.object(season_end, "read_season_state", read_state), \
@@ -268,9 +268,24 @@ def test_main_rates_a_final_week_that_only_appears_after_the_ingest(tmp_path, mo
     after = SeasonState(final_week=14, rated_weeks=set(range(1, 14)), start_dates=(datetime(2026, 12, 5, 20, 0),))
     mocks, calls, log, _ = _run(
         tmp_path, monkeypatch, now=datetime(2026, 12, 6, 7, 0, tzinfo=timezone.utc),
-        resolved_week=13, state=[before, after])
+        resolved_week=[13, 14], state=[before, after])
     mocks["get_ratings"].assert_called_once_with(2026, 14)
     assert "Switching to a rankings run for week 14" in log
+
+
+def test_main_does_not_rate_a_later_week_that_has_not_been_played(tmp_path, monkeypatch):
+    """Second review finding. On Dec 7 the ingest stores a newly added regular game in week 15
+    that kicks off on Dec 12. Week 15 exists and is unrated, but it has not been played: the
+    week resolver still says 14, which is rated. Nothing must be rated, least of all week 15
+    from week 14's results."""
+    before = SeasonState(final_week=14, rated_weeks=set(range(1, 15)), start_dates=(datetime(2026, 12, 5, 20, 0),))
+    after = SeasonState(final_week=15, rated_weeks=set(range(1, 15)), start_dates=(datetime(2026, 12, 12, 20, 0),))
+    mocks, calls, log, _ = _run(
+        tmp_path, monkeypatch, now=datetime(2026, 12, 7, 9, 0, tzinfo=timezone.utc),
+        resolved_week=[14, 14], state=[before, after])
+    mocks["get_ratings"].assert_not_called()
+    assert "publish_playoffs_artifact" in [c[0] for c in calls]
+    assert "Switching to a rankings run" not in log
 
 
 def test_main_marks_the_job_failed_when_the_postseason_update_crashes(tmp_path, monkeypatch):

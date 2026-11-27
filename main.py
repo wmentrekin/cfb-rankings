@@ -322,7 +322,7 @@ def _log_ingest_schema_failure(logger, label, exc):
     )
 
 
-def run_postseason_update(args, logger, state) -> Optional[int]:
+def run_postseason_update(args, logger, state, rechoose) -> Optional[int]:
     """The weekly run once the rankings are finished: results in, Season Grid and Playoffs out.
 
     No model run, no ratings write, no rankings file. Does nothing at all once the season is
@@ -330,7 +330,8 @@ def run_postseason_update(args, logger, state) -> Optional[int]:
 
     Returns None when it has done its job. Returns a WEEK when the ingest below shows the
     rankings are not finished after all -- a later rankings week was not stored when the mode
-    was chosen -- and the caller must rate that week instead.
+    was chosen -- and the caller must rate that week instead. `rechoose` is main()'s own
+    decision, run again on the fresh data: () -> (season_end.Decision, rated weeks).
     """
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     if season_end.season_is_finished(now_utc, args.year, state.start_dates, state.unresolved_start_dates):
@@ -352,18 +353,21 @@ def run_postseason_update(args, logger, state) -> Optional[int]:
 
     # The mode was chosen from the games stored BEFORE that ingest. If it has just stored a
     # later week with real games (title games that were not in the database yet), the rankings
-    # are not finished: hand that week back to be rated.
+    # may not be finished. Ask the same question again, with the same rules: the week is only
+    # handed back when it is a rankings week whose games have all kicked off (the week
+    # resolver) and it has not been rated. A later week that merely EXISTS is not enough --
+    # rating it early would publish last week's results under its label.
     try:
-        fresh = season_end.read_season_state(args.year)
-        if fresh.final_week is not None and fresh.final_week not in fresh.rated_weeks:
+        decision, rated_weeks = rechoose()
+        if decision.mode == season_end.MODE_RANKINGS and decision.week not in rated_weeks:
             logger.info(
-                "The final rankings week is %s, not %s, now that later games are stored, and it "
-                "has not been rated. Switching to a rankings run for week %s.",
-                fresh.final_week, args.week, fresh.final_week,
+                "Now that later games are stored, week %s is a rankings week that has not been "
+                "rated (%s). Switching to a rankings run for week %s.",
+                decision.week, decision.reason, decision.week,
             )
-            return fresh.final_week
+            return decision.week
     except Exception as e:
-        logger.warning("Could not re-read the season after the ingest (%s). Continuing the postseason update.", e)
+        logger.warning("Could not re-check the season after the ingest (%s). Continuing the postseason update.", e)
 
     # Bowls and playoff games: the reason this mode exists. A failure stops the run, because
     # republishing without new results would only restate what is already published.
@@ -498,7 +502,15 @@ def main():
         args.week = decision.week
     if decision.mode == season_end.MODE_POSTSEASON:
         try:
-            rate_week = run_postseason_update(args, logger, state)
+            def rechoose():
+                fresh = season_end.read_season_state(args.year)
+                week = resolve_target_week(args.year, today, season_start_override)
+                return season_end.choose_mode(
+                    today, args.year, week, fresh.final_week,
+                    fresh.final_week in fresh.rated_weeks, explicit_week,
+                ), fresh.rated_weeks
+
+            rate_week = run_postseason_update(args, logger, state, rechoose)
         except Exception as e:
             # The run step ends in `|| true`: without a marker a crash here would be a green
             # job that published nothing, every week, with nothing to show it.
