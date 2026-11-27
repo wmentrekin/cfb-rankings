@@ -10,7 +10,8 @@ from database.game_overrides import apply_game_result_overrides
 from artifacts.r2 import publish_rankings_artifact
 from artifacts.playoffs import publish_playoffs_artifact
 from artifacts.schedule import publish_schedule_artifact
-from utils import football_day, get_cfb_week, setup_logging
+from utils import football_day, get_cfb_week, season_start_for, setup_logging
+import season_end
 import pandas as pd #type: ignore
 from datetime import datetime, date, timezone
 import os
@@ -245,6 +246,15 @@ _SCHEMA_ERRORS = (CompileError, ProgrammingError)
 # or irrelevant to the week, so a failure only alarms.
 POSTSEASON_GATES_FROM_WEEK = 15
 
+# Logged when a run from December on cannot work out whether the rankings are finished and so
+# stops. The weekly workflow greps for it, like the two markers above, because the run step
+# ends in `|| true`.
+SEASON_END_CHECK_FAILED_MARKER = "SEASON_END_CHECK_FAILED"
+# Logged whenever a run ends having published nothing because there was nothing to publish:
+# the season is over, or the next one has not started. The workflow reads it to skip the site
+# rebuild.
+NOTHING_TO_PUBLISH_MARKER = "NOTHING_TO_PUBLISH"
+
 
 def regular_week_has_games(year, week) -> bool:
     """True if the games table holds at least one regular-season game for this CFBD week.
@@ -312,6 +322,86 @@ def _log_ingest_schema_failure(logger, label, exc):
     )
 
 
+def run_postseason_update(args, logger, state, rechoose) -> Optional[int]:
+    """The weekly run once the rankings are finished: results in, Season Grid and Playoffs out.
+
+    No model run, no ratings write, no rankings file. Does nothing at all once the season is
+    finished (season_end.season_is_finished).
+
+    Returns None when it has done its job. Returns a WEEK when the ingest below shows the
+    rankings are not finished after all -- a later rankings week was not stored when the mode
+    was chosen -- and the caller must rate that week instead. `rechoose` is main()'s own
+    decision, run again on the fresh data: () -> (season_end.Decision, rated weeks).
+    """
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    if season_end.season_is_finished(now_utc, args.year, state.start_dates, state.unresolved_start_dates):
+        logger.info(
+            "%s: the %s season is over and every result is in. Nothing to ingest or publish; "
+            "the next run that does anything will be next season's Week 1.",
+            NOTHING_TO_PUBLISH_MARKER, args.year,
+        )
+        return None
+
+    # Regular-season games after the final rankings week: in practice Army-Navy, for its
+    # Season Grid cell. It does not stop the run, but in this mode it is the only route for
+    # that result, so a failure marks the job failed.
+    try:
+        count = load_upcoming_games_to_db(args.year, args.week)
+        logger.info("Later regular-season games upserted: %s row(s).", count)
+    except Exception as e:
+        _log_ingest_fetch_failure(logger, "Later regular-season", e, stops_run=False)
+
+    # The mode was chosen from the games stored BEFORE that ingest. If it has just stored a
+    # later week with real games (title games that were not in the database yet), the rankings
+    # may not be finished. Ask the same question again, with the same rules: the week is only
+    # handed back when it is a rankings week whose games have all kicked off (the week
+    # resolver) and it has not been rated. A later week that merely EXISTS is not enough --
+    # rating it early would publish last week's results under its label.
+    try:
+        decision, rated_weeks = rechoose()
+        if decision.mode == season_end.MODE_RANKINGS and decision.week not in rated_weeks:
+            logger.info(
+                "Now that later games are stored, week %s is a rankings week that has not been "
+                "rated (%s). Switching to a rankings run for week %s.",
+                decision.week, decision.reason, decision.week,
+            )
+            return decision.week
+    except Exception as e:
+        logger.warning("Could not re-check the season after the ingest (%s). Continuing the postseason update.", e)
+
+    # Bowls and playoff games: the reason this mode exists. A failure stops the run, because
+    # republishing without new results would only restate what is already published.
+    try:
+        logger.info("Loading postseason games into DB for year=%s", args.year)
+        load_games_to_db(args.year, week=None, season_type='postseason')
+    except _SCHEMA_ERRORS as e:
+        _log_ingest_schema_failure(logger, "Postseason", e)
+        return
+    except Exception as e:
+        _log_ingest_fetch_failure(logger, "Postseason", e, stops_run=True)
+        return
+
+    try:
+        override_result = apply_game_result_overrides(args.year)
+        for game_id in override_result["applied"]:
+            logger.info("Applied manual result override for game_id=%s.", game_id)
+        for failure in override_result["failures"]:
+            logger.error("OVERRIDE_FAILURE: game_id=%s reason=%s", failure.get("game_id"), failure.get("reason"))
+    except Exception as e:
+        logger.exception("OVERRIDE_FAILURE: applying manual result overrides raised an unexpected exception. Continuing. Exception: %s", e)
+
+    if args.staging:
+        logger.info("Skipping Season Grid and Playoffs publishes because --staging was set.")
+    else:
+        for label, publish in (("Schedule", publish_schedule_artifact), ("Playoffs", publish_playoffs_artifact)):
+            try:
+                publish(args.year)
+            except Exception as ex:
+                logger.exception("%s artifact publish step failed unexpectedly: %s", label, ex)
+    logger.info("Postseason update finished for year=%s. No rankings were computed or published.", args.year)
+    return None
+
+
 def main():
     """
     Main function to run the model and handle data loading and saving.
@@ -339,8 +429,11 @@ def main():
     args = parser.parse_args()
 
     # DETERMINE YEAR AND WEEK
+    # A run in January still belongs to the season that started the previous August: its bowl
+    # and playoff results are what the postseason update below is for.
+    today = datetime.now(timezone.utc).date()
     if args.year is None:
-        args.year = datetime.now().year
+        args.year = season_end.default_season(today)
     season_start_override = None
     if args.season_start:
         try:
@@ -349,8 +442,12 @@ def main():
         except Exception:
             print("Invalid --season-start format; expected YYYY-MM-DD. Ignoring override.")
             season_start_override = None
+    explicit_week = args.week is not None
     if args.week is None:
-        today = datetime.now(timezone.utc).date()
+        # Number the weeks from the season's own start when the calendar year has moved on.
+        # In-season this is the anchor get_cfb_week would have derived from today's date anyway.
+        if season_start_override is None and args.year != today.year:
+            season_start_override = season_start_for(args.year)
         args.week = resolve_target_week(args.year, today, season_start_override)
         print(f"No --week provided: computed week={args.week} (last week whose games have all started).")
 
@@ -366,10 +463,62 @@ def main():
         logger.error(
             "Refusing to run for year=%s week=%s: the system doesn't produce meaningful ratings "
             "before Week 1 games have been played. Exiting before any data load, model run, DB "
-            "write, or artifact publish.",
-            args.year, args.week,
+            "write, or artifact publish. (%s)",
+            args.year, args.week, NOTHING_TO_PUBLISH_MARKER,
         )
         return
+
+    # RANKINGS, POSTSEASON, OR FINISHED? (see season_end.py)
+    # Only for a run that chose its own week. The rankings end with conference championship
+    # week; after that this run must not rate or publish another week, but the Season Grid and
+    # the Playoffs bracket still need bowl and playoff results until the season's last game.
+    if explicit_week:
+        # Someone asked for this week by name: rate and publish it, whatever the calendar says.
+        state, decision = None, season_end.Decision(season_end.MODE_RANKINGS, args.week, "the week was given explicitly")
+    else:
+        try:
+            state = season_end.read_season_state(args.year)
+            decision = season_end.choose_mode(
+                today, args.year, args.week, state.final_week,
+                state.final_week in state.rated_weeks, explicit_week,
+            )
+        except Exception as e:
+            if today >= date(args.year, *season_end.POSTSEASON_EARLIEST):
+                # From December on, carrying on blind could publish a week after the rankings have
+                # ended. Stop, and let the workflow's last step turn the job red.
+                logger.exception(
+                    "%s: could not tell whether the %s rankings are finished. Refusing to continue "
+                    "this late in the season. Exception: %s", SEASON_END_CHECK_FAILED_MARKER, args.year, e,
+                )
+                return
+            logger.warning(
+                "Could not check for the end of the %s rankings (%s). It is before December, so "
+                "continuing with the normal weekly run.", args.year, e,
+            )
+            state, decision = None, season_end.Decision(season_end.MODE_RANKINGS, args.week, "the check could not run")
+    logger.info("Run mode: %s (%s).", decision.mode, decision.reason)
+    if decision.week != args.week:
+        logger.info("Publishing week %s, not the date-derived week %s.", decision.week, args.week)
+        args.week = decision.week
+    if decision.mode == season_end.MODE_POSTSEASON:
+        try:
+            def rechoose():
+                fresh = season_end.read_season_state(args.year)
+                week = resolve_target_week(args.year, today, season_start_override)
+                return season_end.choose_mode(
+                    today, args.year, week, fresh.final_week,
+                    fresh.final_week in fresh.rated_weeks, explicit_week,
+                ), fresh.rated_weeks
+
+            rate_week = run_postseason_update(args, logger, state, rechoose)
+        except Exception as e:
+            # The run step ends in `|| true`: without a marker a crash here would be a green
+            # job that published nothing, every week, with nothing to show it.
+            logger.exception("%s: the postseason update crashed. Exception: %s", SEASON_END_CHECK_FAILED_MARKER, e)
+            return
+        if rate_week is None:
+            return
+        args.week = rate_week
 
     # ENSURE TEAMS LOADED
     try:

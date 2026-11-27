@@ -30,6 +30,25 @@ def football_day(start: datetime) -> date:
     return (start - timedelta(hours=FOOTBALL_DAY_ROLLOVER_HOURS)).date()
 
 
+def season_start_for(year: int) -> date:
+    """The Tuesday that opens `year`'s week numbering (the start of "Week 0").
+
+    Weeks run Tuesday -> Monday, not Monday -> Sunday. College football weeks straddle the
+    calendar week: Week 0 is a lone Saturday, Week 1 has run Thursday through Monday (2026:
+    Sep 3 - Sep 7), and later weeks run Tuesday/Thursday through Saturday. Anchoring on Monday
+    put a Monday-night game in the FOLLOWING week, split from the weekend it belongs to.
+    Anchor on the Monday on/before Aug 24, then step forward one day to the Tuesday. The +1 day
+    is the whole fix: it moves Mondays back into the week of the weekend that precedes them and
+    leaves every other weekday alone.
+
+    Split out of get_cfb_week so a run in January can still number its weeks from the season
+    it belongs to (the year before), not from the calendar year it happens to be in.
+    """
+    anchor_monday = date(year, 8, 24)
+    anchor_monday -= timedelta(days=anchor_monday.weekday())
+    return anchor_monday + timedelta(days=1)
+
+
 def get_cfb_week(today: date, season_start_override: date) -> int:
     """
     Calculate the current CFB week number based on today's date and an optional season start override.
@@ -43,18 +62,7 @@ def get_cfb_week(today: date, season_start_override: date) -> int:
         today = datetime.now().date()
 
     if season_start_override is None:
-        year = today.year
-        # Weeks run Tuesday -> Monday, not Monday -> Sunday. College football weeks
-        # straddle the calendar week: Week 0 is a lone Saturday, Week 1 has run
-        # Thursday through Monday (2026: Sep 3 - Sep 7), and later weeks run
-        # Tuesday/Thursday through Saturday. Anchoring on Monday put a Monday-night
-        # game in the FOLLOWING week, split from the weekend it belongs to.
-        # Anchor on the Monday on/before Aug 24, then step forward one day to the
-        # Tuesday. The +1 day is the whole fix: it moves Mondays back into the week
-        # of the weekend that precedes them and leaves every other weekday alone.
-        anchor_monday = date(year, 8, 24)
-        anchor_monday -= timedelta(days=anchor_monday.weekday())
-        season_start = anchor_monday + timedelta(days=1)
+        season_start = season_start_for(today.year)
     else:
         season_start = season_start_override
 

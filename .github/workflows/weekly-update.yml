@@ -2,7 +2,11 @@ name: Weekly Rankings - Auto Update
 
 on:
   schedule:
-    # Every Sunday at 07:00 UTC = 03:00 ET.
+    # Every Sunday at 07:00 UTC = 03:00 ET, ALL YEAR. Do not switch this off after the
+    # season: the run works out for itself what there is to do (season_end.py). In season it
+    # rates and publishes the week. After conference championship week it stops computing
+    # rankings and only brings in bowl and playoff results for the Season Grid and the bracket.
+    # Once the season's last game is more than a week old it does nothing until next August.
     #
     # If a future season opens with Week 1 games on the Sunday or Monday, this run would fire
     # before Week 1 is complete. The 2026 season needed exactly that treatment and was handled
@@ -124,6 +128,12 @@ jobs:
         # published, the site stayed a week behind, and this job was green. So: retry transient
         # failures, leave a marker on a final failure, and let the last step turn the job red.
         run: |
+          # Out of season the run publishes nothing (season_end.py: the season is over, or the
+          # next one has not started), so there is nothing for the site to rebuild for.
+          if grep -q "NOTHING_TO_PUBLISH" output.log; then
+            echo "Nothing was published, so the site is not rebuilt."
+            exit 0
+          fi
           if curl -fsS --retry 3 --retry-delay 10 --retry-all-errors --max-time 60 -o /dev/null -X POST "$DEPLOY_HOOK_URL"; then
             echo "Deploy hook accepted."
           else
@@ -153,6 +163,14 @@ jobs:
           if grep -q "INGEST_FAILURE" output.log; then
             echo "::error::Ingest failed -- unapplied migration, CFBD unavailable after retries, or no games returned for the week (the run stopped before publishing):"
             grep "INGEST_FAILURE" output.log
+            failed=1
+          fi
+          # From December on, a run that cannot tell whether the rankings are finished stops
+          # rather than risk publishing a week after they have ended, and so does a postseason
+          # update that crashes (season_end.py).
+          if grep -q "SEASON_END_CHECK_FAILED" output.log; then
+            echo "::error::Could not tell whether the season's rankings are finished, so the run stopped before doing anything:"
+            grep "SEASON_END_CHECK_FAILED" output.log
             failed=1
           fi
           # The artifacts are in R2 at this point; only the site rebuild is missing. Re-running
